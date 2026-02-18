@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 // 기존 페이지 수정 없이 신규 추가되는 독립 컴포넌트
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-const API_BASE = import.meta.env.VITE_API_URL || "";
+const API_BASE = "https://web-production-139e9.up.railway.app";
 
 async function api(path, options = {}) {
   try {
