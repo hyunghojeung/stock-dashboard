@@ -844,7 +844,7 @@ const MENU=[
   {id:"growth",icon:"🎯",label:"성장여정"},
   {id:"strategy",icon:"📖",label:"전략정리"},
   {id:"backtest",icon:"🧪",label:"백테스트"},
-  { id: "swing", label: "📊 스윙백테스트" }
+   {id:"swing",icon:"📊",label:"스윙백테스트"},
   {id:"settings",icon:"⚙️",label:"설정"},
 
 ];
@@ -889,7 +889,9 @@ export default function App() {
       case "growth": return <GrowthPage/>;
       case "strategy": return <StrategyPage/>;
       case "backtest": return <BacktestPage/>;
+      case "swing": return <SwingBacktest/>;
       case "settings": return <SettingsPage/>;
+      case "swing": return <SwingBacktest />;
       default: return <DashboardPage/>;
     }
   };
