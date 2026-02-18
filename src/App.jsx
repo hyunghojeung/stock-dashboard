@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-
+import SwingBacktest from "./SwingBacktest";
 // ============================================================
 // API Helper
 // ============================================================
@@ -844,7 +844,9 @@ const MENU=[
   {id:"growth",icon:"🎯",label:"성장여정"},
   {id:"strategy",icon:"📖",label:"전략정리"},
   {id:"backtest",icon:"🧪",label:"백테스트"},
+  { id: "swing", label: "📊 스윙백테스트" }
   {id:"settings",icon:"⚙️",label:"설정"},
+
 ];
 
 export default function App() {
