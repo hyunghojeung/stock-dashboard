@@ -496,7 +496,7 @@ export default function App() {
 
   const doLogin=async()=>{
     const r=await api(`/api/auth?password=${pw}`);
-    if(r&&r.success) setAuth(true);
+    if(r&&r.authenticated) setAuth(true);
     else alert("비밀번호가 틀렸습니다");
   };
 
