@@ -470,6 +470,369 @@ function SettingsPage() {
 }
 
 // ============================================================
+// [추가] BacktestPage — 백테스트 시뮬레이터
+// ============================================================
+function BacktestPage() {
+  const [tab, setTab] = useState("run");
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
+  const [compareData, setCompareData] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [params, setParams] = useState({
+    strategy: "dip", stock_codes: "", initial_capital: 1000000,
+    atr_multiplier: 2.0, stop_loss_pct: 3.0, max_holdings: 5, per_trade_pct: 20,
+  });
+
+  // 이력 로딩
+  useEffect(() => { loadHistory(); }, []);
+  const loadHistory = async () => {
+    const r = await api("/api/backtest/history");
+    if (r) setHistory(r);
+  };
+
+  // 프리셋 실행
+  const runPreset = async (preset) => {
+    setLoading(true);
+    const r = await api(`/api/backtest/quick/${preset}`);
+    setLoading(false);
+    if (r) { setResult(r); setTab("results"); }
+    else alert("백테스트 실행 실패. 서버를 확인하세요.");
+  };
+
+  // 커스텀 실행
+  const runCustom = async () => {
+    setLoading(true);
+    const body = { ...params };
+    if (body.stock_codes) body.stock_codes = body.stock_codes.split(",").map(s => s.trim());
+    else delete body.stock_codes;
+    const r = await apiPost("/api/backtest/run", body);
+    setLoading(false);
+    if (r) { setResult(r); setTab("results"); }
+    else alert("백테스트 실행 실패. 파라미터를 확인하세요.");
+  };
+
+  // 3전략 비교
+  const runCompare = async () => {
+    setLoading(true);
+    const r = await api("/api/backtest/compare");
+    setLoading(false);
+    if (r) { setCompareData(r); setTab("compare"); }
+    else alert("전략 비교 실행 실패.");
+  };
+
+  // 결과 저장
+  const saveResult = async () => {
+    if (!result) return;
+    const r = await apiPost("/api/backtest/save", result);
+    if (r) { alert("저장 완료!"); loadHistory(); }
+    else alert("저장 실패.");
+  };
+
+  const cardSt = { background: "linear-gradient(135deg,rgba(25,35,65,0.9),rgba(15,22,48,0.95))", border: "1px solid rgba(100,140,200,0.15)", borderRadius: 10, padding: 18, marginBottom: 16 };
+  const inputSt = { width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid rgba(100,140,200,0.2)", background: "rgba(10,15,30,0.6)", color: "#e0e6f0", fontSize: 13, outline: "none", fontFamily: "'Noto Sans KR',sans-serif" };
+  const btnPrimary = { padding: "10px 24px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, background: "linear-gradient(135deg,#1565c0,#1e88e5)", color: "white", fontFamily: "'Noto Sans KR',sans-serif" };
+  const btnSec = { padding: "8px 16px", borderRadius: 6, border: "1px solid rgba(100,140,200,0.3)", cursor: "pointer", fontSize: 12, background: "rgba(30,50,80,0.5)", color: "#8899aa", fontFamily: "'Noto Sans KR',sans-serif" };
+
+  const tabs = [
+    { id: "run", label: "▶ 실행" },
+    { id: "results", label: `📋 결과${result ? " ✓" : ""}` },
+    { id: "compare", label: `📊 전략비교${compareData ? " ✓" : ""}` },
+    { id: "history", label: "📚 이력" },
+  ];
+
+  const presets = [
+    { id: "conservative", label: "보수형", icon: "🛡️", sub: "ATR×2.5 / 손절4%", color: "#4caf50", bg: "rgba(76,175,80,0.07)", border: "rgba(76,175,80,0.2)" },
+    { id: "standard", label: "기본형", icon: "⚖️", sub: "ATR×2.0 / 손절3%", color: "#2196f3", bg: "rgba(33,150,243,0.07)", border: "rgba(33,150,243,0.2)" },
+    { id: "aggressive", label: "공격형", icon: "🔥", sub: "ATR×1.5 / 손절2%", color: "#ff9800", bg: "rgba(255,152,0,0.07)", border: "rgba(255,152,0,0.2)" },
+    { id: "gap_standard", label: "갭상승", icon: "📈", sub: "ATR×1.5 / 손절2.5%", color: "#e91e63", bg: "rgba(233,30,99,0.07)", border: "rgba(233,30,99,0.2)" },
+    { id: "combined", label: "혼합", icon: "🔄", sub: "눌림목+갭상승", color: "#9c27b0", bg: "rgba(156,39,176,0.07)", border: "rgba(156,39,176,0.2)" },
+  ];
+
+  // 로딩 오버레이
+  if (loading) return (
+    <div style={{ textAlign: "center", padding: "80px 0" }}>
+      <div style={{ fontSize: 40, marginBottom: 16, animation: "spin 1s linear infinite" }}>⏳</div>
+      <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
+      <div style={{ color: "#c0d0e0", fontSize: 15, fontWeight: 600 }}>백테스트 시뮬레이션 실행 중...</div>
+      <div style={{ color: "#6688aa", fontSize: 12, marginTop: 6 }}>KIS API 분봉 데이터를 분석하고 있습니다</div>
+    </div>
+  );
+
+  const sm = result?.summary;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {/* 탭 */}
+      <div style={{ display: "flex", gap: 4, borderBottom: "1px solid rgba(100,140,200,0.15)", paddingBottom: 10 }}>
+        {tabs.map(t => (
+          <div key={t.id} onClick={() => setTab(t.id)} style={{
+            padding: "8px 18px", borderRadius: "6px 6px 0 0", cursor: "pointer", fontSize: 13,
+            fontWeight: tab === t.id ? 600 : 400,
+            background: tab === t.id ? "rgba(79,195,247,0.15)" : "transparent",
+            color: tab === t.id ? "#4fc3f7" : "#8899aa",
+            borderBottom: tab === t.id ? "2px solid #4fc3f7" : "2px solid transparent",
+          }}>{t.label}</div>
+        ))}
+      </div>
+
+      {/* ===== TAB: 실행 ===== */}
+      {tab === "run" && <>
+        <div style={cardSt}>
+          <div style={{ color: "#c0d0e0", fontSize: 14, fontWeight: 600, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>⚡ 빠른 실행 프리셋 / Quick Presets</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10 }}>
+            {presets.map(p => (
+              <button key={p.id} onClick={() => runPreset(p.id)} style={{
+                padding: "12px 8px", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 600, textAlign: "center",
+                border: `1px solid ${p.border}`, background: p.bg, color: p.color, fontFamily: "'Noto Sans KR',sans-serif",
+              }}>
+                <div style={{ fontSize: 16, marginBottom: 4 }}>{p.icon}</div>
+                <div>{p.label}</div>
+                <div style={{ fontSize: 10, opacity: 0.7, marginTop: 2 }}>{p.sub}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div style={cardSt}>
+          <div style={{ color: "#c0d0e0", fontSize: 14, fontWeight: 600, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>⚙️ 상세 설정 / Custom Parameters</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 12 }}>
+            <div><label style={{ fontSize: 11, color: "#6688aa", marginBottom: 4, display: "block" }}>전략 선택</label>
+              <select value={params.strategy} onChange={e => setParams({ ...params, strategy: e.target.value })} style={inputSt}>
+                <option value="dip">눌림목 (Dip)</option><option value="gap">갭상승 (Gap)</option><option value="both">눌림목 + 갭상승</option>
+              </select></div>
+            <div><label style={{ fontSize: 11, color: "#6688aa", marginBottom: 4, display: "block" }}>종목코드 (빈값=감시종목)</label>
+              <input value={params.stock_codes} onChange={e => setParams({ ...params, stock_codes: e.target.value })} placeholder="예: 005930,000660" style={inputSt} /></div>
+            <div><label style={{ fontSize: 11, color: "#6688aa", marginBottom: 4, display: "block" }}>초기 자금</label>
+              <input type="number" value={params.initial_capital} onChange={e => setParams({ ...params, initial_capital: Number(e.target.value) })} style={inputSt} /></div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 12, marginBottom: 12 }}>
+            <div><label style={{ fontSize: 11, color: "#6688aa", marginBottom: 4, display: "block" }}>ATR 배수 (익절)</label>
+              <input type="number" step="0.1" value={params.atr_multiplier} onChange={e => setParams({ ...params, atr_multiplier: Number(e.target.value) })} style={inputSt} /></div>
+            <div><label style={{ fontSize: 11, color: "#6688aa", marginBottom: 4, display: "block" }}>손절 %</label>
+              <input type="number" step="0.5" value={params.stop_loss_pct} onChange={e => setParams({ ...params, stop_loss_pct: Number(e.target.value) })} style={inputSt} /></div>
+            <div><label style={{ fontSize: 11, color: "#6688aa", marginBottom: 4, display: "block" }}>최대 보유 종목수</label>
+              <input type="number" value={params.max_holdings} onChange={e => setParams({ ...params, max_holdings: Number(e.target.value) })} style={inputSt} /></div>
+            <div><label style={{ fontSize: 11, color: "#6688aa", marginBottom: 4, display: "block" }}>1회 매수 비중 %</label>
+              <input type="number" value={params.per_trade_pct} onChange={e => setParams({ ...params, per_trade_pct: Number(e.target.value) })} style={inputSt} /></div>
+          </div>
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <button onClick={runCustom} style={btnPrimary}>▶ 백테스트 실행</button>
+            <button onClick={runCompare} style={btnSec}>📊 3전략 비교</button>
+            <span style={{ fontSize: 11, color: "#556677" }}>※ KIS API 분봉 데이터 기반 (최근 30일)</span>
+          </div>
+        </div>
+      </>}
+
+      {/* ===== TAB: 결과 ===== */}
+      {tab === "results" && <>
+        {!result ? <div style={{ textAlign: "center", padding: 40, color: "#6688aa" }}>실행 탭에서 백테스트를 먼저 실행하세요</div> : <>
+          <div style={cardSt}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+              <div style={{ color: "#c0d0e0", fontSize: 14, fontWeight: 600 }}>📋 백테스트 결과 요약
+                <span style={{ marginLeft: 8, padding: "2px 10px", borderRadius: 10, fontSize: 11, background: "rgba(76,175,80,0.15)", color: "#4caf50" }}>{sm?.strategy || "눌림목"}</span>
+              </div>
+              <button onClick={saveResult} style={btnSec}>💾 결과 저장</button>
+            </div>
+
+            {/* 핵심 지표 6개 */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(6,1fr)", gap: 10, marginBottom: 16 }}>
+              {[
+                ["총 수익률", sm?.total_return_pct != null ? fmtPct(sm.total_return_pct) : "—", sm?.total_return_pct >= 0 ? "#4caf50" : "#ff4444"],
+                ["순이익", sm?.net_profit != null ? fmtWon(sm.net_profit) : "—", sm?.net_profit >= 0 ? "#4caf50" : "#ff4444"],
+                ["승률", sm?.win_rate != null ? `${sm.win_rate.toFixed(1)}%` : "—", "#ffd54f"],
+                ["총 매매", sm?.total_trades != null ? `${sm.total_trades}회` : "—", "#4fc3f7"],
+                ["최대 낙폭", sm?.max_drawdown_pct != null ? `-${sm.max_drawdown_pct.toFixed(2)}%` : "—", "#ff4444"],
+                ["손익비", sm?.profit_loss_ratio != null ? sm.profit_loss_ratio.toFixed(2) : "—", "#ce93d8"],
+              ].map(([label, value, color], i) => (
+                <div key={i} style={{ padding: 12, background: "rgba(10,18,40,0.5)", borderRadius: 8, borderLeft: `3px solid ${color}` }}>
+                  <div style={{ color: "#6688aa", fontSize: 11, marginBottom: 4 }}>{label}</div>
+                  <div style={{ color, fontSize: 18, fontWeight: 700, fontFamily: "'JetBrains Mono',monospace" }}>{value}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* 보조 지표 */}
+            <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 8, borderTop: "1px solid rgba(100,140,200,0.1)" }}>
+              {[
+                ["초기자금", `${fmt(sm?.initial_capital)}원`],
+                ["최종자산", `${fmt(sm?.final_asset)}원`],
+                ["총 수수료", `${fmt(sm?.total_fee)}원`],
+                ["테스트기간", `${sm?.test_days || "—"}일`],
+              ].map(([l, v]) => (
+                <div key={l}><span style={{ color: "#556677", fontSize: 11 }}>{l} </span><span style={{ color: "#e0e6f0", fontSize: 12, fontFamily: "monospace" }}>{v}</span></div>
+              ))}
+            </div>
+          </div>
+
+          {/* 자산 추이 차트 */}
+          {result.daily_assets && result.daily_assets.length > 0 && (
+            <div style={cardSt}>
+              <div style={{ color: "#c0d0e0", fontSize: 14, fontWeight: 600, marginBottom: 12 }}>📈 자산 추이 / Asset Growth</div>
+              <BacktestChart data={result.daily_assets} initialCapital={sm?.initial_capital || 1000000} />
+            </div>
+          )}
+
+          {/* 매매 내역 */}
+          {result.trades && result.trades.length > 0 && (
+            <div style={cardSt}>
+              <div style={{ color: "#c0d0e0", fontSize: 14, fontWeight: 600, marginBottom: 12 }}>📝 매매 내역 ({result.trades.length}건)</div>
+              <div style={{ maxHeight: 300, overflowY: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                  <thead><tr style={{ borderBottom: "1px solid rgba(100,140,200,0.2)" }}>
+                    {["일자", "종목", "구분", "매수가", "매도가", "수량", "수익", "수익률", "사유"].map(h => (
+                      <th key={h} style={{ padding: "6px 4px", color: "#6688aa", textAlign: "left" }}>{h}</th>
+                    ))}
+                  </tr></thead>
+                  <tbody>{result.trades.map((t, i) => (
+                    <tr key={i} style={{ borderBottom: "1px solid rgba(100,140,200,0.08)", background: i % 2 === 0 ? "rgba(10,18,40,0.3)" : "transparent" }}>
+                      <td style={{ padding: "6px 4px", color: "#6688aa", fontFamily: "monospace" }}>{t.date}</td>
+                      <td style={{ padding: "6px 4px", color: "#e0e6f0" }}>{t.stock_name}</td>
+                      <td style={{ padding: "6px 4px" }}><span style={{ padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 600, background: t.type === "buy" ? "rgba(255,68,68,0.15)" : "rgba(68,136,255,0.15)", color: t.type === "buy" ? "#ff4444" : "#4488ff" }}>{t.type === "buy" ? "매수" : "매도"}</span></td>
+                      <td style={{ padding: "6px 4px", fontFamily: "monospace", color: "#e0e6f0" }}>{fmt(t.buy_price)}</td>
+                      <td style={{ padding: "6px 4px", fontFamily: "monospace", color: "#e0e6f0" }}>{t.sell_price ? fmt(t.sell_price) : "—"}</td>
+                      <td style={{ padding: "6px 4px", color: "#e0e6f0" }}>{t.quantity}</td>
+                      <td style={{ padding: "6px 4px", fontFamily: "monospace", color: clr(t.net_profit) }}>{t.net_profit != null ? fmtWon(t.net_profit) : "—"}</td>
+                      <td style={{ padding: "6px 4px", fontFamily: "monospace", color: clr(t.profit_pct) }}>{t.profit_pct != null ? fmtPct(t.profit_pct) : "—"}</td>
+                      <td style={{ padding: "6px 4px", color: "#6688aa", fontSize: 11 }}>{t.reason}</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </>}
+      </>}
+
+      {/* ===== TAB: 전략비교 ===== */}
+      {tab === "compare" && <>
+        {!compareData ? <div style={{ textAlign: "center", padding: 40, color: "#6688aa" }}>실행 탭에서 "3전략 비교" 버튼을 클릭하세요</div> : <>
+          <div style={cardSt}>
+            <div style={{ color: "#c0d0e0", fontSize: 14, fontWeight: 600, marginBottom: 14 }}>📊 보수형 vs 기본형 vs 공격형</div>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+              <thead><tr style={{ borderBottom: "1px solid rgba(100,140,200,0.2)" }}>
+                {["전략", "수익률", "순이익", "승률", "총매매", "MDD", "손익비"].map(h => (
+                  <th key={h} style={{ padding: "8px 6px", color: "#6688aa", textAlign: "left" }}>{h}</th>
+                ))}
+              </tr></thead>
+              <tbody>{(Array.isArray(compareData) ? compareData : []).map((c, i) => {
+                const s = c.summary || {};
+                const colors = ["#4caf50", "#2196f3", "#ff9800"];
+                return (
+                  <tr key={i} style={{ borderBottom: "1px solid rgba(100,140,200,0.08)" }}>
+                    <td style={{ padding: "8px 6px", color: colors[i] || "#e0e6f0", fontWeight: 600 }}>{s.strategy || `전략${i + 1}`}</td>
+                    <td style={{ padding: "8px 6px", fontFamily: "monospace", color: clr(s.total_return_pct) }}>{fmtPct(s.total_return_pct)}</td>
+                    <td style={{ padding: "8px 6px", fontFamily: "monospace", color: clr(s.net_profit) }}>{fmtWon(s.net_profit)}</td>
+                    <td style={{ padding: "8px 6px", fontFamily: "monospace", color: "#ffd54f" }}>{s.win_rate?.toFixed(1)}%</td>
+                    <td style={{ padding: "8px 6px", color: "#e0e6f0" }}>{s.total_trades}회</td>
+                    <td style={{ padding: "8px 6px", fontFamily: "monospace", color: "#ff4444" }}>-{s.max_drawdown_pct?.toFixed(2)}%</td>
+                    <td style={{ padding: "8px 6px", fontFamily: "monospace", color: "#ce93d8" }}>{s.profit_loss_ratio?.toFixed(2)}</td>
+                  </tr>
+                );
+              })}</tbody>
+            </table>
+          </div>
+
+          {/* 수익률 바 차트 */}
+          <div style={cardSt}>
+            <div style={{ color: "#c0d0e0", fontSize: 14, fontWeight: 600, marginBottom: 14 }}>📊 수익률 비교</div>
+            {(Array.isArray(compareData) ? compareData : []).map((c, i) => {
+              const s = c.summary || {};
+              const colors = ["#4caf50", "#2196f3", "#ff9800"];
+              const maxPct = Math.max(...(compareData || []).map(x => Math.abs(x.summary?.total_return_pct || 0)), 1);
+              const width = Math.abs(s.total_return_pct || 0) / maxPct * 100;
+              return (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
+                  <div style={{ width: 60, color: colors[i], fontSize: 12, fontWeight: 600 }}>{s.strategy || `전략${i + 1}`}</div>
+                  <div style={{ flex: 1, background: "rgba(10,18,40,0.5)", borderRadius: 6, height: 24, overflow: "hidden" }}>
+                    <div style={{ width: `${width}%`, height: "100%", background: colors[i], borderRadius: 6, transition: "width 0.8s" }} />
+                  </div>
+                  <div style={{ width: 70, fontFamily: "monospace", fontSize: 13, color: clr(s.total_return_pct), textAlign: "right" }}>{fmtPct(s.total_return_pct)}</div>
+                </div>
+              );
+            })}
+          </div>
+        </>}
+      </>}
+
+      {/* ===== TAB: 이력 ===== */}
+      {tab === "history" && (
+        <div style={cardSt}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+            <div style={{ color: "#c0d0e0", fontSize: 14, fontWeight: 600 }}>📚 백테스트 이력</div>
+            <button onClick={loadHistory} style={btnSec}>🔄 새로고침</button>
+          </div>
+          {history.length === 0 ? <div style={{ textAlign: "center", padding: 30, color: "#6688aa" }}>저장된 백테스트 이력 없음</div> :
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+              <thead><tr style={{ borderBottom: "1px solid rgba(100,140,200,0.2)" }}>
+                {["날짜", "전략", "수익률", "승률", "매매수", "MDD"].map(h => (
+                  <th key={h} style={{ padding: "8px 4px", color: "#6688aa", textAlign: "left" }}>{h}</th>
+                ))}
+              </tr></thead>
+              <tbody>{history.map((h, i) => (
+                <tr key={i} style={{ borderBottom: "1px solid rgba(100,140,200,0.08)", background: i % 2 === 0 ? "rgba(10,18,40,0.3)" : "transparent" }}>
+                  <td style={{ padding: "8px 4px", color: "#6688aa", fontFamily: "monospace" }}>{h.created_at?.slice(0, 10)}</td>
+                  <td style={{ padding: "8px 4px", color: "#e0e6f0" }}>{h.strategy}</td>
+                  <td style={{ padding: "8px 4px", fontFamily: "monospace", color: clr(h.total_return_pct) }}>{fmtPct(h.total_return_pct)}</td>
+                  <td style={{ padding: "8px 4px", fontFamily: "monospace", color: "#ffd54f" }}>{h.win_rate?.toFixed(1)}%</td>
+                  <td style={{ padding: "8px 4px", color: "#e0e6f0" }}>{h.total_trades}회</td>
+                  <td style={{ padding: "8px 4px", fontFamily: "monospace", color: "#ff4444" }}>-{h.max_drawdown_pct?.toFixed(2)}%</td>
+                </tr>
+              ))}</tbody>
+            </table>
+          }
+        </div>
+      )}
+    </div>
+  );
+}
+
+// 백테스트 자산 추이 차트 컴포넌트
+function BacktestChart({ data, initialCapital }) {
+  if (!data || data.length < 2) return <div style={{ color: "#556677", fontSize: 12, textAlign: "center", padding: 20 }}>차트 데이터 부족</div>;
+  const W = 720, H = 180, PAD = 45;
+  const vals = data.map(d => d.asset || d.total_asset || d);
+  const minV = Math.min(...vals) * 0.998, maxV = Math.max(...vals) * 1.002;
+  const range = maxV - minV || 1;
+  const xStep = (W - PAD * 2) / (vals.length - 1);
+  const isProfit = vals[vals.length - 1] >= initialCapital;
+  const lineColor = isProfit ? "#4caf50" : "#ff4444";
+
+  const toX = i => PAD + i * xStep;
+  const toY = v => PAD + (1 - (v - minV) / range) * (H - PAD * 2);
+
+  let path = "", area = "";
+  vals.forEach((v, i) => {
+    const x = toX(i), y = toY(v);
+    path += (i === 0 ? "M" : "L") + `${x},${y} `;
+    area += (i === 0 ? "M" : "L") + `${x},${y} `;
+  });
+  area += `L${toX(vals.length - 1)},${H - PAD} L${PAD},${H - PAD} Z`;
+
+  const baseY = toY(initialCapital);
+
+  return (
+    <svg width={W} height={H} style={{ display: "block" }}>
+      {/* 기준선 */}
+      <line x1={PAD} y1={baseY} x2={W - PAD} y2={baseY} stroke="#ffd54f" strokeWidth="1" strokeDasharray="4,3" opacity="0.4" />
+      <text x={W - PAD + 4} y={baseY + 3} fill="#ffd54f" fontSize="8" fontFamily="JetBrains Mono,monospace" opacity="0.6">초기</text>
+      {/* Y축 */}
+      {[minV, minV + range / 2, maxV].map((v, i) => (
+        <g key={i}>
+          <text x={PAD - 4} y={toY(v) + 3} fill="#556677" fontSize="9" fontFamily="JetBrains Mono,monospace" textAnchor="end">{fmt(Math.round(v))}</text>
+          <line x1={PAD} y1={toY(v)} x2={W - PAD} y2={toY(v)} stroke="rgba(100,140,200,0.08)" />
+        </g>
+      ))}
+      {/* 영역 + 라인 */}
+      <path d={area} fill={isProfit ? "rgba(76,175,80,0.08)" : "rgba(255,68,68,0.08)"} />
+      <path d={path} fill="none" stroke={lineColor} strokeWidth="2" />
+      {/* 끝 점 */}
+      <circle cx={toX(vals.length - 1)} cy={toY(vals[vals.length - 1])} r="4" fill={lineColor} />
+      <text x={toX(vals.length - 1) + 8} y={toY(vals[vals.length - 1]) + 4} fill={lineColor} fontSize="10" fontFamily="JetBrains Mono,monospace">{fmt(vals[vals.length - 1])}</text>
+    </svg>
+  );
+}
+
+// ============================================================
 // Main App
 // ============================================================
 const MENU=[
@@ -480,6 +843,7 @@ const MENU=[
   {id:"performance",icon:"📈",label:"수익분석"},
   {id:"growth",icon:"🎯",label:"성장여정"},
   {id:"strategy",icon:"📖",label:"전략정리"},
+  {id:"backtest",icon:"🧪",label:"백테스트"},
   {id:"settings",icon:"⚙️",label:"설정"},
 ];
 
@@ -522,6 +886,7 @@ export default function App() {
       case "performance": return <PerformancePage/>;
       case "growth": return <GrowthPage/>;
       case "strategy": return <StrategyPage/>;
+      case "backtest": return <BacktestPage/>;
       case "settings": return <SettingsPage/>;
       default: return <DashboardPage/>;
     }
