@@ -1044,11 +1044,20 @@ export default function SwingBacktest() {
     <div style={S.page}>
       {/* 헤더 / Header */}
       <div style={S.header}>
-        <div>
-          <div style={S.title}>📊 스윙 자동발굴 & 백테스트</div>
-          <div style={{ fontSize: 11, color: "#556677", marginTop: 4 }}>
-            분석일: {result?.timestamp?.slice(0, 10) || "-"} · {result?.stocks_analyzed || 0}개 종목
-            {result?.data_source === "naver" && " · 네이버 금융"}
+<div>
+  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+    <div style={S.title}>📊 스윙 자동발굴 & 백테스트</div>
+    <button onClick={() => window.open('/swing_guide.html', '_blank')}
+      style={{
+        padding: "4px 12px", borderRadius: 6,
+        border: "1px solid rgba(79,195,247,0.3)",
+        background: "rgba(79,195,247,0.1)",
+        color: "#4fc3f7", fontSize: 11, fontWeight: 600,
+        cursor: "pointer", fontFamily: "'Noto Sans KR', sans-serif",
+      }}>📖 가이드</button>
+  </div>
+  <div style={{ fontSize: 11, color: "#556677", marginTop: 4 }}>
+    분석일: {result?.timestamp?.slice(0, 10) || "-"} ...
           </div>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
