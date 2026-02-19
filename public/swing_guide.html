@@ -75,12 +75,27 @@
     padding:5px 12px; border-radius:6px; transition:all 0.2s;
   }
   .nav-toc a:hover { color:var(--cyan); background:rgba(79,195,247,0.07); }
-  .btn-back {
+  .btn-go {
     display:inline-flex; align-items:center; gap:5px;
-    color:var(--t3); text-decoration:none; font-size:12px;
-    padding:5px 14px; border:1px solid var(--border); border-radius:7px; transition:all 0.25s;
+    color:#0a1628; text-decoration:none; font-size:12px; font-weight:700;
+    padding:7px 18px; border:none; border-radius:7px;
+    background:linear-gradient(135deg, #4fc3f7, #29b6f6);
+    transition:all 0.25s; white-space:nowrap;
   }
-  .btn-back:hover { color:var(--cyan); border-color:var(--border-h); }
+  .btn-go:hover { background:linear-gradient(135deg, #81d4fa, #4fc3f7); transform:translateY(-1px); box-shadow:0 4px 12px rgba(79,195,247,0.3); }
+
+  /* ── Floating CTA ── */
+  .float-cta {
+    position:fixed; bottom:28px; right:28px; z-index:99;
+    display:flex; align-items:center; gap:8px;
+    padding:14px 24px; border-radius:12px;
+    background:linear-gradient(135deg, #4fc3f7, #29b6f6);
+    color:#0a1628; font-size:14px; font-weight:700;
+    text-decoration:none; box-shadow:0 8px 24px rgba(79,195,247,0.3);
+    transition:all 0.3s;
+  }
+  .float-cta:hover { transform:translateY(-3px); box-shadow:0 12px 32px rgba(79,195,247,0.4); }
+  .float-cta .arrow { font-size:18px; }
 
   /* ── Hero ── */
   .hero {
@@ -237,6 +252,7 @@
     .top-nav { padding:0 14px; }
     .nav-toc { display:none; }
     .ascii-map { font-size:10px; }
+    .float-cta { bottom:16px; right:16px; padding:10px 18px; font-size:12px; border-radius:10px; }
   }
 </style>
 </head>
@@ -259,7 +275,7 @@
     <a href="#s5">5단계</a>
     <a href="#summary">요약</a>
   </div>
-  <a class="btn-back" href="javascript:history.back()">← 돌아가기</a>
+  <a class="btn-go" href="/" target="_self">📊 스윙 백테스트 바로가기</a>
 </nav>
 
 <!-- ═══ Hero ═══ -->
@@ -512,6 +528,28 @@
   </section>
 
 </div>
+
+  <!-- ═══ CTA Section ═══ -->
+  <div style="text-align:center; padding:40px 20px 20px;">
+    <a href="/" style="
+      display:inline-flex; align-items:center; gap:10px;
+      padding:16px 40px; border-radius:12px;
+      background:linear-gradient(135deg, #4fc3f7, #29b6f6);
+      color:#0a1628; font-size:16px; font-weight:700;
+      text-decoration:none; box-shadow:0 8px 24px rgba(79,195,247,0.25);
+      transition:all 0.3s; font-family:'Noto Sans KR',sans-serif;
+    " onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 12px 32px rgba(79,195,247,0.4)'"
+       onmouseout="this.style.transform='';this.style.boxShadow='0 8px 24px rgba(79,195,247,0.25)'">
+      📊 스윙 백테스트 페이지로 이동 →
+    </a>
+    <div style="margin-top:12px; font-size:12px; color:#556677;">가이드를 읽었다면, 이제 직접 실행해 보세요!</div>
+  </div>
+
+<!-- ═══ Floating Button ═══ -->
+<a class="float-cta" href="/">
+  <span>📊 백테스트 실행</span>
+  <span class="arrow">→</span>
+</a>
 
 <!-- ═══ Footer ═══ -->
 <footer class="footer">
