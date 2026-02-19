@@ -624,7 +624,7 @@ export default function SwingBacktest() {
   // 증권사 수수료 ~0.03% (매수+매도) + 증권거래세 0.18% (매도) + 기타 = ~0.25%
   const TRADE_FEE_PCT = 0.25;
 
-  const runSingleTest = async () => {
+  const runSingleTest = async (overrideDays) => {
     if (!testCode.trim()) return;
     setTestLoading(true);
     setTestResult(null);
@@ -634,12 +634,23 @@ export default function SwingBacktest() {
       stop_loss_pct: testParams.stop_loss_pct,
       pullback_min: testParams.pullback_min,
       pullback_max: testParams.pullback_max,
-      days: testPeriod,
+      days: overrideDays ?? testPeriod,
     });
     const data = await api(`/api/swing/test/${testCode.trim()}?${params}`);
     setTestResult(data);
     setTestLoading(false);
   };
+
+  // ── 테스트 기간 변경 시 자동 재실행 / Auto re-run when period changes ──
+  const prevPeriodRef = useRef(testPeriod);
+  useEffect(() => {
+    if (prevPeriodRef.current !== testPeriod && testCode.trim() && testResult) {
+      prevPeriodRef.current = testPeriod;
+      runSingleTest(testPeriod);
+    } else {
+      prevPeriodRef.current = testPeriod;
+    }
+  }, [testPeriod]);
 
   // ── 개별 종목 파라미터 최적화 / Single stock parameter optimization ──
   const optimizeSingle = async () => {
