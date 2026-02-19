@@ -678,36 +678,69 @@ export default function SwingBacktest() {
     });
   }, [result, period]);
 
+  // ── 거래비용 (1회 매매당) / Trading cost per round trip ──
+  // 증권사 수수료 ~0.03% (매수+매도) + 증권거래세 0.18% (매도) + 기타 = ~0.25%
+  const TRADE_FEE_PCT = 0.25;
+
   const filteredSummary = useMemo(() => {
     const trades = filteredTrades;
     if (!trades || trades.length === 0) return null;
     const total = trades.length;
+
+    // 세전 기준으로 승/패 판정 (원래 profit_pct 사용)
     const wins = trades.filter(t => t.is_win);
     const lossTrades = trades.filter(t => !t.is_win);
     const winPcts = wins.map(t => t.profit_pct || 0);
     const lossPcts = lossTrades.map(t => t.profit_pct || 0);
 
-    // 단순 분산 합산 방식 (5종목 동시 분산 기준)
-    // Simple additive return with position sizing
     const maxPos = result?.final_stats?.summary?.max_positions || result?.pattern_stats?.summary?.max_positions || 5;
-    let cumReturn = 0, peakReturn = 0, mdd = 0;
+
+    // 세전 (gross) 계산
+    let grossReturn = 0, grossPeak = 0, grossMdd = 0;
+    // 세후 (net) 계산 — 매 거래마다 수수료 차감
+    let netReturn = 0, netPeak = 0, netMdd = 0;
+    // 총 수수료·세금
+    let totalFees = 0;
+
     for (const t of trades) {
-      cumReturn += (t.profit_pct || 0) / maxPos;
-      if (cumReturn > peakReturn) peakReturn = cumReturn;
-      const dd = cumReturn - peakReturn;
-      if (dd < mdd) mdd = dd;
+      const pct = t.profit_pct || 0;
+      const feePct = TRADE_FEE_PCT;
+      const netPct = pct - feePct;
+
+      // Gross
+      grossReturn += pct / maxPos;
+      if (grossReturn > grossPeak) grossPeak = grossReturn;
+      const gdd = grossReturn - grossPeak;
+      if (gdd < grossMdd) grossMdd = gdd;
+
+      // Net
+      netReturn += netPct / maxPos;
+      if (netReturn > netPeak) netPeak = netReturn;
+      const ndd = netReturn - netPeak;
+      if (ndd < netMdd) netMdd = ndd;
+
+      totalFees += feePct / maxPos;
     }
+
+    // 세후 기준 승/패 재판정
+    const netWins = trades.filter(t => ((t.profit_pct || 0) - TRADE_FEE_PCT) > 0);
 
     return {
       total_trades: total,
-      win_count: wins.length,
-      loss_count: lossTrades.length,
-      win_rate: total > 0 ? (wins.length / total * 100) : 0,
-      avg_profit: total > 0 ? trades.reduce((a, t) => a + (t.profit_pct || 0), 0) / total : 0,
-      avg_win: winPcts.length > 0 ? winPcts.reduce((a, b) => a + b, 0) / winPcts.length : 0,
-      avg_loss: lossPcts.length > 0 ? lossPcts.reduce((a, b) => a + b, 0) / lossPcts.length : 0,
-      total_return: Math.round(cumReturn * 100) / 100,
-      mdd: Math.round(mdd * 100) / 100,
+      win_count: netWins.length,
+      loss_count: total - netWins.length,
+      win_rate: total > 0 ? (netWins.length / total * 100) : 0,
+      avg_profit: total > 0 ? trades.reduce((a, t) => a + ((t.profit_pct || 0) - TRADE_FEE_PCT), 0) / total : 0,
+      avg_win: netWins.length > 0 ? netWins.reduce((a, t) => a + ((t.profit_pct || 0) - TRADE_FEE_PCT), 0) / netWins.length : 0,
+      avg_loss: (() => { const nl = trades.filter(t => ((t.profit_pct||0)-TRADE_FEE_PCT) <= 0); return nl.length > 0 ? nl.reduce((a,t) => a + ((t.profit_pct||0)-TRADE_FEE_PCT), 0) / nl.length : 0; })(),
+      // 세후 수익률 (메인 표시용)
+      total_return: Math.round(netReturn * 100) / 100,
+      mdd: Math.round(netMdd * 100) / 100,
+      // 세전 수익률 (참고용)
+      gross_return: Math.round(grossReturn * 100) / 100,
+      gross_mdd: Math.round(grossMdd * 100) / 100,
+      // 총 수수료·세금 비율
+      total_fees_pct: Math.round(totalFees * 100) / 100,
     };
   }, [filteredTrades, result]);
 
@@ -1046,6 +1079,14 @@ export default function SwingBacktest() {
 
           {!testLoading && testResult && !testResult.error && (() => {
             const ts = testResult.stats?.summary || {};
+            // 세후 재계산 / Recalculate after fees
+            const tradeCount = ts.total_trades || 0;
+            const netReturn = (ts.total_return || 0) - (TRADE_FEE_PCT * tradeCount);
+            const netWinCount = (() => {
+              const sells = (testResult.trade_points || []).filter(p => p.type === "sell");
+              return sells.filter(s => ((s.profit_pct || 0) - TRADE_FEE_PCT) > 0).length;
+            })();
+            const netWinRate = tradeCount > 0 ? (netWinCount / tradeCount * 100) : 0;
             return (
               <>
                 <div style={{ ...S.card, padding: "14px 20px" }}>
@@ -1063,13 +1104,14 @@ export default function SwingBacktest() {
 
                 <div style={S.grid4}>
                   <div style={S.statBox}>
-                    <div style={S.statLabel}>총 수익률</div>
-                    <div>{pctEl(ts.total_return || 0, { fontSize: 18, sign: true })}</div>
+                    <div style={S.statLabel}>순수익률</div>
+                    <div>{pctEl(netReturn, { fontSize: 18, sign: true })}</div>
+                    <div style={{ fontSize: 10, color: "#556677" }}>세전 {(ts.total_return || 0) > 0 ? "+" : ""}{(ts.total_return || 0).toFixed(1)}%</div>
                   </div>
                   <div style={S.statBox}>
                     <div style={S.statLabel}>승률</div>
-                    <div>{pctEl(ts.win_rate || 0, { fontSize: 18, color: "#ffd54f" })}</div>
-                    <div style={{ fontSize: 10, color: "#556677" }}>{ts.win_count || 0}승 {ts.loss_count || 0}패 / {ts.total_trades || 0}건</div>
+                    <div>{pctEl(netWinRate, { fontSize: 18, color: "#ffd54f" })}</div>
+                    <div style={{ fontSize: 10, color: "#556677" }}>{netWinCount}승 {tradeCount - netWinCount}패 / {tradeCount}건</div>
                   </div>
                   <div style={S.statBox}>
                     <div style={S.statLabel}>MDD</div>
@@ -1098,7 +1140,7 @@ export default function SwingBacktest() {
                           const sells = testResult.trade_points.filter(p => p.type === "sell");
                           return buys.map((b, i) => {
                             const sl = sells[i];
-                            const pct = sl?.profit_pct || 0;
+                            const pct = (sl?.profit_pct || 0) - TRADE_FEE_PCT; // 세후
                             return (
                               <tr key={i} style={{ background: i % 2 ? "rgba(255,255,255,0.02)" : "transparent" }}>
                                 <td style={S.td}>{fmtDate(b.date)}</td>
@@ -1194,11 +1236,23 @@ export default function SwingBacktest() {
           <div style={{ ...S.card, padding: "20px 24px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 16 }}>
               <div>
-                <div style={{ fontSize: 12, color: "#556677", marginBottom: 4 }}>총 수익률 (동시 {summaryRaw.max_positions || 5}종목 분산)</div>
+                <div style={{ fontSize: 12, color: "#556677", marginBottom: 4 }}>순수익률 (수수료·세금 차감 / 동시 {summaryRaw.max_positions || 5}종목 분산)</div>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
                   {pctEl(summary.total_return || 0, { fontSize: 32, sign: true })}
                   <span style={{ fontWeight: 700, color: (summary.total_return || 0) >= 0 ? "#4cff8b" : "#ff5252", opacity: 0.85 }}>
                     ({pctToWon(summary.total_return || 0, { fontSize: 22, sign: true })})
+                  </span>
+                </div>
+                {/* 세전 수익률 + 수수료 + 원금포함 / Gross, fees, total */}
+                <div style={{ display: "flex", gap: 16, marginTop: 8, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 11, color: "#556677" }}>
+                    세전 {pctEl(summary.gross_return || 0, { fontSize: 11, sign: true, color: "#7a8ca8" })}
+                  </span>
+                  <span style={{ fontSize: 11, color: "#ff6b6b" }}>
+                    수수료·세금 −{(summary.total_fees_pct || 0).toFixed(1)}% ({fmtWon(capital * (summary.total_fees_pct || 0) / 100)})
+                  </span>
+                  <span style={{ fontSize: 11, color: "#4fc3f7", fontWeight: 600 }}>
+                    💰 평가금 {fmtWon(capital + capital * (summary.total_return || 0) / 100)}
                   </span>
                 </div>
               </div>
@@ -1252,7 +1306,10 @@ export default function SwingBacktest() {
                   <SortTH sortKey="max_profit" currentKey={stockSort.sortKey} indicator={stockSort.indicator} onClick={stockSort.toggle}>최대익</SortTH>
                   <SortTH sortKey="max_loss" currentKey={stockSort.sortKey} indicator={stockSort.indicator} onClick={stockSort.toggle}>최대손</SortTH>
                 </tr></thead><tbody>
-                  {stockSort.sorted(ps.stock_stats).map((s, i) => (
+                  {stockSort.sorted(ps.stock_stats).map((s, i) => {
+                    const netTotalReturn = (s.total_return || 0) - TRADE_FEE_PCT * (s.total_trades || 0);
+                    const netAvgProfit = (s.avg_profit || 0) - TRADE_FEE_PCT;
+                    return (
                     <tr key={i} style={{ background: i % 2 ? "rgba(255,255,255,0.02)" : "transparent" }}>
                       <td style={{ ...S.td, color: "#556677" }}>{i + 1}</td>
                       <td style={{ ...S.td, fontFamily: "'Noto Sans KR',sans-serif", fontWeight: 600 }}>
@@ -1260,16 +1317,17 @@ export default function SwingBacktest() {
                         <div style={{ fontSize: 10, color: "#556677" }}>{s.code}</div>
                       </td>
                       <td style={S.td}>
-                        {pctEl(s.total_return || 0, { fontSize: 12, sign: true, decimal: 2 })}
-                        <div style={{ fontSize: 10, color: "#556677" }}>{pctToWon(s.total_return || 0, { fontSize: 10 })}</div>
+                        {pctEl(netTotalReturn, { fontSize: 12, sign: true, decimal: 2 })}
+                        <div style={{ fontSize: 10, color: "#556677" }}>{pctToWon(netTotalReturn, { fontSize: 10 })}</div>
                       </td>
                       <td style={S.td}><WinRateBadge rate={s.win_rate || 0} /></td>
                       <td style={S.td}>{s.total_trades}<span style={{ fontSize: 10, color: "#556677" }}> ({s.win_count}승{s.loss_count}패)</span></td>
-                      <td style={S.td}>{pctEl(s.avg_profit || 0, { fontSize: 12, sign: true, decimal: 2 })}</td>
-                      <td style={S.td}>{pctEl(s.max_profit || 0, { fontSize: 12, sign: true, decimal: 2, color: "#4cff8b" })}</td>
-                      <td style={S.td}>{pctEl(s.max_loss || 0, { fontSize: 12, decimal: 2, color: "#ff5252" })}</td>
+                      <td style={S.td}>{pctEl(netAvgProfit, { fontSize: 12, sign: true, decimal: 2 })}</td>
+                      <td style={S.td}>{pctEl((s.max_profit || 0) - TRADE_FEE_PCT, { fontSize: 12, sign: true, decimal: 2, color: "#4cff8b" })}</td>
+                      <td style={S.td}>{pctEl((s.max_loss || 0) - TRADE_FEE_PCT, { fontSize: 12, decimal: 2, color: "#ff5252" })}</td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody></table>
               </div>
             </div>
@@ -1366,7 +1424,8 @@ export default function SwingBacktest() {
                 {tradeSort.sorted(
                   filteredTrades.filter(t => !tradeSearch || (t.stock_name || "").includes(tradeSearch) || (t.stock_code || "").includes(tradeSearch))
                 ).map((t, i) => {
-                  const pct = t.profit_pct || 0;
+                  const grossPct = t.profit_pct || 0;
+                  const pct = grossPct - TRADE_FEE_PCT; // 세후
                   const color = pct >= 0 ? "#4cff8b" : "#ff5252";
                   return (
                     <tr key={i} style={{ background: i % 2 ? "rgba(255,255,255,0.02)" : "transparent" }}>
