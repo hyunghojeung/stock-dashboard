@@ -7,6 +7,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 // - 🔬 종목 테스트 탭 신규 (단일 종목 백테스트 + 파라미터 슬라이더)
 // - 기간 필터 (전체/1개월/3개월/6개월/1년)
 // - 테이블 헤더 클릭 정렬 (오름차순/내림차순)
+// - 📖 가이드 버튼 추가 (swing_guide.html 새 탭 열기)
 //
 // 파일 경로: src/pages/SwingBacktest.jsx
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -49,6 +50,27 @@ function getDateNMonthsAgo(n) {
   const d = new Date();
   d.setMonth(d.getMonth() - n);
   return d;
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 가이드 버튼 컴포넌트 / Guide Button Component
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+function GuideButton() {
+  return (
+    <button onClick={() => window.open('/swing_guide.html', '_blank')}
+      style={{
+        padding: "4px 12px", borderRadius: 6,
+        border: "1px solid rgba(79,195,247,0.3)",
+        background: "rgba(79,195,247,0.1)",
+        color: "#4fc3f7", fontSize: 11, fontWeight: 600,
+        cursor: "pointer", fontFamily: "'Noto Sans KR', sans-serif",
+        transition: "all 0.2s",
+      }}
+      onMouseEnter={e => { e.currentTarget.style.background = "rgba(79,195,247,0.2)"; e.currentTarget.style.borderColor = "rgba(79,195,247,0.5)"; }}
+      onMouseLeave={e => { e.currentTarget.style.background = "rgba(79,195,247,0.1)"; e.currentTarget.style.borderColor = "rgba(79,195,247,0.3)"; }}
+    >📖 가이드</button>
+  );
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -352,7 +374,6 @@ function MiniCandleChart({ candles, tradePoints }) {
   let els = [];
   els.push(<rect key="bg" width={W} height={H} fill="rgba(8,15,30,0.8)" rx={8} />);
 
-  // 가격 그리드 / Price grid
   for (let i = 0; i <= 4; i++) {
     const p = pMin + pRange * (i / 4);
     const y = toY(p);
@@ -360,7 +381,6 @@ function MiniCandleChart({ candles, tradePoints }) {
     els.push(<text key={`gt${i}`} x={4} y={y + 3} fill="#445566" fontSize={9} fontFamily="JetBrains Mono,monospace">{Math.round(p).toLocaleString()}</text>);
   }
 
-  // 캔들 + 거래량 / Candles + Volume
   candles.forEach((c, i) => {
     const x = P + i * cw;
     const isUp = c.close >= c.open;
@@ -375,7 +395,6 @@ function MiniCandleChart({ candles, tradePoints }) {
     els.push(<line key={`w${i}`} x1={mid} y1={toY(c.high)} x2={mid} y2={toY(c.low)} stroke={color} strokeWidth={1} />);
     els.push(<rect key={`b${i}`} x={x + 1} y={bodyTop} width={cw - 2} height={bodyH} fill={color} rx={1} />);
 
-    // 날짜 라벨 / Date labels
     if (i % 20 === 0 && c.date) {
       const ds = c.date.replace(/-/g, "");
       const lbl = ds.length >= 8 ? `${ds.slice(4, 6)}/${ds.slice(6, 8)}` : "";
@@ -383,7 +402,6 @@ function MiniCandleChart({ candles, tradePoints }) {
     }
   });
 
-  // ── 이동평균선 렌더 / MA Lines ──
   const maLines = [
     { data: ma5, color: "#ffcc00", label: "MA5" },
     { data: ma20, color: "#ff6699", label: "MA20" },
@@ -406,7 +424,6 @@ function MiniCandleChart({ candles, tradePoints }) {
     }
   });
 
-  // ── 매매 마커 (MA선 위에 표시) / Trade markers (on top of MA) ──
   candles.forEach((c, i) => {
     const tp = tpMap[i];
     if (!tp) return;
@@ -419,7 +436,6 @@ function MiniCandleChart({ candles, tradePoints }) {
       ? `${mid},${markerY - 9} ${mid - 6},${markerY} ${mid + 6},${markerY}`
       : `${mid},${markerY + 9} ${mid - 6},${markerY} ${mid + 6},${markerY}`;
 
-    // 배경 원 (가시성 향상)
     els.push(<circle key={`mkbg${i}`} cx={mid} cy={markerY - (isBuy ? 4 : -4)} r={10} fill="rgba(8,15,30,0.7)" />);
     els.push(<polygon key={`mk${i}`} points={pts} fill={mc} opacity={0.95} />);
     els.push(
@@ -431,7 +447,6 @@ function MiniCandleChart({ candles, tradePoints }) {
     );
   });
 
-  // ── MA 범례 / MA Legend ──
   const legendY = H - 16;
   els.push(<circle key="lg5" cx={P} cy={legendY} r={3} fill="#ffcc00" />);
   els.push(<text key="lt5" x={P + 6} y={legendY + 3} fill="#ffcc00" fontSize={8} fontFamily="JetBrains Mono,monospace">MA5</text>);
@@ -440,7 +455,6 @@ function MiniCandleChart({ candles, tradePoints }) {
   els.push(<circle key="lg60" cx={P + 98} cy={legendY} r={3} fill="#66ccff" />);
   els.push(<text key="lt60" x={P + 104} y={legendY + 3} fill="#66ccff" fontSize={8} fontFamily="JetBrains Mono,monospace">MA60</text>);
 
-  // 매매 마커 범례
   els.push(<polygon key="lgb" points={`${P + 155},${legendY + 3} ${P + 150},${legendY - 3} ${P + 160},${legendY - 3}`} fill="#4cff8b" />);
   els.push(<text key="ltb" x={P + 163} y={legendY + 3} fill="#4cff8b" fontSize={8} fontFamily="JetBrains Mono,monospace">매수</text>);
   els.push(<polygon key="lgs" points={`${P + 198},${legendY - 3} ${P + 193},${legendY + 3} ${P + 203},${legendY + 3}`} fill="#ff5252" />);
@@ -465,7 +479,6 @@ export default function SwingBacktest() {
   const [period, setPeriod] = useState("all");
   const pollRef = useRef(null);
 
-  // 단일 종목 테스트 상태 / Single stock test state
   const [testCode, setTestCode] = useState("");
   const [testResult, setTestResult] = useState(null);
   const [testLoading, setTestLoading] = useState(false);
@@ -475,19 +488,16 @@ export default function SwingBacktest() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [showDropdown, setShowDropdown] = useState(false);
-  const [searchSource, setSearchSource] = useState("candidates"); // candidates | all
+  const [searchSource, setSearchSource] = useState("candidates");
   const searchTimer = useRef(null);
   const dropdownRef = useRef(null);
 
-  // 정렬 훅 / Sort hooks
   const tradeSort = useSort("entry_date", "desc");
   const stockSort = useSort("total_return", "desc");
   const candidateSort = useSort("score", "desc");
 
-  // 매매 내역 검색 / Trade search
   const [tradeSearch, setTradeSearch] = useState("");
 
-  // ── 금액 포맷 (문자열) / Money format (string) ──
   const fmtWon = (v) => {
     const abs = Math.abs(v);
     if (abs >= 100000000) return (v / 100000000).toFixed(1) + "억";
@@ -495,10 +505,8 @@ export default function SwingBacktest() {
     return Math.round(v).toLocaleString() + "원";
   };
 
-  // ── 금액 포맷 (JSX, 소수점 이하 작게) / Money format (JSX, small decimals) ──
   const wonEl = (v, opts = {}) => {
     const { fontSize = 14, sign = false } = opts;
-    const abs = Math.abs(v);
     const signStr = sign ? (v > 0 ? "+" : (v < 0 ? "-" : "")) : (v < 0 ? "-" : "");
     const absVal = Math.abs(v);
     let intPart = "";
@@ -506,7 +514,6 @@ export default function SwingBacktest() {
     let unit = "";
 
     if (absVal >= 100000000) {
-      // 1억 이상: X.X억
       const val = absVal / 100000000;
       const str = val.toFixed(1);
       const [i, d] = str.split(".");
@@ -514,10 +521,8 @@ export default function SwingBacktest() {
       decPart = d && d !== "0" ? "." + d : "";
       unit = "억";
     } else if (absVal >= 10000) {
-      // 1만 이상: X.X만원 또는 X만원
       const val = absVal / 10000;
       if (val >= 1000) {
-        // 1000만 이상
         intPart = signStr + Math.round(val).toLocaleString();
         decPart = "";
       } else {
@@ -528,7 +533,6 @@ export default function SwingBacktest() {
       }
       unit = "만원";
     } else {
-      // 1만 미만: X,XXX원
       intPart = signStr + Math.round(absVal).toLocaleString();
       decPart = "";
       unit = "원";
@@ -550,28 +554,24 @@ export default function SwingBacktest() {
     if (!isNaN(val) && val > 0) setCapital(val);
   };
 
-  // ── 결과 + 진행상태 로드 / Load results + check progress ──
   useEffect(() => {
     (async () => {
-      // 1) 먼저 진행상태 확인 (백엔드가 돌고 있으면 폴링 재개)
       try {
         const prog = await api("/api/swing/progress");
         if (prog && prog.status === "running") {
           setProgress(prog);
-          setRunning(true);  // → polling useEffect 자동 시작
+          setRunning(true);
           setLoading(false);
           return;
         }
       } catch (e) { /* ignore */ }
 
-      // 2) 진행 중이 아니면 결과 로드
       const data = await api("/api/swing/result");
       if (data && !data.error) setResult(data);
       setLoading(false);
     })();
   }, []);
 
-  // ── 폴링 / Progress polling (running이면 2초마다) ──
   useEffect(() => {
     if (!running) return;
     pollRef.current = setInterval(async () => {
@@ -580,7 +580,6 @@ export default function SwingBacktest() {
         setProgress(prog);
         if (prog.status === "done") {
           setRunning(false);
-          // 완료되면 결과 새로 로드
           const data = await api("/api/swing/result");
           if (data && !data.error) setResult(data);
         }
@@ -598,7 +597,6 @@ export default function SwingBacktest() {
     await api("/api/swing/run", { method: "POST" });
   };
 
-  // ── 단일 종목 테스트 / Single stock test ──
   const runSingleTest = async () => {
     if (!testCode.trim()) return;
     setTestLoading(true);
@@ -615,12 +613,10 @@ export default function SwingBacktest() {
     setTestLoading(false);
   };
 
-  // ── 종목 검색 (자동완성) / Stock search (autocomplete) ──
   const handleSearchInput = (val) => {
     setSearchQuery(val);
     if (searchTimer.current) clearTimeout(searchTimer.current);
 
-    // 6자리 숫자면 바로 코드로 설정
     if (/^\d{6}$/.test(val.trim())) {
       setTestCode(val.trim());
       setShowDropdown(false);
@@ -633,7 +629,6 @@ export default function SwingBacktest() {
       return;
     }
 
-    // 300ms 디바운스 (전체시장은 네이버 API 호출이므로 약간 더 대기)
     const delay = searchSource === "all" ? 400 : 200;
     searchTimer.current = setTimeout(async () => {
       const data = await api(`/api/swing/search?q=${encodeURIComponent(val.trim())}&source=${searchSource}`);
@@ -650,18 +645,15 @@ export default function SwingBacktest() {
     setShowDropdown(false);
   };
 
-  // 검색 소스 변경 시 기존 결과 초기화
   const toggleSearchSource = (src) => {
     setSearchSource(src);
     setSearchResults([]);
     setShowDropdown(false);
     if (searchQuery.trim().length > 0) {
-      // 소스 변경 후 자동 재검색
       setTimeout(() => handleSearchInput(searchQuery), 100);
     }
   };
 
-  // ── 기간 필터된 매매 내역 / Period-filtered trades ──
   const filteredTrades = useMemo(() => {
     const trades = result?.trades_summary || [];
     if (period === "all") return trades;
@@ -673,7 +665,6 @@ export default function SwingBacktest() {
     });
   }, [result, period]);
 
-  // ── 기간 필터된 요약 / Period-filtered summary ──
   const filteredSummary = useMemo(() => {
     const trades = filteredTrades;
     if (!trades || trades.length === 0) return null;
@@ -704,7 +695,6 @@ export default function SwingBacktest() {
     };
   }, [filteredTrades]);
 
-  // ── 탭 정의 / Tab definitions ──
   const TABS = [
     { id: "overview", label: "📊 개요" },
     { id: "candidates", label: "🔍 발굴" },
@@ -714,7 +704,6 @@ export default function SwingBacktest() {
     { id: "singletest", label: "🔬 종목 테스트" },
   ];
 
-  // ── 스타일 / Styles ──
   const S = {
     page: { fontFamily: "'Noto Sans KR', -apple-system, sans-serif", color: "#e0e6f0", minHeight: "100vh", padding: 20 },
     header: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 },
@@ -777,17 +766,18 @@ export default function SwingBacktest() {
   // ━━━ 결과 없음 (종목테스트만 가능) ━━━
   if (!result) {
     return (
-     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-  <div style={S.title}>📊 스윙 자동발굴 & 백테스트</div>
-  <button onClick={() => window.open('/swing_guide.html', '_blank')}
-    style={{
-      padding: "4px 12px", borderRadius: 6,
-      border: "1px solid rgba(79,195,247,0.3)",
-      background: "rgba(79,195,247,0.1)",
-      color: "#4fc3f7", fontSize: 11, fontWeight: 600,
-      cursor: "pointer", fontFamily: "'Noto Sans KR', sans-serif",
-    }}>📖 가이드</button>
-</div>
+      <div style={S.page}>
+        <div style={S.header}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={S.title}>📊 스윙 자동발굴 & 백테스트</div>
+            <GuideButton />
+          </div>
+        </div>
+        <div style={S.tabBar}>
+          {TABS.map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)} style={S.tabBtn(tab === t.id)}>{t.label}</button>
+          ))}
+        </div>
         {tab === "singletest" ? renderSingleTestTab() : (
           <div style={{ ...S.card, textAlign: "center", padding: 80 }}>
             <div style={{ fontSize: 48, marginBottom: 20 }}>🔬</div>
@@ -810,19 +800,16 @@ export default function SwingBacktest() {
   const summaryRaw = ps?.summary || {};
   const summary = (period !== "all" && filteredSummary) ? filteredSummary : summaryRaw;
 
-  // ── 매도사유 한글 매핑 ──
   const exitReasonMap = { trailing_stop: "트레일링", stop_loss: "손절", max_hold: "만기" };
 
   // ━━━ 종목 테스트 탭 렌더러 (분리) ━━━
   function renderSingleTestTab() {
     return (
       <div style={{ display: "grid", gridTemplateColumns: "320px 1fr", gap: 16 }}>
-        {/* 좌측: 입력 패널 / Left: Input panel */}
         <div>
           <div style={S.card}>
             <div style={S.cardTitle}>🔬 단일 종목 백테스트</div>
 
-            {/* 검색 소스 토글 / Search source toggle */}
             <div style={{ display: "flex", gap: 4, marginBottom: 12, background: "rgba(8,15,30,0.5)", borderRadius: 6, padding: 3 }}>
               <button onClick={() => toggleSearchSource("candidates")} style={{
                 flex: 1, padding: "6px 0", borderRadius: 4, border: "none",
@@ -840,7 +827,6 @@ export default function SwingBacktest() {
               }}>🌐 전체 시장</button>
             </div>
 
-            {/* 종목 검색 입력 / Stock search input */}
             <div style={{ marginBottom: 16, position: "relative" }} ref={dropdownRef}>
               <div style={{ fontSize: 12, color: "#99aabb", marginBottom: 6 }}>
                 {searchSource === "all" ? "종목명 또는 코드 검색 (전체 상장종목)" : "종목명 또는 코드 검색 (발굴 + 대표종목)"}
@@ -862,7 +848,6 @@ export default function SwingBacktest() {
                       fontFamily: "'Noto Sans KR', sans-serif", outline: "none",
                     }} />
 
-                  {/* 자동완성 드롭다운 / Autocomplete dropdown */}
                   {showDropdown && searchResults.length > 0 && (
                     <div style={{
                       position: "absolute", top: "100%", left: 0, right: 0, zIndex: 100,
@@ -929,7 +914,6 @@ export default function SwingBacktest() {
           </div>
         </div>
 
-        {/* 우측: 결과 / Right: Results */}
         <div>
           {testLoading && (
             <div style={{ ...S.card, textAlign: "center", padding: 60 }}>
@@ -955,7 +939,6 @@ export default function SwingBacktest() {
             const ts = testResult.stats?.summary || {};
             return (
               <>
-                {/* 종목 정보 헤더 */}
                 <div style={{ ...S.card, padding: "14px 20px" }}>
                   <span style={{ fontSize: 18, fontWeight: 700 }}>{testResult.name || testResult.code}</span>
                   <span style={{ fontSize: 12, color: "#556677", marginLeft: 8 }}>{testResult.code}</span>
@@ -964,13 +947,11 @@ export default function SwingBacktest() {
                   </span>
                 </div>
 
-                {/* 캔들차트 */}
                 <div style={S.card}>
                   <div style={S.cardTitle}>📈 일봉 차트 + 매매 포인트</div>
                   <MiniCandleChart candles={testResult.candles} tradePoints={testResult.trade_points} />
                 </div>
 
-                {/* 성과 요약 */}
                 <div style={S.grid4}>
                   <div style={S.statBox}>
                     <div style={S.statLabel}>총 수익률</div>
@@ -993,7 +974,6 @@ export default function SwingBacktest() {
                   </div>
                 </div>
 
-                {/* 매매 포인트 목록 */}
                 {testResult.trade_points && testResult.trade_points.length > 0 && (
                   <div style={{ ...S.card, marginTop: 16 }}>
                     <div style={S.cardTitle}>📋 매매 포인트 ({testResult.trade_points.filter(p => p.type === "buy").length}건)</div>
@@ -1044,20 +1024,14 @@ export default function SwingBacktest() {
     <div style={S.page}>
       {/* 헤더 / Header */}
       <div style={S.header}>
-<div>
-  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-    <div style={S.title}>📊 스윙 자동발굴 & 백테스트</div>
-    <button onClick={() => window.open('/swing_guide.html', '_blank')}
-      style={{
-        padding: "4px 12px", borderRadius: 6,
-        border: "1px solid rgba(79,195,247,0.3)",
-        background: "rgba(79,195,247,0.1)",
-        color: "#4fc3f7", fontSize: 11, fontWeight: 600,
-        cursor: "pointer", fontFamily: "'Noto Sans KR', sans-serif",
-      }}>📖 가이드</button>
-  </div>
-  <div style={{ fontSize: 11, color: "#556677", marginTop: 4 }}>
-    분석일: {result?.timestamp?.slice(0, 10) || "-"} ...
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={S.title}>📊 스윙 자동발굴 & 백테스트</div>
+            <GuideButton />
+          </div>
+          <div style={{ fontSize: 11, color: "#556677", marginTop: 4 }}>
+            분석일: {result?.timestamp?.slice(0, 10) || "-"} · {result?.stocks_analyzed || 0}개 종목
+            {result?.data_source === "naver" && " · 네이버 금융"}
           </div>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
@@ -1078,7 +1052,6 @@ export default function SwingBacktest() {
       {/* ━━━━━━━━━━ 개요 탭 / Overview ━━━━━━━━━━ */}
       {tab === "overview" && (
         <>
-          {/* 투자금 / Capital */}
           <div style={{ ...S.card, display: "flex", alignItems: "center", gap: 14, padding: "12px 20px", flexWrap: "wrap" }}>
             <span style={{ fontSize: 13, color: "#8899aa", fontWeight: 600, whiteSpace: "nowrap" }}>💰 투자금</span>
             <div style={{ display: "flex", alignItems: "center", gap: 2, background: "rgba(8,15,30,0.6)", borderRadius: 8, border: "1px solid rgba(79,195,247,0.2)", padding: "4px 10px" }}>
@@ -1101,7 +1074,6 @@ export default function SwingBacktest() {
             </div>
           </div>
 
-          {/* 기간 필터 안내 / Period filter notice */}
           {period !== "all" && filteredSummary && (
             <div style={{ background: "rgba(79,195,247,0.08)", border: "1px solid rgba(79,195,247,0.2)", borderRadius: 8, padding: "8px 16px", marginBottom: 16, fontSize: 12, color: "#81d4fa" }}>
               📅 기간 필터: <strong>{({ "1m": "최근 1개월", "3m": "최근 3개월", "6m": "최근 6개월", "1y": "최근 1년" })[period]}</strong>
@@ -1109,7 +1081,6 @@ export default function SwingBacktest() {
             </div>
           )}
 
-          {/* 핵심 수익률 / Total Return */}
           <div style={{ ...S.card, padding: "20px 24px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 16 }}>
               <div>
@@ -1131,7 +1102,6 @@ export default function SwingBacktest() {
             </div>
           </div>
 
-          {/* 승률 / MDD / 샤프 / 손익비 */}
           <div style={S.grid4}>
             <div style={S.statBox}><div style={S.statLabel}>승률</div><div style={{ ...S.statValue, color: "#ffd54f" }}>{(summary.win_rate || 0).toFixed(1)}%</div><div style={{ fontSize: 11, color: "#556677", marginTop: 2 }}>{summary.win_count || 0}승 {summary.loss_count || 0}패</div></div>
             <div style={S.statBox}><div style={S.statLabel}>MDD</div><div style={{ ...S.statValue, color: "#ff5252" }}>{(summary.mdd || 0).toFixed(1)}%</div><div style={{ fontSize: 11, color: "#556677", marginTop: 2 }}>{pctToWon(summary.mdd || 0, { fontSize: 11 })}</div></div>
@@ -1155,13 +1125,11 @@ export default function SwingBacktest() {
             </div>
           </div>
 
-          {/* 평균 수익/손실 */}
           <div style={{ ...S.grid2, marginTop: 0 }}>
             <div style={S.statBox}><div style={S.statLabel}>평균 수익</div><div style={{ ...S.mono, color: "#4cff8b", fontSize: 16, fontWeight: 700 }}>+{(summary.avg_win || 0).toFixed(2)}% ({pctToWon(summary.avg_win || 0, { fontSize: 14, sign: true })})</div></div>
             <div style={S.statBox}><div style={S.statLabel}>평균 손실</div><div style={{ ...S.mono, color: "#ff5252", fontSize: 16, fontWeight: 700 }}>{(summary.avg_loss || 0).toFixed(2)}% ({pctToWon(summary.avg_loss || 0, { fontSize: 14 })})</div></div>
           </div>
 
-          {/* 종목별 성과 (정렬 가능) / Per-stock performance (sortable) */}
           {(ps?.stock_stats || []).length > 0 && (
             <div style={{ ...S.card, marginTop: 16 }}>
               <div style={S.cardTitle}>📋 종목별 매매 성과 ({(ps.stock_stats).length}개)</div>
@@ -1201,7 +1169,7 @@ export default function SwingBacktest() {
         </>
       )}
 
-      {/* ━━━━━━━━━━ 발굴 종목 탭 / Candidates (sortable + test link) ━━━━━━━━━━ */}
+      {/* ━━━━━━━━━━ 발굴 종목 탭 ━━━━━━━━━━ */}
       {tab === "candidates" && (
         <div style={S.card}>
           <div style={S.cardTitle}>🔍 자동 발굴 후보 ({candidates.length}개)</div>
@@ -1251,10 +1219,9 @@ export default function SwingBacktest() {
         </div>
       )}
 
-      {/* ━━━━━━━━━━ 매매 내역 탭 / Trade History (NEW) ━━━━━━━━━━ */}
+      {/* ━━━━━━━━━━ 매매 내역 탭 ━━━━━━━━━━ */}
       {tab === "trades" && (
         <>
-          {/* 검색 + 필터 바 */}
           <div style={{ ...S.card, display: "flex", alignItems: "center", gap: 14, padding: "12px 20px", flexWrap: "wrap" }}>
             <span style={{ fontSize: 13, fontWeight: 600, color: "#8899aa" }}>📋 매매 내역</span>
             <input type="text" placeholder="종목명/코드 검색..." value={tradeSearch}
@@ -1266,7 +1233,6 @@ export default function SwingBacktest() {
             </span>
           </div>
 
-          {/* 기간 요약 */}
           {filteredSummary && (
             <div style={{ ...S.grid4, marginBottom: 16 }}>
               <div style={S.statBox}><div style={S.statLabel}>수익률</div><div style={{ ...S.mono, fontSize: 16, fontWeight: 700, color: filteredSummary.total_return >= 0 ? "#4cff8b" : "#ff5252" }}>{filteredSummary.total_return > 0 ? "+" : ""}{filteredSummary.total_return.toFixed(1)}%</div></div>
@@ -1276,7 +1242,6 @@ export default function SwingBacktest() {
             </div>
           )}
 
-          {/* 매매 테이블 */}
           <div style={S.card}>
             <div style={{ overflowX: "auto" }}>
               <table style={S.table}><thead><tr>
@@ -1327,7 +1292,7 @@ export default function SwingBacktest() {
         </>
       )}
 
-      {/* ━━━━━━━━━━ 패턴 통계 탭 / Patterns ━━━━━━━━━━ */}
+      {/* ━━━━━━━━━━ 패턴 통계 탭 ━━━━━━━━━━ */}
       {tab === "patterns" && (
         <>
           <div style={S.grid2}>
@@ -1349,7 +1314,7 @@ export default function SwingBacktest() {
         </>
       )}
 
-      {/* ━━━━━━━━━━ 자동 교정 탭 / Calibration ━━━━━━━━━━ */}
+      {/* ━━━━━━━━━━ 자동 교정 탭 ━━━━━━━━━━ */}
       {tab === "calibration" && (
         <>
           <div style={S.card}>
@@ -1407,7 +1372,7 @@ export default function SwingBacktest() {
         </>
       )}
 
-      {/* ━━━━━━━━━━ 종목 테스트 탭 / Single Stock Test (NEW) ━━━━━━━━━━ */}
+      {/* ━━━━━━━━━━ 종목 테스트 탭 ━━━━━━━━━━ */}
       {tab === "singletest" && renderSingleTestTab()}
     </div>
   );
