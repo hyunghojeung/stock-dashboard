@@ -3,6 +3,12 @@ import { useState, useEffect, useCallback, useRef } from "react";
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 스윙 백테스트 페이지 / Swing Backtest Page
 // 기존 페이지 수정 없이 신규 추가되는 독립 컴포넌트
+//
+// [변경사항]
+// - 매매 기간: 프론트 계산 → 백엔드 trading_period_days 사용
+// - 연환산 수익률 표시 추가
+// - 일평균 수익: 백엔드 daily_return 기반 정확한 계산
+// - 손익비 표시 추가
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 const API_BASE = "https://web-production-139e9.up.railway.app";
@@ -107,7 +113,6 @@ function GenerationChart({ generations }) {
   return (
     <svg width={W} height={H} style={{ display: "block" }}>
       <rect width={W} height={H} fill="rgba(8,15,30,0.6)" rx={8} />
-      {/* 0 line */}
       {minVal < 0 && (
         <line x1={P} y1={P + ((maxVal) / range) * (H - P * 2)}
           x2={W - 10} y2={P + ((maxVal) / range) * (H - P * 2)}
@@ -211,7 +216,6 @@ function EquityCurve({ data }) {
   return (
     <svg width={W} height={H} style={{ display: "block" }}>
       <rect width={W} height={H} fill="rgba(8,15,30,0.6)" rx={8} />
-      {/* 0 line */}
       {min < 0 && max > 0 && (
         <line x1={P} y1={P + (max / range) * (H - P * 2)}
           x2={W - 10} y2={P + (max / range) * (H - P * 2)}
@@ -233,16 +237,15 @@ function EquityCurve({ data }) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 export default function SwingBacktest() {
-  const [tab, setTab] = useState("overview"); // overview, candidates, patterns, calibration
+  const [tab, setTab] = useState("overview");
   const [progress, setProgress] = useState(null);
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
-  const [capital, setCapital] = useState(10000000); // 투자금 (기본 1000만원)
+  const [capital, setCapital] = useState(10000000);
   const [capitalInput, setCapitalInput] = useState("10,000,000");
   const pollRef = useRef(null);
 
-  // 원화 포맷 헬퍼
   const fmtWon = (v) => {
     const abs = Math.abs(Math.round(v));
     if (abs >= 100000000) return (v / 100000000).toFixed(1) + "억";
@@ -297,7 +300,6 @@ export default function SwingBacktest() {
     { id: "calibration", label: "🧬 자동 교정", labelEn: "Calibration" },
   ];
 
-  // 스타일 정의
   const styles = {
     page: {
       fontFamily: "'Noto Sans KR', -apple-system, sans-serif",
@@ -351,6 +353,9 @@ export default function SwingBacktest() {
     },
     grid3: {
       display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16,
+    },
+    grid4: {
+      display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 16,
     },
     statBox: {
       background: "rgba(8,15,30,0.5)", borderRadius: 8, padding: 14,
@@ -421,7 +426,7 @@ export default function SwingBacktest() {
             최적의 매매 파라미터까지 자동으로 찾아냅니다.
           </div>
           <button onClick={startAnalysis} style={styles.runBtn}>
-            🚀 분석 시작 (약 10~20분 소요)
+            🚀 분석 시작 (약 5~15분 소요)
           </button>
         </div>
       </div>
@@ -453,6 +458,7 @@ export default function SwingBacktest() {
           <div style={styles.title}>📊 스윙 자동발굴 & 백테스트</div>
           <div style={{ fontSize: 11, color: "#556677", marginTop: 4 }}>
             분석일: {result?.timestamp?.slice(0, 10) || "-"} · {result?.stocks_analyzed || 0}개 종목 분석
+            {result?.data_source === "naver" && " · 네이버 금융 데이터"}
           </div>
         </div>
         <button onClick={startAnalysis} style={styles.runBtn} disabled={running}>
@@ -524,11 +530,11 @@ export default function SwingBacktest() {
             </div>
           </div>
 
-          {/* 핵심 요약 — 총 수익 (% + 원화) */}
+          {/* ★ 핵심 요약 — 총 수익 (복리 기반) */}
           <div style={{ ...styles.card, marginBottom: 16, padding: "20px 24px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 16 }}>
               <div>
-                <div style={{ fontSize: 12, color: "#556677", marginBottom: 4 }}>총 수익률 / Total Return</div>
+                <div style={{ fontSize: 12, color: "#556677", marginBottom: 4 }}>총 수익률 / Total Return (복리)</div>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
                   <span style={{
                     fontSize: 32, fontWeight: 700,
@@ -547,13 +553,12 @@ export default function SwingBacktest() {
                   </span>
                 </div>
               </div>
+              {/* ★ 수정: 백엔드에서 정확한 값 사용 */}
               <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
                 <div>
                   <div style={{ fontSize: 11, color: "#556677" }}>매매 기간</div>
                   <div style={{ ...styles.mono, fontSize: 16, fontWeight: 700, color: "#e0e6f0" }}>
-                    {(summary.avg_holding_days || 0) > 0
-                      ? Math.round((summary.total_trades || 0) * (summary.avg_holding_days || 0) / 5) || "—"
-                      : "—"}일
+                    {summary.trading_period_days || "—"}일
                   </div>
                 </div>
                 <div>
@@ -563,24 +568,29 @@ export default function SwingBacktest() {
                   </div>
                 </div>
                 <div>
+                  <div style={{ fontSize: 11, color: "#556677" }}>연환산 수익률</div>
+                  <div style={{
+                    ...styles.mono, fontSize: 16, fontWeight: 700,
+                    color: (summary.annualized_return || 0) >= 0 ? "#4cff8b" : "#ff5252",
+                  }}>
+                    {(summary.annualized_return || 0) > 0 ? "+" : ""}{(summary.annualized_return || 0).toFixed(1)}%
+                  </div>
+                </div>
+                <div>
                   <div style={{ fontSize: 11, color: "#556677" }}>일평균 수익</div>
                   <div style={{
                     ...styles.mono, fontSize: 16, fontWeight: 700,
-                    color: (summary.total_return || 0) >= 0 ? "#4cff8b" : "#ff5252",
+                    color: (summary.daily_return || 0) >= 0 ? "#4cff8b" : "#ff5252",
                   }}>
-                    {(() => {
-                      const days = Math.round((summary.total_trades || 0) * (summary.avg_holding_days || 0) / 5) || 1;
-                      const daily = capital * (summary.total_return || 0) / 100 / days;
-                      return (daily >= 0 ? "+" : "") + fmtWon(daily);
-                    })()}
+                    {((summary.daily_return || 0) >= 0 ? "+" : "")}{fmtWon(capital * (summary.daily_return || 0) / 100)}
                   </div>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* 승률 + MDD */}
-          <div style={styles.grid3}>
+          {/* ★ 승률 + MDD + 샤프 + 손익비 (4열) */}
+          <div style={styles.grid4}>
             <div style={styles.statBox}>
               <div style={styles.statLabel}>승률 / Win Rate</div>
               <div style={{ ...styles.statValue, color: "#ffd54f" }}>
@@ -611,12 +621,25 @@ export default function SwingBacktest() {
                 1.0 이상 = 양호
               </div>
             </div>
+            {/* ★ 추가: 손익비 */}
+            <div style={styles.statBox}>
+              <div style={styles.statLabel}>손익비 / P/L Ratio</div>
+              <div style={{
+                ...styles.statValue,
+                color: (summary.profit_loss_ratio || 0) >= 2 ? "#4cff8b" : (summary.profit_loss_ratio || 0) >= 1.5 ? "#ffd54f" : "#ff5252"
+              }}>
+                {(summary.profit_loss_ratio || 0).toFixed(2)}
+              </div>
+              <div style={{ fontSize: 11, color: "#556677", marginTop: 2 }}>
+                2.0 이상 = 양호
+              </div>
+            </div>
           </div>
 
           <div style={{ ...styles.grid2, marginTop: 16 }}>
             {/* 에퀴티 커브 */}
             <div style={styles.card}>
-              <div style={styles.cardTitle}>📈 누적 수익 곡선 / Equity Curve</div>
+              <div style={styles.cardTitle}>📈 누적 수익 곡선 / Equity Curve (복리)</div>
               <EquityCurve data={ps?.equity_curve || [0]} />
             </div>
 
@@ -645,7 +668,7 @@ export default function SwingBacktest() {
             </div>
           </div>
 
-          {/* 매매 상세 — % + 원화 동시 표시 */}
+          {/* 매매 상세 */}
           <div style={{ ...styles.grid2, marginTop: 0 }}>
             <div style={styles.statBox}>
               <div style={styles.statLabel}>평균 수익 / Avg Win</div>
@@ -684,7 +707,7 @@ export default function SwingBacktest() {
             </div>
           </div>
 
-          {/* 종목별 매매 성과 / Per-Stock Performance */}
+          {/* ★ 종목별 매매 성과 (종목명 표시 개선) */}
           {(ps?.stock_stats || []).length > 0 && (
             <div style={{ ...styles.card, marginTop: 16 }}>
               <div style={styles.cardTitle}>
@@ -715,7 +738,8 @@ export default function SwingBacktest() {
                         <td style={{
                           ...styles.td, fontFamily: "'Noto Sans KR',sans-serif", fontWeight: 600
                         }}>
-                          <div>{s.name || s.code}</div>
+                          {/* ★ 수정: 종목명 우선, 코드 아래 표시 */}
+                          <div>{(s.name && s.name !== s.code) ? s.name : s.code}</div>
                           <div style={{ fontSize: 10, color: "#556677" }}>{s.code}</div>
                         </td>
                         <td style={{
@@ -958,7 +982,6 @@ export default function SwingBacktest() {
             </div>
             <GenerationChart generations={cal.generations} />
 
-            {/* 세대별 상세 테이블 */}
             {(cal.generations || []).length > 0 && (
               <div style={{ marginTop: 16, overflowX: "auto" }}>
                 <table style={styles.table}>
