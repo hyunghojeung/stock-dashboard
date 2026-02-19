@@ -485,10 +485,12 @@ export default function SwingBacktest() {
   const [testParams, setTestParams] = useState({
     trailing_pct: 5.0, stop_loss_pct: -7.0, pullback_min: 3.0, pullback_max: 8.0,
   });
+  const [testPeriod, setTestPeriod] = useState(250); // 테스트 기간 (일수)
+  const [showCandidateList, setShowCandidateList] = useState(false); // 발굴 종목 팝업
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [showDropdown, setShowDropdown] = useState(false);
-  const [searchSource, setSearchSource] = useState("candidates");
+  const [searchSource, setSearchSource] = useState("all");
   const searchTimer = useRef(null);
   const dropdownRef = useRef(null);
 
@@ -626,6 +628,7 @@ export default function SwingBacktest() {
       stop_loss_pct: testParams.stop_loss_pct,
       pullback_min: testParams.pullback_min,
       pullback_max: testParams.pullback_max,
+      days: testPeriod,
     });
     const data = await api(`/api/swing/test/${testCode.trim()}?${params}`);
     setTestResult(data);
@@ -662,15 +665,6 @@ export default function SwingBacktest() {
     setTestCode(stock.code);
     setSearchQuery(`${stock.name} (${stock.code})`);
     setShowDropdown(false);
-  };
-
-  const toggleSearchSource = (src) => {
-    setSearchSource(src);
-    setSearchResults([]);
-    setShowDropdown(false);
-    if (searchQuery.trim().length > 0) {
-      setTimeout(() => handleSearchInput(searchQuery), 100);
-    }
   };
 
   const filteredTrades = useMemo(() => {
@@ -826,32 +820,98 @@ export default function SwingBacktest() {
 
   // ━━━ 종목 테스트 탭 렌더러 (분리) ━━━
   function renderSingleTestTab() {
+    const candidates = result?.candidates || [];
     return (
       <div style={{ display: "grid", gridTemplateColumns: "320px 1fr", gap: 16 }}>
         <div>
           <div style={S.card}>
             <div style={S.cardTitle}>🔬 단일 종목 백테스트</div>
 
-            <div style={{ display: "flex", gap: 4, marginBottom: 12, background: "rgba(8,15,30,0.5)", borderRadius: 6, padding: 3 }}>
-              <button onClick={() => toggleSearchSource("candidates")} style={{
-                flex: 1, padding: "6px 0", borderRadius: 4, border: "none",
-                background: searchSource === "candidates" ? "rgba(76,255,139,0.15)" : "transparent",
-                color: searchSource === "candidates" ? "#4cff8b" : "#556677",
-                fontSize: 11, fontWeight: searchSource === "candidates" ? 600 : 400,
-                cursor: "pointer", fontFamily: "'Noto Sans KR', sans-serif",
-              }}>🔍 발굴 종목</button>
-              <button onClick={() => toggleSearchSource("all")} style={{
-                flex: 1, padding: "6px 0", borderRadius: 4, border: "none",
-                background: searchSource === "all" ? "rgba(79,195,247,0.15)" : "transparent",
-                color: searchSource === "all" ? "#4fc3f7" : "#556677",
-                fontSize: 11, fontWeight: searchSource === "all" ? 600 : 400,
-                cursor: "pointer", fontFamily: "'Noto Sans KR', sans-serif",
-              }}>🌐 전체 시장</button>
+            {/* 발굴 종목 팝업 + 검색 / Candidate popup + Search */}
+            <div style={{ position: "relative", marginBottom: 12 }}>
+              <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
+                <button onClick={() => setShowCandidateList(v => !v)} style={{
+                  flex: 1, padding: "7px 0", borderRadius: 6, border: showCandidateList ? "1px solid rgba(76,255,139,0.4)" : "1px solid rgba(76,255,139,0.2)",
+                  background: showCandidateList ? "rgba(76,255,139,0.15)" : "rgba(76,255,139,0.06)",
+                  color: "#4cff8b", fontSize: 12, fontWeight: 600,
+                  cursor: "pointer", fontFamily: "'Noto Sans KR', sans-serif",
+                  transition: "all 0.2s",
+                }}>🔍 발굴 종목 {candidates.length > 0 ? `(${candidates.length})` : ""} {showCandidateList ? "▲" : "▼"}</button>
+                <button onClick={() => { setShowCandidateList(false); }} style={{
+                  flex: 1, padding: "7px 0", borderRadius: 6,
+                  border: "1px solid rgba(79,195,247,0.2)",
+                  background: "rgba(79,195,247,0.06)",
+                  color: "#4fc3f7", fontSize: 12, fontWeight: 600,
+                  cursor: "pointer", fontFamily: "'Noto Sans KR', sans-serif",
+                }}>🌐 전체 시장 검색</button>
+              </div>
+
+              {/* 발굴 종목 팝업 리스트 / Candidate popup list */}
+              {showCandidateList && candidates.length > 0 && (
+                <>
+                <div onClick={() => setShowCandidateList(false)} style={{
+                  position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 199,
+                }} />
+                <div style={{
+                  position: "absolute", top: 42, left: 0, right: 0, zIndex: 200,
+                  background: "rgba(12,18,38,0.98)", border: "1px solid rgba(76,255,139,0.3)",
+                  borderRadius: 10, maxHeight: 300, overflowY: "auto",
+                  boxShadow: "0 12px 36px rgba(0,0,0,0.5)",
+                  backdropFilter: "blur(8px)",
+                }}>
+                  <div style={{ padding: "8px 12px", borderBottom: "1px solid rgba(76,255,139,0.15)", fontSize: 11, color: "#4cff8b", fontWeight: 600, position: "sticky", top: 0, background: "rgba(12,18,38,0.98)" }}>
+                    📋 발굴된 {candidates.length}개 종목 — 클릭하면 바로 테스트
+                  </div>
+                  {candidates.map((c, i) => (
+                    <div key={c.code} onClick={() => {
+                      setTestCode(c.code);
+                      setSearchQuery(`${c.name} (${c.code})`);
+                      setShowCandidateList(false);
+                      // 자동 실행
+                      setTimeout(() => {
+                        setTestLoading(true);
+                        setTestResult(null);
+                        const p = new URLSearchParams({
+                          trailing_pct: testParams.trailing_pct, stop_loss_pct: testParams.stop_loss_pct,
+                          pullback_min: testParams.pullback_min, pullback_max: testParams.pullback_max, days: testPeriod,
+                        });
+                        api(`/api/swing/test/${c.code}?${p}`).then(data => { setTestResult(data); setTestLoading(false); });
+                      }, 50);
+                    }}
+                    style={{
+                      display: "flex", justifyContent: "space-between", alignItems: "center",
+                      padding: "8px 12px", cursor: "pointer",
+                      background: i % 2 ? "rgba(255,255,255,0.02)" : "transparent",
+                      borderBottom: "1px solid rgba(100,140,200,0.06)",
+                      transition: "background 0.15s",
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = "rgba(76,255,139,0.08)"}
+                    onMouseLeave={e => e.currentTarget.style.background = i % 2 ? "rgba(255,255,255,0.02)" : "transparent"}>
+                      <div>
+                        <span style={{ fontWeight: 600, fontSize: 13, color: "#e0e6f0" }}>{c.name}</span>
+                        <span style={{ fontSize: 10, color: "#556677", marginLeft: 6, fontFamily: "'JetBrains Mono', monospace" }}>{c.code}</span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{
+                          fontSize: 11, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace",
+                          color: c.score >= 70 ? "#4cff8b" : c.score >= 50 ? "#ffd54f" : "#ff5252",
+                        }}>{c.score}점</span>
+                        <span style={{
+                          padding: "1px 6px", borderRadius: 8, fontSize: 9, fontWeight: 600,
+                          background: c.signal_strength === "강" ? "rgba(76,255,139,0.15)" : c.signal_strength === "중" ? "rgba(255,213,79,0.15)" : "rgba(255,82,82,0.15)",
+                          color: c.signal_strength === "강" ? "#4cff8b" : c.signal_strength === "중" ? "#ffd54f" : "#ff5252",
+                        }}>{c.signal_strength}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                </>
+              )}
             </div>
 
             <div style={{ marginBottom: 16, position: "relative" }} ref={dropdownRef}>
               <div style={{ fontSize: 12, color: "#99aabb", marginBottom: 6 }}>
-                {searchSource === "all" ? "종목명 또는 코드 검색 (전체 상장종목)" : "종목명 또는 코드 검색 (발굴 + 대표종목)"}
+                종목명 또는 코드 검색
               </div>
               <div style={{ display: "flex", gap: 6 }}>
                 <div style={{ flex: 1, position: "relative" }}>
@@ -906,6 +966,29 @@ export default function SwingBacktest() {
                   선택된 코드: {testCode}
                 </div>
               )}
+            </div>
+
+            {/* 테스트 기간 선택 / Test Period */}
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 12, color: "#8899aa", fontWeight: 600, marginBottom: 8 }}>📅 테스트 기간</div>
+              <div style={{ display: "flex", gap: 3, background: "rgba(8,15,30,0.5)", borderRadius: 6, padding: 3 }}>
+                {[
+                  { days: 60, label: "3개월" },
+                  { days: 120, label: "6개월" },
+                  { days: 250, label: "1년" },
+                  { days: 500, label: "2년" },
+                  { days: 750, label: "3년" },
+                ].map(o => (
+                  <button key={o.days} onClick={() => setTestPeriod(o.days)} style={{
+                    flex: 1, padding: "5px 0", borderRadius: 4, border: "none",
+                    background: testPeriod === o.days ? "rgba(79,195,247,0.2)" : "transparent",
+                    color: testPeriod === o.days ? "#4fc3f7" : "#556677",
+                    fontSize: 11, fontWeight: testPeriod === o.days ? 600 : 400,
+                    cursor: "pointer", fontFamily: "'JetBrains Mono', monospace",
+                    transition: "all 0.2s",
+                  }}>{o.label}</button>
+                ))}
+              </div>
             </div>
 
             <div style={{ borderTop: "1px solid rgba(100,140,200,0.1)", paddingTop: 16 }}>
