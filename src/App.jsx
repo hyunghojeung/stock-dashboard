@@ -850,7 +850,7 @@ const MENU=[
 ];
 
 export default function App() {
-  const [auth,setAuth]=useState(false);
+  const [auth,setAuth]=useState(true);
   const [pw,setPw]=useState("");
   const [page,setPage]=useState("dashboard");
   const [sideOpen,setSideOpen]=useState(true);
