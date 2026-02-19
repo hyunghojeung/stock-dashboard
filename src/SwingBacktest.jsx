@@ -1238,11 +1238,22 @@ export default function SwingBacktest() {
                   <span style={{ fontSize: 10, color: "#4fc3f7", marginLeft: 8, padding: "2px 6px", background: "rgba(79,195,247,0.1)", borderRadius: 4 }}>
                     네이버 {testResult.total_candles}일
                   </span>
+                  <span style={{ fontSize: 10, color: "#ffd54f", marginLeft: 6, padding: "2px 6px", background: "rgba(255,213,79,0.1)", borderRadius: 4 }}>
+                    📅 테스트: {({ 5:"1주", 10:"2주", 15:"3주", 20:"4주", 22:"1달", 44:"2달", 60:"3달", 120:"6개월", 250:"1년", 500:"2년", 750:"3년" })[testPeriod] || testPeriod + "일"}
+                  </span>
                 </div>
 
                 <div style={S.card}>
                   <div style={S.cardTitle}>📈 일봉 차트 + 매매 포인트</div>
-                  <MiniCandleChart candles={testResult.candles} tradePoints={testResult.trade_points} />
+                  {(() => {
+                    // 테스트 기간에 맞게 일봉 슬라이스 / Slice candles to match test period
+                    const allCandles = testResult.candles || [];
+                    const sliced = allCandles.length > testPeriod ? allCandles.slice(-testPeriod) : allCandles;
+                    // 표시 범위 내 매매 포인트만 필터 / Filter trade points within visible range
+                    const firstIdx = allCandles.length - sliced.length;
+                    const pts = (testResult.trade_points || []).filter(p => p.idx >= firstIdx).map(p => ({ ...p, idx: p.idx - firstIdx }));
+                    return <MiniCandleChart candles={sliced} tradePoints={pts} />;
+                  })()}
                 </div>
 
                 <div style={S.grid4}>
@@ -1269,20 +1280,24 @@ export default function SwingBacktest() {
                   </div>
                 </div>
 
-                {testResult.trade_points && testResult.trade_points.length > 0 && (
+                {testResult.trade_points && testResult.trade_points.length > 0 && (() => {
+                  // 기간 내 매매만 필터 / Filter trades within test period
+                  const allCandles = testResult.candles || [];
+                  const firstIdx = allCandles.length > testPeriod ? allCandles.length - testPeriod : 0;
+                  const visibleBuys = testResult.trade_points.filter(p => p.type === "buy" && p.idx >= firstIdx);
+                  const visibleSells = testResult.trade_points.filter(p => p.type === "sell" && p.idx >= firstIdx);
+                  if (visibleBuys.length === 0) return null;
+                  return (
                   <div style={{ ...S.card, marginTop: 16 }}>
-                    <div style={S.cardTitle}>📋 매매 포인트 ({testResult.trade_points.filter(p => p.type === "buy").length}건)</div>
+                    <div style={S.cardTitle}>📋 매매 포인트 ({visibleBuys.length}건)</div>
                     <div style={{ overflowX: "auto" }}>
                       <table style={S.table}><thead><tr>
                         <th style={S.th}>매수일</th><th style={S.th}>매수가</th>
                         <th style={S.th}>매도일</th><th style={S.th}>매도가</th>
                         <th style={S.th}>수익률</th><th style={S.th}>매도사유</th>
                       </tr></thead><tbody>
-                        {(() => {
-                          const buys = testResult.trade_points.filter(p => p.type === "buy");
-                          const sells = testResult.trade_points.filter(p => p.type === "sell");
-                          return buys.map((b, i) => {
-                            const sl = sells[i];
+                        {visibleBuys.map((b, i) => {
+                            const sl = visibleSells[i];
                             const pct = (sl?.profit_pct || 0) - TRADE_FEE_PCT; // 세후
                             return (
                               <tr key={i} style={{ background: i % 2 ? "rgba(255,255,255,0.02)" : "transparent" }}>
@@ -1296,12 +1311,12 @@ export default function SwingBacktest() {
                                 <td style={S.td}>{sl ? (exitReasonMap[sl.reason] || sl.reason || "—") : "—"}</td>
                               </tr>
                             );
-                          });
-                        })()}
+                        })}
                       </tbody></table>
                     </div>
                   </div>
-                )}
+                  );
+                })()}
               </>
             );
           })()}
