@@ -485,10 +485,12 @@ export default function SwingBacktest() {
   const [testParams, setTestParams] = useState({
     trailing_pct: 5.0, stop_loss_pct: -7.0, pullback_min: 3.0, pullback_max: 8.0,
   });
+  const [testPeriod, setTestPeriod] = useState(250); // 테스트 기간 (일수)
+  const [showCandidateList, setShowCandidateList] = useState(false); // 발굴 종목 팝업
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [showDropdown, setShowDropdown] = useState(false);
-  const [searchSource, setSearchSource] = useState("candidates");
+  const [searchSource, setSearchSource] = useState("all");
   const searchTimer = useRef(null);
   const dropdownRef = useRef(null);
 
@@ -543,6 +545,25 @@ export default function SwingBacktest() {
         <span style={{ fontSize }}>{intPart}</span>
         {decPart && <span style={{ fontSize: Math.round(fontSize * 0.7), opacity: 0.7 }}>{decPart}</span>}
         <span style={{ fontSize: Math.round(fontSize * 0.75) }}>{unit}</span>
+      </span>
+    );
+  };
+
+  // ── 숫자 포맷 (소수점 이하 작게) / Number format (small decimals) ──
+  // unit: "%" (기본), "" (없음), "일" 등
+  const pctEl = (v, opts = {}) => {
+    const { fontSize = 20, sign = false, color, decimal = 1, unit = "%" } = opts;
+    const val = typeof v === "number" ? v : parseFloat(v) || 0;
+    const str = val.toFixed(decimal);
+    const [intPart, decPart] = str.split(".");
+    const signStr = sign ? (val > 0 ? "+" : "") : "";
+    const c = color || (val >= 0 ? "#4cff8b" : "#ff5252");
+    const smallSize = Math.round(fontSize * 0.6);
+    return (
+      <span style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: c }}>
+        <span style={{ fontSize }}>{signStr}{intPart}</span>
+        {decPart && <span style={{ fontSize: smallSize, opacity: 0.7 }}>.{decPart}</span>}
+        {unit && <span style={{ fontSize: smallSize, opacity: 0.7 }}>{unit}</span>}
       </span>
     );
   };
@@ -607,6 +628,7 @@ export default function SwingBacktest() {
       stop_loss_pct: testParams.stop_loss_pct,
       pullback_min: testParams.pullback_min,
       pullback_max: testParams.pullback_max,
+      days: testPeriod,
     });
     const data = await api(`/api/swing/test/${testCode.trim()}?${params}`);
     setTestResult(data);
@@ -645,15 +667,6 @@ export default function SwingBacktest() {
     setShowDropdown(false);
   };
 
-  const toggleSearchSource = (src) => {
-    setSearchSource(src);
-    setSearchResults([]);
-    setShowDropdown(false);
-    if (searchQuery.trim().length > 0) {
-      setTimeout(() => handleSearchInput(searchQuery), 100);
-    }
-  };
-
   const filteredTrades = useMemo(() => {
     const trades = result?.trades_summary || [];
     if (period === "all") return trades;
@@ -674,11 +687,14 @@ export default function SwingBacktest() {
     const winPcts = wins.map(t => t.profit_pct || 0);
     const lossPcts = lossTrades.map(t => t.profit_pct || 0);
 
-    let cap = 100, peak = 100, mdd = 0;
+    // 단순 분산 합산 방식 (5종목 동시 분산 기준)
+    // Simple additive return with position sizing
+    const maxPos = result?.final_stats?.summary?.max_positions || result?.pattern_stats?.summary?.max_positions || 5;
+    let cumReturn = 0, peakReturn = 0, mdd = 0;
     for (const t of trades) {
-      cap *= (1 + (t.profit_pct || 0) / 100);
-      if (cap > peak) peak = cap;
-      const dd = (cap - peak) / peak * 100;
+      cumReturn += (t.profit_pct || 0) / maxPos;
+      if (cumReturn > peakReturn) peakReturn = cumReturn;
+      const dd = cumReturn - peakReturn;
       if (dd < mdd) mdd = dd;
     }
 
@@ -690,10 +706,10 @@ export default function SwingBacktest() {
       avg_profit: total > 0 ? trades.reduce((a, t) => a + (t.profit_pct || 0), 0) / total : 0,
       avg_win: winPcts.length > 0 ? winPcts.reduce((a, b) => a + b, 0) / winPcts.length : 0,
       avg_loss: lossPcts.length > 0 ? lossPcts.reduce((a, b) => a + b, 0) / lossPcts.length : 0,
-      total_return: Math.round((cap - 100) * 100) / 100,
+      total_return: Math.round(cumReturn * 100) / 100,
       mdd: Math.round(mdd * 100) / 100,
     };
-  }, [filteredTrades]);
+  }, [filteredTrades, result]);
 
   const TABS = [
     { id: "overview", label: "📊 개요" },
@@ -798,38 +814,108 @@ export default function SwingBacktest() {
   const ps = result?.final_stats || result?.pattern_stats || {};
   const cal = result?.calibration || {};
   const summaryRaw = ps?.summary || {};
-  const summary = (period !== "all" && filteredSummary) ? filteredSummary : summaryRaw;
+  // summary: 항상 프론트에서 재계산한 total_return/mdd 사용, 나머지는 summaryRaw
+  // Always use frontend-calculated total_return/mdd, rest from backend
+  const summary = filteredSummary
+    ? { ...summaryRaw, ...filteredSummary }
+    : summaryRaw;
 
   const exitReasonMap = { trailing_stop: "트레일링", stop_loss: "손절", max_hold: "만기" };
 
   // ━━━ 종목 테스트 탭 렌더러 (분리) ━━━
   function renderSingleTestTab() {
+    const candidates = result?.candidates || [];
     return (
       <div style={{ display: "grid", gridTemplateColumns: "320px 1fr", gap: 16 }}>
         <div>
           <div style={S.card}>
             <div style={S.cardTitle}>🔬 단일 종목 백테스트</div>
 
-            <div style={{ display: "flex", gap: 4, marginBottom: 12, background: "rgba(8,15,30,0.5)", borderRadius: 6, padding: 3 }}>
-              <button onClick={() => toggleSearchSource("candidates")} style={{
-                flex: 1, padding: "6px 0", borderRadius: 4, border: "none",
-                background: searchSource === "candidates" ? "rgba(76,255,139,0.15)" : "transparent",
-                color: searchSource === "candidates" ? "#4cff8b" : "#556677",
-                fontSize: 11, fontWeight: searchSource === "candidates" ? 600 : 400,
-                cursor: "pointer", fontFamily: "'Noto Sans KR', sans-serif",
-              }}>🔍 발굴 종목</button>
-              <button onClick={() => toggleSearchSource("all")} style={{
-                flex: 1, padding: "6px 0", borderRadius: 4, border: "none",
-                background: searchSource === "all" ? "rgba(79,195,247,0.15)" : "transparent",
-                color: searchSource === "all" ? "#4fc3f7" : "#556677",
-                fontSize: 11, fontWeight: searchSource === "all" ? 600 : 400,
-                cursor: "pointer", fontFamily: "'Noto Sans KR', sans-serif",
-              }}>🌐 전체 시장</button>
+            {/* 발굴 종목 팝업 + 검색 / Candidate popup + Search */}
+            <div style={{ position: "relative", marginBottom: 12 }}>
+              <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
+                <button onClick={() => setShowCandidateList(v => !v)} style={{
+                  flex: 1, padding: "7px 0", borderRadius: 6, border: showCandidateList ? "1px solid rgba(76,255,139,0.4)" : "1px solid rgba(76,255,139,0.2)",
+                  background: showCandidateList ? "rgba(76,255,139,0.15)" : "rgba(76,255,139,0.06)",
+                  color: "#4cff8b", fontSize: 12, fontWeight: 600,
+                  cursor: "pointer", fontFamily: "'Noto Sans KR', sans-serif",
+                  transition: "all 0.2s",
+                }}>🔍 발굴 종목 {candidates.length > 0 ? `(${candidates.length})` : ""} {showCandidateList ? "▲" : "▼"}</button>
+                <button onClick={() => { setShowCandidateList(false); }} style={{
+                  flex: 1, padding: "7px 0", borderRadius: 6,
+                  border: "1px solid rgba(79,195,247,0.2)",
+                  background: "rgba(79,195,247,0.06)",
+                  color: "#4fc3f7", fontSize: 12, fontWeight: 600,
+                  cursor: "pointer", fontFamily: "'Noto Sans KR', sans-serif",
+                }}>🌐 전체 시장 검색</button>
+              </div>
+
+              {/* 발굴 종목 팝업 리스트 / Candidate popup list */}
+              {showCandidateList && candidates.length > 0 && (
+                <>
+                <div onClick={() => setShowCandidateList(false)} style={{
+                  position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 199,
+                }} />
+                <div style={{
+                  position: "absolute", top: 42, left: 0, right: 0, zIndex: 200,
+                  background: "rgba(12,18,38,0.98)", border: "1px solid rgba(76,255,139,0.3)",
+                  borderRadius: 10, maxHeight: 300, overflowY: "auto",
+                  boxShadow: "0 12px 36px rgba(0,0,0,0.5)",
+                  backdropFilter: "blur(8px)",
+                }}>
+                  <div style={{ padding: "8px 12px", borderBottom: "1px solid rgba(76,255,139,0.15)", fontSize: 11, color: "#4cff8b", fontWeight: 600, position: "sticky", top: 0, background: "rgba(12,18,38,0.98)" }}>
+                    📋 발굴된 {candidates.length}개 종목 — 클릭하면 바로 테스트
+                  </div>
+                  {candidates.map((c, i) => (
+                    <div key={c.code} onClick={() => {
+                      setTestCode(c.code);
+                      setSearchQuery(`${c.name} (${c.code})`);
+                      setShowCandidateList(false);
+                      // 자동 실행
+                      setTimeout(() => {
+                        setTestLoading(true);
+                        setTestResult(null);
+                        const p = new URLSearchParams({
+                          trailing_pct: testParams.trailing_pct, stop_loss_pct: testParams.stop_loss_pct,
+                          pullback_min: testParams.pullback_min, pullback_max: testParams.pullback_max, days: testPeriod,
+                        });
+                        api(`/api/swing/test/${c.code}?${p}`).then(data => { setTestResult(data); setTestLoading(false); });
+                      }, 50);
+                    }}
+                    style={{
+                      display: "flex", justifyContent: "space-between", alignItems: "center",
+                      padding: "8px 12px", cursor: "pointer",
+                      background: i % 2 ? "rgba(255,255,255,0.02)" : "transparent",
+                      borderBottom: "1px solid rgba(100,140,200,0.06)",
+                      transition: "background 0.15s",
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = "rgba(76,255,139,0.08)"}
+                    onMouseLeave={e => e.currentTarget.style.background = i % 2 ? "rgba(255,255,255,0.02)" : "transparent"}>
+                      <div>
+                        <span style={{ fontWeight: 600, fontSize: 13, color: "#e0e6f0" }}>{c.name}</span>
+                        <span style={{ fontSize: 10, color: "#556677", marginLeft: 6, fontFamily: "'JetBrains Mono', monospace" }}>{c.code}</span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{
+                          fontSize: 11, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace",
+                          color: c.score >= 70 ? "#4cff8b" : c.score >= 50 ? "#ffd54f" : "#ff5252",
+                        }}>{c.score}점</span>
+                        <span style={{
+                          padding: "1px 6px", borderRadius: 8, fontSize: 9, fontWeight: 600,
+                          background: c.signal_strength === "강" ? "rgba(76,255,139,0.15)" : c.signal_strength === "중" ? "rgba(255,213,79,0.15)" : "rgba(255,82,82,0.15)",
+                          color: c.signal_strength === "강" ? "#4cff8b" : c.signal_strength === "중" ? "#ffd54f" : "#ff5252",
+                        }}>{c.signal_strength}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                </>
+              )}
             </div>
 
             <div style={{ marginBottom: 16, position: "relative" }} ref={dropdownRef}>
               <div style={{ fontSize: 12, color: "#99aabb", marginBottom: 6 }}>
-                {searchSource === "all" ? "종목명 또는 코드 검색 (전체 상장종목)" : "종목명 또는 코드 검색 (발굴 + 대표종목)"}
+                종목명 또는 코드 검색
               </div>
               <div style={{ display: "flex", gap: 6 }}>
                 <div style={{ flex: 1, position: "relative" }}>
@@ -884,6 +970,29 @@ export default function SwingBacktest() {
                   선택된 코드: {testCode}
                 </div>
               )}
+            </div>
+
+            {/* 테스트 기간 선택 / Test Period */}
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 12, color: "#8899aa", fontWeight: 600, marginBottom: 8 }}>📅 테스트 기간</div>
+              <div style={{ display: "flex", gap: 3, background: "rgba(8,15,30,0.5)", borderRadius: 6, padding: 3 }}>
+                {[
+                  { days: 60, label: "3개월" },
+                  { days: 120, label: "6개월" },
+                  { days: 250, label: "1년" },
+                  { days: 500, label: "2년" },
+                  { days: 750, label: "3년" },
+                ].map(o => (
+                  <button key={o.days} onClick={() => setTestPeriod(o.days)} style={{
+                    flex: 1, padding: "5px 0", borderRadius: 4, border: "none",
+                    background: testPeriod === o.days ? "rgba(79,195,247,0.2)" : "transparent",
+                    color: testPeriod === o.days ? "#4fc3f7" : "#556677",
+                    fontSize: 11, fontWeight: testPeriod === o.days ? 600 : 400,
+                    cursor: "pointer", fontFamily: "'JetBrains Mono', monospace",
+                    transition: "all 0.2s",
+                  }}>{o.label}</button>
+                ))}
+              </div>
             </div>
 
             <div style={{ borderTop: "1px solid rgba(100,140,200,0.1)", paddingTop: 16 }}>
@@ -955,22 +1064,23 @@ export default function SwingBacktest() {
                 <div style={S.grid4}>
                   <div style={S.statBox}>
                     <div style={S.statLabel}>총 수익률</div>
-                    <div style={{ ...S.statValue, fontSize: 18, color: (ts.total_return || 0) >= 0 ? "#4cff8b" : "#ff5252" }}>
-                      {(ts.total_return || 0) > 0 ? "+" : ""}{(ts.total_return || 0).toFixed(1)}%
-                    </div>
+                    <div>{pctEl(ts.total_return || 0, { fontSize: 18, sign: true })}</div>
                   </div>
                   <div style={S.statBox}>
                     <div style={S.statLabel}>승률</div>
-                    <div style={{ ...S.statValue, fontSize: 18, color: "#ffd54f" }}>{(ts.win_rate || 0).toFixed(1)}%</div>
+                    <div>{pctEl(ts.win_rate || 0, { fontSize: 18, color: "#ffd54f" })}</div>
                     <div style={{ fontSize: 10, color: "#556677" }}>{ts.win_count || 0}승 {ts.loss_count || 0}패 / {ts.total_trades || 0}건</div>
                   </div>
                   <div style={S.statBox}>
                     <div style={S.statLabel}>MDD</div>
-                    <div style={{ ...S.statValue, fontSize: 18, color: "#ff5252" }}>{(ts.mdd || 0).toFixed(1)}%</div>
+                    <div>{pctEl(ts.mdd || 0, { fontSize: 18, color: "#ff5252" })}</div>
                   </div>
                   <div style={S.statBox}>
                     <div style={S.statLabel}>평균 보유일</div>
-                    <div style={{ ...S.statValue, fontSize: 18, color: "#4fc3f7" }}>{(ts.avg_holding_days || 0).toFixed(1)}일</div>
+                    <div style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: "#4fc3f7" }}>
+                      <span style={{ fontSize: 18 }}>{Math.floor(ts.avg_holding_days || 0)}</span>
+                      <span style={{ fontSize: 11, opacity: 0.7 }}>.{((ts.avg_holding_days || 0).toFixed(1)).split(".")[1]}일</span>
+                    </div>
                   </div>
                 </div>
 
@@ -995,8 +1105,8 @@ export default function SwingBacktest() {
                                 <td style={S.td}>{(b.price || 0).toLocaleString()}</td>
                                 <td style={S.td}>{sl ? fmtDate(sl.date) : "—"}</td>
                                 <td style={S.td}>{sl ? (sl.price || 0).toLocaleString() : "—"}</td>
-                                <td style={{ ...S.td, fontWeight: 700, color: pct >= 0 ? "#4cff8b" : "#ff5252" }}>
-                                  {pct > 0 ? "+" : ""}{pct.toFixed(2)}%
+                                <td style={S.td}>
+                                  {pctEl(pct, { fontSize: 12, sign: true, decimal: 2 })}
                                 </td>
                                 <td style={S.td}>{sl ? (exitReasonMap[sl.reason] || sl.reason || "—") : "—"}</td>
                               </tr>
@@ -1086,9 +1196,7 @@ export default function SwingBacktest() {
               <div>
                 <div style={{ fontSize: 12, color: "#556677", marginBottom: 4 }}>총 수익률 (동시 {summaryRaw.max_positions || 5}종목 분산)</div>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
-                  <span style={{ fontSize: 32, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: (summary.total_return || 0) >= 0 ? "#4cff8b" : "#ff5252" }}>
-                    {(summary.total_return || 0) > 0 ? "+" : ""}{(summary.total_return || 0).toFixed(1)}%
-                  </span>
+                  {pctEl(summary.total_return || 0, { fontSize: 32, sign: true })}
                   <span style={{ fontWeight: 700, color: (summary.total_return || 0) >= 0 ? "#4cff8b" : "#ff5252", opacity: 0.85 }}>
                     ({pctToWon(summary.total_return || 0, { fontSize: 22, sign: true })})
                   </span>
@@ -1097,16 +1205,16 @@ export default function SwingBacktest() {
               <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
                 {summaryRaw.trading_period_days > 0 && <div><div style={{ fontSize: 11, color: "#556677" }}>매매 기간</div><div style={{ ...S.mono, fontSize: 16, fontWeight: 700 }}>{summaryRaw.trading_period_days}일</div></div>}
                 <div><div style={{ fontSize: 11, color: "#556677" }}>매매 수</div><div style={{ ...S.mono, fontSize: 16, fontWeight: 700 }}>{summary.total_trades || 0}건{summary.skipped_trades > 0 && <span style={{ fontSize: 11, color: "#556677", marginLeft: 4 }}>(+{summary.skipped_trades} 패스)</span>}</div></div>
-                {summaryRaw.annualized_return != null && <div><div style={{ fontSize: 11, color: "#556677" }}>연환산</div><div style={{ ...S.mono, fontSize: 16, fontWeight: 700, color: (summaryRaw.annualized_return || 0) >= 0 ? "#4cff8b" : "#ff5252" }}>{(summaryRaw.annualized_return || 0) > 0 ? "+" : ""}{(summaryRaw.annualized_return || 0).toFixed(1)}%</div></div>}
+                {summaryRaw.trading_period_days > 0 && <div><div style={{ fontSize: 11, color: "#556677" }}>연환산</div><div>{pctEl((summary.total_return || 0) / (summaryRaw.trading_period_days / 365), { fontSize: 16, sign: true })}</div></div>}
               </div>
             </div>
           </div>
 
           <div style={S.grid4}>
-            <div style={S.statBox}><div style={S.statLabel}>승률</div><div style={{ ...S.statValue, color: "#ffd54f" }}>{(summary.win_rate || 0).toFixed(1)}%</div><div style={{ fontSize: 11, color: "#556677", marginTop: 2 }}>{summary.win_count || 0}승 {summary.loss_count || 0}패</div></div>
-            <div style={S.statBox}><div style={S.statLabel}>MDD</div><div style={{ ...S.statValue, color: "#ff5252" }}>{(summary.mdd || 0).toFixed(1)}%</div><div style={{ fontSize: 11, color: "#556677", marginTop: 2 }}>{pctToWon(summary.mdd || 0, { fontSize: 11 })}</div></div>
-            <div style={S.statBox}><div style={S.statLabel}>샤프 비율</div><div style={{ ...S.statValue, color: (summaryRaw.sharpe_ratio || 0) >= 1 ? "#4cff8b" : "#ffd54f" }}>{(summaryRaw.sharpe_ratio || 0).toFixed(2)}</div><div style={{ fontSize: 11, color: "#556677", marginTop: 2 }}>1.0↑ 양호</div></div>
-            <div style={S.statBox}><div style={S.statLabel}>손익비</div><div style={{ ...S.statValue, color: (summaryRaw.profit_loss_ratio || 0) >= 2 ? "#4cff8b" : "#ffd54f" }}>{(summaryRaw.profit_loss_ratio || 0).toFixed(2)}</div><div style={{ fontSize: 11, color: "#556677", marginTop: 2 }}>2.0↑ 양호</div></div>
+            <div style={S.statBox}><div style={S.statLabel}>승률</div><div>{pctEl(summary.win_rate || 0, { fontSize: 20, color: "#ffd54f" })}</div><div style={{ fontSize: 11, color: "#556677", marginTop: 2 }}>{summary.win_count || 0}승 {summary.loss_count || 0}패</div></div>
+            <div style={S.statBox}><div style={S.statLabel}>MDD</div><div>{pctEl(summary.mdd || 0, { fontSize: 20, color: "#ff5252" })}</div><div style={{ fontSize: 11, color: "#556677", marginTop: 2 }}>{pctToWon(summary.mdd || 0, { fontSize: 11 })}</div></div>
+            <div style={S.statBox}><div style={S.statLabel}>샤프 비율</div><div>{pctEl(summaryRaw.sharpe_ratio || 0, { fontSize: 20, decimal: 2, unit: "", color: (summaryRaw.sharpe_ratio || 0) >= 1 ? "#4cff8b" : "#ffd54f" })}</div><div style={{ fontSize: 11, color: "#556677", marginTop: 2 }}>1.0↑ 양호</div></div>
+            <div style={S.statBox}><div style={S.statLabel}>손익비</div><div>{pctEl(summaryRaw.profit_loss_ratio || 0, { fontSize: 20, decimal: 2, unit: "", color: (summaryRaw.profit_loss_ratio || 0) >= 2 ? "#4cff8b" : "#ffd54f" })}</div><div style={{ fontSize: 11, color: "#556677", marginTop: 2 }}>2.0↑ 양호</div></div>
           </div>
 
           <div style={{ ...S.grid2, marginTop: 16 }}>
@@ -1126,8 +1234,8 @@ export default function SwingBacktest() {
           </div>
 
           <div style={{ ...S.grid2, marginTop: 0 }}>
-            <div style={S.statBox}><div style={S.statLabel}>평균 수익</div><div style={{ ...S.mono, color: "#4cff8b", fontSize: 16, fontWeight: 700 }}>+{(summary.avg_win || 0).toFixed(2)}% ({pctToWon(summary.avg_win || 0, { fontSize: 14, sign: true })})</div></div>
-            <div style={S.statBox}><div style={S.statLabel}>평균 손실</div><div style={{ ...S.mono, color: "#ff5252", fontSize: 16, fontWeight: 700 }}>{(summary.avg_loss || 0).toFixed(2)}% ({pctToWon(summary.avg_loss || 0, { fontSize: 14 })})</div></div>
+            <div style={S.statBox}><div style={S.statLabel}>평균 수익</div><div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>{pctEl(summary.avg_win || 0, { fontSize: 16, sign: true, decimal: 2, color: "#4cff8b" })} <span style={{ fontSize: 11, color: "#4cff8b", opacity: 0.7 }}>({pctToWon(summary.avg_win || 0, { fontSize: 11, sign: true })})</span></div></div>
+            <div style={S.statBox}><div style={S.statLabel}>평균 손실</div><div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>{pctEl(summary.avg_loss || 0, { fontSize: 16, decimal: 2, color: "#ff5252" })} <span style={{ fontSize: 11, color: "#ff5252", opacity: 0.7 }}>({pctToWon(summary.avg_loss || 0, { fontSize: 11 })})</span></div></div>
           </div>
 
           {(ps?.stock_stats || []).length > 0 && (
@@ -1151,15 +1259,15 @@ export default function SwingBacktest() {
                         <div>{(s.name && s.name !== s.code) ? s.name : s.code}</div>
                         <div style={{ fontSize: 10, color: "#556677" }}>{s.code}</div>
                       </td>
-                      <td style={{ ...S.td, fontWeight: 700, color: (s.total_return || 0) >= 0 ? "#4cff8b" : "#ff5252" }}>
-                        {(s.total_return || 0) > 0 ? "+" : ""}{(s.total_return || 0).toFixed(2)}%
+                      <td style={S.td}>
+                        {pctEl(s.total_return || 0, { fontSize: 12, sign: true, decimal: 2 })}
                         <div style={{ fontSize: 10, color: "#556677" }}>{pctToWon(s.total_return || 0, { fontSize: 10 })}</div>
                       </td>
                       <td style={S.td}><WinRateBadge rate={s.win_rate || 0} /></td>
                       <td style={S.td}>{s.total_trades}<span style={{ fontSize: 10, color: "#556677" }}> ({s.win_count}승{s.loss_count}패)</span></td>
-                      <td style={{ ...S.td, color: (s.avg_profit || 0) >= 0 ? "#4cff8b" : "#ff5252" }}>{(s.avg_profit || 0) > 0 ? "+" : ""}{(s.avg_profit || 0).toFixed(2)}%</td>
-                      <td style={{ ...S.td, color: "#4cff8b" }}>+{(s.max_profit || 0).toFixed(2)}%</td>
-                      <td style={{ ...S.td, color: "#ff5252" }}>{(s.max_loss || 0).toFixed(2)}%</td>
+                      <td style={S.td}>{pctEl(s.avg_profit || 0, { fontSize: 12, sign: true, decimal: 2 })}</td>
+                      <td style={S.td}>{pctEl(s.max_profit || 0, { fontSize: 12, sign: true, decimal: 2, color: "#4cff8b" })}</td>
+                      <td style={S.td}>{pctEl(s.max_loss || 0, { fontSize: 12, decimal: 2, color: "#ff5252" })}</td>
                     </tr>
                   ))}
                 </tbody></table>
@@ -1235,10 +1343,10 @@ export default function SwingBacktest() {
 
           {filteredSummary && (
             <div style={{ ...S.grid4, marginBottom: 16 }}>
-              <div style={S.statBox}><div style={S.statLabel}>수익률</div><div style={{ ...S.mono, fontSize: 16, fontWeight: 700, color: filteredSummary.total_return >= 0 ? "#4cff8b" : "#ff5252" }}>{filteredSummary.total_return > 0 ? "+" : ""}{filteredSummary.total_return.toFixed(1)}%</div></div>
-              <div style={S.statBox}><div style={S.statLabel}>승률</div><div style={{ ...S.mono, fontSize: 16, fontWeight: 700, color: "#ffd54f" }}>{filteredSummary.win_rate.toFixed(1)}%</div></div>
+              <div style={S.statBox}><div style={S.statLabel}>수익률</div><div>{pctEl(filteredSummary.total_return, { fontSize: 16, sign: true })}</div></div>
+              <div style={S.statBox}><div style={S.statLabel}>승률</div><div>{pctEl(filteredSummary.win_rate, { fontSize: 16, color: "#ffd54f" })}</div></div>
               <div style={S.statBox}><div style={S.statLabel}>매매수</div><div style={{ ...S.mono, fontSize: 16, fontWeight: 700 }}>{filteredSummary.total_trades}건</div></div>
-              <div style={S.statBox}><div style={S.statLabel}>MDD</div><div style={{ ...S.mono, fontSize: 16, fontWeight: 700, color: "#ff5252" }}>{filteredSummary.mdd.toFixed(1)}%</div></div>
+              <div style={S.statBox}><div style={S.statLabel}>MDD</div><div>{pctEl(filteredSummary.mdd, { fontSize: 16, color: "#ff5252" })}</div></div>
             </div>
           )}
 
@@ -1269,7 +1377,7 @@ export default function SwingBacktest() {
                       </td>
                       <td style={S.td}>{(t.entry_price || 0).toLocaleString()}</td>
                       <td style={S.td}>{(t.exit_price || 0).toLocaleString()}</td>
-                      <td style={{ ...S.td, fontWeight: 700, color }}>{pct > 0 ? "+" : ""}{pct.toFixed(2)}%</td>
+                      <td style={S.td}>{pctEl(pct, { fontSize: 12, sign: true, decimal: 2, color })}</td>
                       <td style={{ ...S.td, color, fontSize: 11 }}>{pctToWon(pct, { fontSize: 11, sign: true })}</td>
                       <td style={S.td}>{t.holding_days || 0}일</td>
                       <td style={S.td}>
@@ -1325,8 +1433,10 @@ export default function SwingBacktest() {
                 return (
                   <div key={key} style={S.statBox}>
                     <div style={S.statLabel}>{labels[key] || key}</div>
-                    <div style={{ ...S.mono, fontSize: 22, fontWeight: 700, color: "#4fc3f7" }}>
-                      {typeof val === "number" ? val.toFixed(1) : val}{key.includes("pct") || key.includes("loss") ? "%" : ""}{key.includes("days") ? "일" : ""}
+                    <div>
+                      {pctEl(typeof val === "number" ? val : parseFloat(val) || 0, {
+                        fontSize: 22, unit: key.includes("pct") || key.includes("loss") ? "%" : key.includes("days") ? "일" : "", color: "#4fc3f7"
+                      })}
                     </div>
                   </div>
                 );
@@ -1337,9 +1447,9 @@ export default function SwingBacktest() {
             <div style={S.card}>
               <div style={S.cardTitle}>📊 최적 파라미터 성과</div>
               <div style={S.grid3}>
-                <div style={S.statBox}><div style={S.statLabel}>총 수익률</div><div style={{ ...S.statValue, color: (cal.best_metrics.total_return || 0) >= 0 ? "#4cff8b" : "#ff5252" }}>{(cal.best_metrics.total_return || 0) > 0 ? "+" : ""}{(cal.best_metrics.total_return || 0).toFixed(1)}%</div></div>
-                <div style={S.statBox}><div style={S.statLabel}>승률</div><div style={{ ...S.statValue, color: "#ffd54f" }}>{(cal.best_metrics.win_rate || 0).toFixed(1)}%</div></div>
-                <div style={S.statBox}><div style={S.statLabel}>MDD</div><div style={{ ...S.statValue, color: "#ff5252" }}>{(cal.best_metrics.mdd || 0).toFixed(1)}%</div></div>
+                <div style={S.statBox}><div style={S.statLabel}>총 수익률</div><div>{pctEl(cal.best_metrics.total_return || 0, { fontSize: 20, sign: true })}</div></div>
+                <div style={S.statBox}><div style={S.statLabel}>승률</div><div>{pctEl(cal.best_metrics.win_rate || 0, { fontSize: 20, color: "#ffd54f" })}</div></div>
+                <div style={S.statBox}><div style={S.statLabel}>MDD</div><div>{pctEl(cal.best_metrics.mdd || 0, { fontSize: 20, color: "#ff5252" })}</div></div>
               </div>
             </div>
           )}
@@ -1357,11 +1467,11 @@ export default function SwingBacktest() {
                     return (
                       <tr key={i}>
                         <td style={S.td}>{g.generation}세대</td>
-                        <td style={{ ...S.td, color: (m.total_return || 0) >= 0 ? "#4cff8b" : "#ff5252" }}>{(m.total_return || 0) > 0 ? "+" : ""}{(m.total_return || 0).toFixed(1)}%</td>
+                        <td style={S.td}>{pctEl(m.total_return || 0, { fontSize: 12, sign: true })}</td>
                         <td style={S.td}><WinRateBadge rate={m.win_rate || 0} /></td>
-                        <td style={{ ...S.td, color: "#ff5252" }}>{(m.mdd || 0).toFixed(1)}%</td>
+                        <td style={S.td}>{pctEl(m.mdd || 0, { fontSize: 12, color: "#ff5252" })}</td>
                         <td style={S.td}>{m.total_trades || 0}회</td>
-                        <td style={{ ...S.td, color: "#4fc3f7" }}>{(g.best_score || 0).toFixed(1)}</td>
+                        <td style={S.td}>{pctEl(g.best_score || 0, { fontSize: 12, color: "#4fc3f7", unit: "" })}</td>
                       </tr>
                     );
                   })}
