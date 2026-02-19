@@ -487,6 +487,8 @@ export default function SwingBacktest() {
   });
   const [testPeriod, setTestPeriod] = useState(250); // 테스트 기간 (일수)
   const [showCandidateList, setShowCandidateList] = useState(false); // 발굴 종목 팝업
+  const [optimizing, setOptimizing] = useState(false);
+  const [optProgress, setOptProgress] = useState({ current: 0, total: 0, bestReturn: null });
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [showDropdown, setShowDropdown] = useState(false);
@@ -618,6 +620,10 @@ export default function SwingBacktest() {
     await api("/api/swing/run", { method: "POST" });
   };
 
+  // ── 거래비용 (1회 매매당) / Trading cost per round trip ──
+  // 증권사 수수료 ~0.03% (매수+매도) + 증권거래세 0.18% (매도) + 기타 = ~0.25%
+  const TRADE_FEE_PCT = 0.25;
+
   const runSingleTest = async () => {
     if (!testCode.trim()) return;
     setTestLoading(true);
@@ -633,6 +639,65 @@ export default function SwingBacktest() {
     const data = await api(`/api/swing/test/${testCode.trim()}?${params}`);
     setTestResult(data);
     setTestLoading(false);
+  };
+
+  // ── 개별 종목 파라미터 최적화 / Single stock parameter optimization ──
+  const optimizeSingle = async () => {
+    if (!testCode.trim()) return;
+    setOptimizing(true);
+    setTestResult(null);
+
+    // 파라미터 그리드 / Parameter grid
+    const pullbacks = [[1,3],[1,5],[2,5],[2,8],[3,8],[3,10],[5,10],[5,12]];
+    const trailings = [2, 3, 4, 5, 7, 10];
+    const stopLosses = [-4, -6, -8, -10, -13];
+
+    const grid = [];
+    for (const [pmin, pmax] of pullbacks) {
+      for (const trail of trailings) {
+        for (const sl of stopLosses) {
+          grid.push({ pullback_min: pmin, pullback_max: pmax, trailing_pct: trail, stop_loss_pct: sl });
+        }
+      }
+    }
+
+    setOptProgress({ current: 0, total: grid.length, bestReturn: null });
+
+    let bestResult = null;
+    let bestReturn = -Infinity;
+    let bestParams = null;
+
+    // 순차 실행 (3개씩 병렬) / Sequential with 3 concurrent
+    const BATCH = 3;
+    for (let i = 0; i < grid.length; i += BATCH) {
+      const batch = grid.slice(i, i + BATCH);
+      const results = await Promise.all(batch.map(p => {
+        const qs = new URLSearchParams({ ...p, days: testPeriod });
+        return api(`/api/swing/test/${testCode.trim()}?${qs}`).then(data => ({ data, params: p }));
+      }));
+
+      for (const { data, params: p } of results) {
+        if (!data || data.error) continue;
+        const ret = data?.stats?.summary?.total_return || -999;
+        // 세후 수익률 기준 / Net return basis
+        const trades = data?.stats?.summary?.total_trades || 0;
+        const netRet = ret - (TRADE_FEE_PCT * trades);
+        if (netRet > bestReturn) {
+          bestReturn = netRet;
+          bestResult = data;
+          bestParams = p;
+        }
+      }
+
+      setOptProgress({ current: Math.min(i + BATCH, grid.length), total: grid.length, bestReturn: bestReturn > -Infinity ? bestReturn : null });
+    }
+
+    if (bestParams) {
+      setTestParams(bestParams);
+      setTestResult(bestResult);
+    }
+
+    setOptimizing(false);
   };
 
   const handleSearchInput = (val) => {
@@ -677,10 +742,6 @@ export default function SwingBacktest() {
       return d && d >= cutoff;
     });
   }, [result, period]);
-
-  // ── 거래비용 (1회 매매당) / Trading cost per round trip ──
-  // 증권사 수수료 ~0.03% (매수+매도) + 증권거래세 0.18% (매도) + 기타 = ~0.25%
-  const TRADE_FEE_PCT = 0.25;
 
   const filteredSummary = useMemo(() => {
     const trades = filteredTrades;
@@ -1053,17 +1114,82 @@ export default function SwingBacktest() {
                 fontFamily: "'Noto Sans KR', sans-serif",
               }}>🧬 자동교정 최적값 적용</button>
             )}
+
+            {/* 개별 종목 최적화 버튼 / Single stock optimize button */}
+            <button onClick={optimizeSingle} disabled={optimizing || !testCode.trim()} style={{
+              width: "100%", padding: "10px", borderRadius: 8,
+              border: "none",
+              background: optimizing ? "rgba(255,213,79,0.1)" : "linear-gradient(135deg, #ffd54f, #ffb300)",
+              color: optimizing ? "#ffd54f" : "#0a1628",
+              fontSize: 12, fontWeight: 700, cursor: optimizing ? "wait" : "pointer", marginTop: 8,
+              fontFamily: "'Noto Sans KR', sans-serif",
+              transition: "all 0.3s",
+              opacity: !testCode.trim() ? 0.4 : 1,
+            }}>
+              {optimizing
+                ? `⏳ 최적화 중... ${optProgress.current}/${optProgress.total}${optProgress.bestReturn != null ? ` (현재 최고: ${optProgress.bestReturn > 0 ? "+" : ""}${optProgress.bestReturn.toFixed(1)}%)` : ""}`
+                : "🎯 이 종목 최적 파라미터 자동 탐색"
+              }
+            </button>
+            {optimizing && (
+              <div style={{ marginTop: 6 }}>
+                <div style={{
+                  height: 4, borderRadius: 2, background: "rgba(255,213,79,0.1)", overflow: "hidden",
+                }}>
+                  <div style={{
+                    height: "100%", borderRadius: 2,
+                    background: "linear-gradient(90deg, #ffd54f, #ffb300)",
+                    width: `${optProgress.total > 0 ? (optProgress.current / optProgress.total * 100) : 0}%`,
+                    transition: "width 0.3s",
+                  }} />
+                </div>
+                <div style={{ fontSize: 10, color: "#556677", marginTop: 4, textAlign: "center" }}>
+                  240개 파라미터 조합 탐색 · 3개씩 병렬 실행
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
         <div>
-          {testLoading && (
+          {testLoading && !optimizing && (
             <div style={{ ...S.card, textAlign: "center", padding: 60 }}>
               <div style={{ color: "#8899aa", fontSize: 14 }}>⏳ 네이버 금융에서 데이터를 가져오고 있습니다...</div>
             </div>
           )}
 
-          {!testLoading && !testResult && (
+          {optimizing && (
+            <div style={{ ...S.card, textAlign: "center", padding: 60 }}>
+              <div style={{ fontSize: 40, marginBottom: 16 }}>🎯</div>
+              <div style={{ color: "#ffd54f", fontSize: 16, fontWeight: 700, marginBottom: 8 }}>
+                최적 파라미터 탐색 중...
+              </div>
+              <div style={{ color: "#8899aa", fontSize: 13, marginBottom: 16 }}>
+                {optProgress.current} / {optProgress.total} 조합 테스트 완료
+              </div>
+              <div style={{ width: 300, margin: "0 auto", height: 6, borderRadius: 3, background: "rgba(255,213,79,0.1)", overflow: "hidden" }}>
+                <div style={{
+                  height: "100%", borderRadius: 3,
+                  background: "linear-gradient(90deg, #ffd54f, #ffb300)",
+                  width: `${optProgress.total > 0 ? (optProgress.current / optProgress.total * 100) : 0}%`,
+                  transition: "width 0.3s",
+                }} />
+              </div>
+              {optProgress.bestReturn != null && (
+                <div style={{ marginTop: 16 }}>
+                  <div style={{ fontSize: 11, color: "#556677" }}>현재까지 최고 세후 수익률</div>
+                  <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 24, fontWeight: 700, color: optProgress.bestReturn >= 0 ? "#4cff8b" : "#ff5252", marginTop: 4 }}>
+                    {optProgress.bestReturn > 0 ? "+" : ""}{optProgress.bestReturn.toFixed(1)}%
+                  </div>
+                </div>
+              )}
+              <div style={{ color: "#445566", fontSize: 11, marginTop: 12 }}>
+                눌림 범위 8종 × 트레일링 6종 × 손절 5종 = 240조합
+              </div>
+            </div>
+          )}
+
+          {!testLoading && !optimizing && !testResult && (
             <div style={{ ...S.card, textAlign: "center", padding: 60 }}>
               <div style={{ fontSize: 40, marginBottom: 16 }}>🔬</div>
               <div style={{ color: "#8899aa", fontSize: 14 }}>좌측에서 종목코드를 입력하고 실행하세요.</div>
@@ -1071,13 +1197,13 @@ export default function SwingBacktest() {
             </div>
           )}
 
-          {!testLoading && testResult?.error && (
+          {!testLoading && !optimizing && testResult?.error && (
             <div style={{ ...S.card, textAlign: "center", padding: 40 }}>
               <div style={{ color: "#ff5252", fontSize: 14 }}>❌ {testResult.error}</div>
             </div>
           )}
 
-          {!testLoading && testResult && !testResult.error && (() => {
+          {!testLoading && !optimizing && testResult && !testResult.error && (() => {
             const ts = testResult.stats?.summary || {};
             // 세후 재계산 / Recalculate after fees
             const tradeCount = ts.total_trades || 0;
