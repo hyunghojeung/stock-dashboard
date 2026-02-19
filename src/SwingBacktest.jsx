@@ -489,9 +489,9 @@ export default function SwingBacktest() {
 
   // ── 금액 포맷 (문자열) / Money format (string) ──
   const fmtWon = (v) => {
-    const abs = Math.abs(Math.round(v));
+    const abs = Math.abs(v);
     if (abs >= 100000000) return (v / 100000000).toFixed(1) + "억";
-    if (abs >= 10000) return Math.round(v).toLocaleString() + "원";
+    if (abs >= 10000) return (v / 10000).toFixed(1) + "만원";
     return Math.round(v).toLocaleString() + "원";
   };
 
@@ -499,28 +499,37 @@ export default function SwingBacktest() {
   const wonEl = (v, opts = {}) => {
     const { fontSize = 14, sign = false } = opts;
     const abs = Math.abs(v);
-    const prefix = sign ? (v > 0 ? "+" : v < 0 ? "" : "") : "";
+    const signStr = sign ? (v > 0 ? "+" : (v < 0 ? "-" : "")) : (v < 0 ? "-" : "");
+    const absVal = Math.abs(v);
     let intPart = "";
     let decPart = "";
     let unit = "";
 
-    if (abs >= 100000000) {
-      const val = v / 100000000;
+    if (absVal >= 100000000) {
+      // 1억 이상: X.X억
+      const val = absVal / 100000000;
       const str = val.toFixed(1);
       const [i, d] = str.split(".");
-      intPart = prefix + i;
+      intPart = signStr + i;
       decPart = d && d !== "0" ? "." + d : "";
       unit = "억";
-    } else if (abs >= 10000000) {
-      const val = v / 10000;
-      const rounded = Math.round(val);
-      intPart = prefix + rounded.toLocaleString();
-      decPart = "";
+    } else if (absVal >= 10000) {
+      // 1만 이상: X.X만원 또는 X만원
+      const val = absVal / 10000;
+      if (val >= 1000) {
+        // 1000만 이상
+        intPart = signStr + Math.round(val).toLocaleString();
+        decPart = "";
+      } else {
+        const str = val.toFixed(1);
+        const [i, d] = str.split(".");
+        intPart = signStr + parseInt(i).toLocaleString();
+        decPart = d && d !== "0" ? "." + d : "";
+      }
       unit = "만원";
     } else {
-      const rounded = Math.round(v);
-      const str = rounded.toLocaleString();
-      intPart = prefix + str;
+      // 1만 미만: X,XXX원
+      intPart = signStr + Math.round(absVal).toLocaleString();
       decPart = "";
       unit = "원";
     }
@@ -541,16 +550,28 @@ export default function SwingBacktest() {
     if (!isNaN(val) && val > 0) setCapital(val);
   };
 
-  // ── 결과 로드 / Load results ──
+  // ── 결과 + 진행상태 로드 / Load results + check progress ──
   useEffect(() => {
     (async () => {
+      // 1) 먼저 진행상태 확인 (백엔드가 돌고 있으면 폴링 재개)
+      try {
+        const prog = await api("/api/swing/progress");
+        if (prog && prog.status === "running") {
+          setProgress(prog);
+          setRunning(true);  // → polling useEffect 자동 시작
+          setLoading(false);
+          return;
+        }
+      } catch (e) { /* ignore */ }
+
+      // 2) 진행 중이 아니면 결과 로드
       const data = await api("/api/swing/result");
       if (data && !data.error) setResult(data);
       setLoading(false);
     })();
   }, []);
 
-  // ── 폴링 / Progress polling ──
+  // ── 폴링 / Progress polling (running이면 2초마다) ──
   useEffect(() => {
     if (!running) return;
     pollRef.current = setInterval(async () => {
@@ -559,10 +580,13 @@ export default function SwingBacktest() {
         setProgress(prog);
         if (prog.status === "done") {
           setRunning(false);
+          // 완료되면 결과 새로 로드
           const data = await api("/api/swing/result");
           if (data && !data.error) setResult(data);
         }
-        if (prog.status === "error") setRunning(false);
+        if (prog.status === "error") {
+          setRunning(false);
+        }
       }
     }, 2000);
     return () => clearInterval(pollRef.current);
@@ -735,6 +759,9 @@ export default function SwingBacktest() {
           <div style={{ marginTop: 24, fontSize: 18, fontWeight: 600 }}>{progress.step}</div>
           <div style={{ marginTop: 8, color: "#8899aa", fontSize: 13 }}>{progress.message}</div>
           {progress.error && <div style={{ marginTop: 16, color: "#ff5252", fontSize: 13 }}>오류: {progress.error}</div>}
+          <div style={{ marginTop: 24, padding: "10px 20px", background: "rgba(79,195,247,0.08)", borderRadius: 8, border: "1px solid rgba(79,195,247,0.15)", fontSize: 12, color: "#81d4fa", display: "inline-block" }}>
+            💡 다른 페이지로 이동해도 분석은 서버에서 계속 진행됩니다. 돌아오면 자동으로 상태를 확인합니다.
+          </div>
         </div>
       </div>
     );
