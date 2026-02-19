@@ -777,13 +777,17 @@ export default function SwingBacktest() {
   // ━━━ 결과 없음 (종목테스트만 가능) ━━━
   if (!result) {
     return (
-      <div style={S.page}>
-        <div style={S.header}><div style={S.title}>📊 스윙 자동발굴 & 백테스트</div></div>
-        <div style={S.tabBar}>
-          {TABS.map(t => (
-            <button key={t.id} onClick={() => setTab(t.id)} style={S.tabBtn(tab === t.id)}>{t.label}</button>
-          ))}
-        </div>
+     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+  <div style={S.title}>📊 스윙 자동발굴 & 백테스트</div>
+  <button onClick={() => window.open('/swing_guide.html', '_blank')}
+    style={{
+      padding: "4px 12px", borderRadius: 6,
+      border: "1px solid rgba(79,195,247,0.3)",
+      background: "rgba(79,195,247,0.1)",
+      color: "#4fc3f7", fontSize: 11, fontWeight: 600,
+      cursor: "pointer", fontFamily: "'Noto Sans KR', sans-serif",
+    }}>📖 가이드</button>
+</div>
         {tab === "singletest" ? renderSingleTestTab() : (
           <div style={{ ...S.card, textAlign: "center", padding: 80 }}>
             <div style={{ fontSize: 48, marginBottom: 20 }}>🔬</div>
