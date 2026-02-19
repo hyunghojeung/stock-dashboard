@@ -1069,21 +1069,27 @@ export default function SwingBacktest() {
             {/* 테스트 기간 선택 / Test Period */}
             <div style={{ marginBottom: 16 }}>
               <div style={{ fontSize: 12, color: "#8899aa", fontWeight: 600, marginBottom: 8 }}>📅 테스트 기간</div>
-              <div style={{ display: "flex", gap: 3, background: "rgba(8,15,30,0.5)", borderRadius: 6, padding: 3 }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 3, background: "rgba(8,15,30,0.5)", borderRadius: 6, padding: 3 }}>
                 {[
-                  { days: 60, label: "3개월" },
+                  { days: 5, label: "1주" },
+                  { days: 10, label: "2주" },
+                  { days: 15, label: "3주" },
+                  { days: 20, label: "4주" },
+                  { days: 22, label: "1달" },
+                  { days: 44, label: "2달" },
+                  { days: 60, label: "3달" },
                   { days: 120, label: "6개월" },
                   { days: 250, label: "1년" },
                   { days: 500, label: "2년" },
                   { days: 750, label: "3년" },
                 ].map(o => (
                   <button key={o.days} onClick={() => setTestPeriod(o.days)} style={{
-                    flex: 1, padding: "5px 0", borderRadius: 4, border: "none",
+                    padding: "5px 8px", borderRadius: 4, border: "none",
                     background: testPeriod === o.days ? "rgba(79,195,247,0.2)" : "transparent",
                     color: testPeriod === o.days ? "#4fc3f7" : "#556677",
                     fontSize: 11, fontWeight: testPeriod === o.days ? 600 : 400,
                     cursor: "pointer", fontFamily: "'JetBrains Mono', monospace",
-                    transition: "all 0.2s",
+                    transition: "all 0.2s", whiteSpace: "nowrap",
                   }}>{o.label}</button>
                 ))}
               </div>
