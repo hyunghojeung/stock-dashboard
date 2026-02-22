@@ -65,6 +65,27 @@ export default function PatternDetector() {
   const [scanSortKey, setScanSortKey] = useState('manip_score');
   const [scanFilterLevel, setScanFilterLevel] = useState('all');
   const [selectedScanStocks, setSelectedScanStocks] = useState(new Set());
+  const [scanDate, setScanDate] = useState('');       // 마지막 스캔 일시
+  const [scanSource, setScanSource] = useState('');    // memory / db
+  const [loadingPrev, setLoadingPrev] = useState(false);
+
+  // ━━━ 페이지 진입 시 이전 스캔 결과 자동 로드 ━━━
+  useEffect(() => {
+    if (scanResult || scanning) return; // 이미 결과 있으면 스킵
+    (async () => {
+      setLoadingPrev(true);
+      try {
+        const resp = await fetch(`${API_BASE}/api/scanner/latest`);
+        const data = await resp.json();
+        if (data.status === 'done') {
+          setScanResult(data);
+          setScanDate(data.scan_date || '');
+          setScanSource(data.source || 'db');
+        }
+      } catch (e) { console.log('이전 스캔 로드 실패:', e); }
+      setLoadingPrev(false);
+    })();
+  }, []);
 
   // ━━━ 분석기 상태 ━━━
   const [stocks, setStocks] = useState([]);
@@ -135,7 +156,7 @@ export default function PatternDetector() {
           else if (data.has_result) {
             const resResp = await fetch(`${API_BASE}/api/scanner/result`);
             const resData = await resResp.json();
-            if (resData.status === 'done') setScanResult(resData);
+            if (resData.status === 'done') { setScanResult(resData); setScanDate(resData.scan_date || new Date().toISOString()); setScanSource('memory'); }
             else if (resData.status === 'error') setScanError(resData.error);
             setScanning(false);
           }
@@ -323,14 +344,23 @@ export default function PatternDetector() {
         {scanning && <ProgressBar progress={scanProgress} msg={scanMsg} color={COLORS.red} />}
         {scanError && <ErrorBox msg={scanError} onClose={() => setScanError('')} />}
 
+        {/* 이전 결과 로딩 중 */}
+        {loadingPrev && !scanning && !scanResult && (
+          <div style={{ background:COLORS.card, border:`1px solid ${COLORS.cardBorder}`,
+            borderRadius:12, padding:20, marginBottom:16, textAlign:'center' }}>
+            <div style={{ fontSize:14, color:COLORS.textDim }}>⏳ 이전 스캔 결과를 불러오는 중...</div>
+          </div>
+        )}
+
         {scanResult && <ScanResultView scanResult={scanResult} scanSortKey={scanSortKey}
           setScanSortKey={setScanSortKey} scanFilterLevel={scanFilterLevel}
           setScanFilterLevel={setScanFilterLevel} selectedScanStocks={selectedScanStocks}
           toggleScanStock={toggleScanStock} selectAllVisible={selectAllVisible}
           setSelectedScanStocks={setSelectedScanStocks} sendToAnalyzer={sendToAnalyzer}
-          getFilteredScanResults={getFilteredScanResults} />}
+          getFilteredScanResults={getFilteredScanResults}
+          scanDate={scanDate} scanSource={scanSource} />}
 
-        {!scanResult && !scanning && (
+        {!scanResult && !scanning && !loadingPrev && (
           <div style={{ background:COLORS.card, border:`1px solid ${COLORS.cardBorder}`,
             borderRadius:12, padding:40, textAlign:'center' }}>
             <div style={{ fontSize:48, marginBottom:16 }}>🚀</div>
@@ -837,10 +867,37 @@ function SettingsPanel(p) {
 
 // ━━━ 스캔 결과 ━━━
 function ScanResultView({ scanResult, scanSortKey, setScanSortKey, scanFilterLevel, setScanFilterLevel,
-  selectedScanStocks, toggleScanStock, selectAllVisible, setSelectedScanStocks, sendToAnalyzer, getFilteredScanResults }) {
+  selectedScanStocks, toggleScanStock, selectAllVisible, setSelectedScanStocks, sendToAnalyzer, getFilteredScanResults,
+  scanDate, scanSource }) {
   const stats = scanResult.stats || {};
   const filtered = getFilteredScanResults();
+
+  // 날짜 포맷
+  const fmtDate = (iso) => {
+    if (!iso) return '';
+    try {
+      const d = new Date(iso);
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    } catch { return iso; }
+  };
+
   return (<div>
+    {/* 마지막 스캔 일시 */}
+    {scanDate && (
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center',
+        padding:'10px 16px', marginBottom:12, borderRadius:8,
+        background: scanSource==='db' ? 'rgba(139,92,246,0.1)' : 'rgba(16,185,129,0.1)',
+        border: `1px solid ${scanSource==='db' ? 'rgba(139,92,246,0.2)' : 'rgba(16,185,129,0.2)'}` }}>
+        <span style={{ fontSize:12, color: scanSource==='db' ? COLORS.purple : COLORS.green }}>
+          {scanSource==='db' ? '💾 DB에서 복원된 결과' : '✅ 방금 스캔한 결과'}
+        </span>
+        <span style={{ fontSize:12, color:COLORS.textDim }}>
+          마지막 스캔: <b style={{ color:COLORS.text }}>{fmtDate(scanDate)}</b>
+          {scanResult.market && <span> · {scanResult.market==='ALL'?'전체':scanResult.market}</span>}
+        </span>
+      </div>
+    )}
+
     <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(130px, 1fr))', gap:12, marginBottom:16 }}>
       {[
         { label:'스캔 종목', value:stats.total_scanned, unit:'개', color:COLORS.accent },
