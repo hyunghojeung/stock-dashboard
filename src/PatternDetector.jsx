@@ -6,12 +6,56 @@
  *
  * - 종목 검색 & 추가
  * - 비동기 분석 (진행률 표시)
+ * - 프리셋: 우량주 / 작전주 / 사용자정의
  * - 3 탭: 📊 공통패턴 | 📈 차트오버레이 | 🎯 매수추천
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 
 const API_BASE = "https://web-production-139e9.up.railway.app";
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 프리셋 정의 / Preset Definitions
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const PRESETS = {
+  bluechip: {
+    key: 'bluechip',
+    label: '🏢 우량주 모드',
+    desc: '대형주 실적·눌림목 기반 급상승 탐지',
+    color: '#3b82f6',
+    params: {
+      periodDays: 365,
+      preRiseDays: 10,
+      risePct: 30,
+      riseWindow: 5,
+      weightReturns: 0.5,
+      weightCandle: 0.2,
+      weightVolume: 0.3,
+    },
+  },
+  manipulation: {
+    key: 'manipulation',
+    label: '⚡ 작전주 모드',
+    desc: '세력 매집기 패턴 탐지 (거래량 중심)',
+    color: '#ef4444',
+    params: {
+      periodDays: 730,
+      preRiseDays: 30,
+      risePct: 50,
+      riseWindow: 10,
+      weightReturns: 0.3,
+      weightCandle: 0.2,
+      weightVolume: 0.5,
+    },
+  },
+  custom: {
+    key: 'custom',
+    label: '🔧 사용자 정의',
+    desc: '직접 파라미터를 설정합니다',
+    color: '#f59e0b',
+    params: null, // 사용자가 직접 설정
+  },
+};
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 스타일 상수
@@ -46,18 +90,24 @@ const fmtPct = (n) => n != null ? `${n >= 0 ? '+' : ''}${n.toFixed(2)}%` : '-';
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 export default function PatternDetector() {
   // ── 종목 관리 ──
-  const [stocks, setStocks] = useState([]);           // [{code, name}]
+  const [stocks, setStocks] = useState([]);
   const [searchKeyword, setSearchKeyword] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [showDropdown, setShowDropdown] = useState(false);
   const searchRef = useRef(null);
   const searchTimerRef = useRef(null);
 
+  // ── 프리셋 ──
+  const [activePreset, setActivePreset] = useState('bluechip');
+
   // ── 설정 ──
   const [periodDays, setPeriodDays] = useState(365);
   const [preRiseDays, setPreRiseDays] = useState(10);
   const [risePct, setRisePct] = useState(30);
   const [riseWindow, setRiseWindow] = useState(5);
+  const [weightReturns, setWeightReturns] = useState(0.5);
+  const [weightCandle, setWeightCandle] = useState(0.2);
+  const [weightVolume, setWeightVolume] = useState(0.3);
   const [showSettings, setShowSettings] = useState(false);
 
   // ── 분석 상태 ──
@@ -69,6 +119,25 @@ export default function PatternDetector() {
 
   // ── 탭 ──
   const [activeTab, setActiveTab] = useState(0);
+
+  // ── 프리셋 변경 시 파라미터 자동 적용 ──
+  const applyPreset = (presetKey) => {
+    setActivePreset(presetKey);
+    const preset = PRESETS[presetKey];
+    if (preset.params) {
+      setPeriodDays(preset.params.periodDays);
+      setPreRiseDays(preset.params.preRiseDays);
+      setRisePct(preset.params.risePct);
+      setRiseWindow(preset.params.riseWindow);
+      setWeightReturns(preset.params.weightReturns);
+      setWeightCandle(preset.params.weightCandle);
+      setWeightVolume(preset.params.weightVolume);
+    }
+    // 사용자정의 선택 시 설정 패널 자동 열기
+    if (presetKey === 'custom') {
+      setShowSettings(true);
+    }
+  };
 
   // ── 종목 검색 (디바운스) ──
   useEffect(() => {
@@ -142,6 +211,9 @@ export default function PatternDetector() {
           pre_rise_days: preRiseDays,
           rise_pct: risePct,
           rise_window: riseWindow,
+          weight_returns: weightReturns,
+          weight_candle: weightCandle,
+          weight_volume: weightVolume,
         }),
       });
 
@@ -150,7 +222,6 @@ export default function PatternDetector() {
         throw new Error(err.detail || '분석 요청 실패');
       }
 
-      // 폴링으로 진행률 추적
       pollProgress();
     } catch (e) {
       setError(e.message);
@@ -174,7 +245,6 @@ export default function PatternDetector() {
             setError(data.error);
             setAnalyzing(false);
           } else if (data.has_result) {
-            // 결과 가져오기
             const resResp = await fetch(`${API_BASE}/api/pattern/result`);
             const resData = await resResp.json();
             if (resData.status === 'done') {
@@ -193,6 +263,9 @@ export default function PatternDetector() {
       }
     }, 1000);
   }, []);
+
+  // 현재 프리셋 정보
+  const currentPreset = PRESETS[activePreset];
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // 렌더링
@@ -221,8 +294,53 @@ export default function PatternDetector() {
           }}>DTW Engine</span>
         </h1>
         <p style={{ color: COLORS.textDim, fontSize: 13, marginTop: 6 }}>
-          여러 종목의 급상승(5일 내 +30%) 직전 일봉 패턴을 DTW로 비교 분석합니다
+          여러 종목의 급상승 직전 일봉 패턴을 DTW로 비교 분석합니다
         </p>
+      </div>
+
+      {/* ── 프리셋 선택 ── */}
+      <div style={{
+        display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap',
+      }}>
+        {Object.values(PRESETS).map(preset => {
+          const isActive = activePreset === preset.key;
+          return (
+            <button
+              key={preset.key}
+              onClick={() => applyPreset(preset.key)}
+              disabled={analyzing}
+              style={{
+                flex: '1 1 auto', minWidth: 180,
+                padding: '14px 18px', borderRadius: 12, cursor: 'pointer',
+                background: isActive ? `${preset.color}15` : COLORS.card,
+                border: `2px solid ${isActive ? preset.color : COLORS.cardBorder}`,
+                textAlign: 'left', transition: 'all 0.2s',
+                opacity: analyzing ? 0.5 : 1,
+              }}
+            >
+              <div style={{
+                fontSize: 14, fontWeight: 700,
+                color: isActive ? preset.color : COLORS.text,
+                marginBottom: 4,
+              }}>
+                {preset.label}
+              </div>
+              <div style={{ fontSize: 11, color: COLORS.textDim, lineHeight: 1.4 }}>
+                {preset.desc}
+              </div>
+              {isActive && preset.params && (
+                <div style={{
+                  marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap',
+                }}>
+                  <span style={tagStyle(preset.color)}>분석 {preset.params.preRiseDays}일</span>
+                  <span style={tagStyle(preset.color)}>급상승 +{preset.params.risePct}%</span>
+                  <span style={tagStyle(preset.color)}>기간 {preset.params.riseWindow}일</span>
+                  <span style={tagStyle(preset.color)}>거래량 {(preset.params.weightVolume * 100).toFixed(0)}%</span>
+                </div>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       {/* ── 종목 검색 & 추가 ── */}
@@ -283,7 +401,7 @@ export default function PatternDetector() {
               border: `1px solid ${showSettings ? COLORS.accent : COLORS.cardBorder}`,
               transition: 'all 0.2s',
             }}
-          >⚙️ 설정</button>
+          >⚙️ 상세설정</button>
 
           {/* 분석 버튼 */}
           <button
@@ -293,7 +411,7 @@ export default function PatternDetector() {
               padding: '10px 24px', fontSize: 14, fontWeight: 600,
               borderRadius: 8, border: 'none', cursor: analyzing ? 'wait' : 'pointer',
               background: analyzing ? COLORS.gray :
-                stocks.length === 0 ? '#374151' : COLORS.accent,
+                stocks.length === 0 ? '#374151' : currentPreset.color,
               color: stocks.length === 0 ? COLORS.textDim : COLORS.white,
               transition: 'all 0.2s',
               opacity: analyzing ? 0.7 : 1,
@@ -307,37 +425,112 @@ export default function PatternDetector() {
         {showSettings && (
           <div style={{
             marginTop: 14, padding: 14, background: '#0d1321', borderRadius: 8,
-            display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12,
           }}>
-            {[
-              { label: '조회 기간', value: periodDays, setter: setPeriodDays,
-                options: [{ v: 180, l: '6개월' }, { v: 365, l: '1년' }, { v: 730, l: '2년' }, { v: 1095, l: '3년' }] },
-              { label: '사전 분석일', value: preRiseDays, setter: setPreRiseDays,
-                options: [{ v: 5, l: '5일' }, { v: 10, l: '10일' }, { v: 15, l: '15일' }, { v: 20, l: '20일' }] },
-              { label: '급상승 기준', value: risePct, setter: setRisePct,
-                options: [{ v: 15, l: '+15%' }, { v: 20, l: '+20%' }, { v: 30, l: '+30%' }, { v: 50, l: '+50%' }] },
-              { label: '상승 기간', value: riseWindow, setter: setRiseWindow,
-                options: [{ v: 3, l: '3일' }, { v: 5, l: '5일' }, { v: 10, l: '10일' }] },
-            ].map(cfg => (
-              <div key={cfg.label}>
-                <div style={{ fontSize: 11, color: COLORS.textDim, marginBottom: 6 }}>{cfg.label}</div>
-                <div style={{ display: 'flex', gap: 4 }}>
-                  {cfg.options.map(opt => (
-                    <button
-                      key={opt.v}
-                      onClick={() => cfg.setter(opt.v)}
-                      style={{
-                        flex: 1, padding: '5px 4px', fontSize: 11, borderRadius: 6,
-                        border: `1px solid ${cfg.value === opt.v ? COLORS.accent : COLORS.cardBorder}`,
-                        background: cfg.value === opt.v ? COLORS.accentDim : 'transparent',
-                        color: cfg.value === opt.v ? COLORS.accent : COLORS.textDim,
-                        cursor: 'pointer', transition: 'all 0.15s',
-                      }}
-                    >{opt.l}</button>
-                  ))}
+            {/* 기본 파라미터 */}
+            <div style={{
+              display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12,
+              marginBottom: 14,
+            }}>
+              {[
+                { label: '조회 기간', value: periodDays, setter: setPeriodDays,
+                  options: [{ v: 180, l: '6개월' }, { v: 365, l: '1년' }, { v: 730, l: '2년' }, { v: 1095, l: '3년' }] },
+                { label: '사전 분석일', value: preRiseDays, setter: setPreRiseDays,
+                  options: [{ v: 5, l: '5일' }, { v: 10, l: '10일' }, { v: 20, l: '20일' }, { v: 30, l: '30일' }, { v: 40, l: '40일' }] },
+                { label: '급상승 기준', value: risePct, setter: setRisePct,
+                  options: [{ v: 15, l: '+15%' }, { v: 20, l: '+20%' }, { v: 30, l: '+30%' }, { v: 50, l: '+50%' }, { v: 100, l: '+100%' }] },
+                { label: '상승 기간', value: riseWindow, setter: setRiseWindow,
+                  options: [{ v: 3, l: '3일' }, { v: 5, l: '5일' }, { v: 10, l: '10일' }, { v: 15, l: '15일' }] },
+              ].map(cfg => (
+                <div key={cfg.label}>
+                  <div style={{ fontSize: 11, color: COLORS.textDim, marginBottom: 6 }}>{cfg.label}</div>
+                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                    {cfg.options.map(opt => (
+                      <button
+                        key={opt.v}
+                        onClick={() => { cfg.setter(opt.v); setActivePreset('custom'); }}
+                        style={{
+                          flex: '1 1 auto', padding: '5px 4px', fontSize: 11, borderRadius: 6,
+                          border: `1px solid ${cfg.value === opt.v ? COLORS.accent : COLORS.cardBorder}`,
+                          background: cfg.value === opt.v ? COLORS.accentDim : 'transparent',
+                          color: cfg.value === opt.v ? COLORS.accent : COLORS.textDim,
+                          cursor: 'pointer', transition: 'all 0.15s',
+                        }}
+                      >{opt.l}</button>
+                    ))}
+                  </div>
                 </div>
+              ))}
+            </div>
+
+            {/* DTW 가중치 슬라이더 */}
+            <div style={{
+              borderTop: `1px solid ${COLORS.cardBorder}`, paddingTop: 14,
+            }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: COLORS.text, marginBottom: 10 }}>
+                📊 DTW 비교 가중치 (합계 100%)
               </div>
-            ))}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+                {[
+                  { label: '📈 등락률', value: weightReturns, setter: setWeightReturns, color: '#3b82f6' },
+                  { label: '🕯️ 봉모양', value: weightCandle, setter: setWeightCandle, color: '#f59e0b' },
+                  { label: '📊 거래량', value: weightVolume, setter: setWeightVolume, color: '#10b981' },
+                ].map(w => (
+                  <div key={w.label}>
+                    <div style={{
+                      display: 'flex', justifyContent: 'space-between',
+                      fontSize: 11, color: COLORS.textDim, marginBottom: 6,
+                    }}>
+                      <span>{w.label}</span>
+                      <span style={{ color: w.color, fontWeight: 700 }}>
+                        {(w.value * 100).toFixed(0)}%
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0} max={80} step={5}
+                      value={w.value * 100}
+                      onChange={e => {
+                        const newVal = parseInt(e.target.value) / 100;
+                        w.setter(newVal);
+                        setActivePreset('custom');
+                        // 나머지 두 가중치 자동 조정
+                        const others = [
+                          { label: '📈 등락률', value: weightReturns, setter: setWeightReturns },
+                          { label: '🕯️ 봉모양', value: weightCandle, setter: setWeightCandle },
+                          { label: '📊 거래량', value: weightVolume, setter: setWeightVolume },
+                        ].filter(x => x.label !== w.label);
+                        const remaining = 1 - newVal;
+                        const otherSum = others[0].value + others[1].value;
+                        if (otherSum > 0) {
+                          others[0].setter(Math.round(others[0].value / otherSum * remaining * 100) / 100);
+                          others[1].setter(Math.round(others[1].value / otherSum * remaining * 100) / 100);
+                        } else {
+                          others[0].setter(remaining / 2);
+                          others[1].setter(remaining / 2);
+                        }
+                      }}
+                      style={{
+                        width: '100%', height: 6, borderRadius: 3,
+                        accentColor: w.color, cursor: 'pointer',
+                      }}
+                    />
+                  </div>
+                ))}
+              </div>
+              {/* 가중치 시각 바 */}
+              <div style={{
+                display: 'flex', height: 8, borderRadius: 4, overflow: 'hidden', marginTop: 10,
+              }}>
+                <div style={{ width: `${weightReturns * 100}%`, background: '#3b82f6' }} />
+                <div style={{ width: `${weightCandle * 100}%`, background: '#f59e0b' }} />
+                <div style={{ width: `${weightVolume * 100}%`, background: '#10b981' }} />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: COLORS.textDim, marginTop: 4 }}>
+                <span>등락률 {(weightReturns*100).toFixed(0)}%</span>
+                <span>봉모양 {(weightCandle*100).toFixed(0)}%</span>
+                <span>거래량 {(weightVolume*100).toFixed(0)}%</span>
+              </div>
+            </div>
           </div>
         )}
 
@@ -377,14 +570,14 @@ export default function PatternDetector() {
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
             <span style={{ fontSize: 13, fontWeight: 600 }}>⏳ 분석 진행 중</span>
-            <span style={{ fontSize: 13, color: COLORS.accent, fontWeight: 700 }}>{progress}%</span>
+            <span style={{ fontSize: 13, color: currentPreset.color, fontWeight: 700 }}>{progress}%</span>
           </div>
           <div style={{
             height: 8, background: '#1a2234', borderRadius: 4, overflow: 'hidden',
           }}>
             <div style={{
               height: '100%', width: `${progress}%`,
-              background: `linear-gradient(90deg, ${COLORS.accent}, ${COLORS.green})`,
+              background: `linear-gradient(90deg, ${currentPreset.color}, ${COLORS.green})`,
               borderRadius: 4, transition: 'width 0.5s ease',
             }} />
           </div>
@@ -483,18 +676,26 @@ export default function PatternDetector() {
             marginTop: 20, display: 'inline-flex', gap: 24,
             fontSize: 12, color: COLORS.textDim,
           }}>
-            <span>① 종목 추가</span>
+            <span>① 모드 선택</span>
             <span>→</span>
-            <span>② 분석 시작</span>
+            <span>② 종목 추가</span>
             <span>→</span>
-            <span>③ 패턴 발견</span>
+            <span>③ 분석 시작</span>
             <span>→</span>
-            <span>④ 매수 추천</span>
+            <span>④ 패턴 발견</span>
           </div>
         </div>
       )}
     </div>
   );
+}
+
+// 프리셋 태그 스타일
+function tagStyle(color) {
+  return {
+    fontSize: 10, padding: '2px 8px', borderRadius: 10,
+    background: `${color}20`, color: color, fontWeight: 500,
+  };
 }
 
 
@@ -507,7 +708,6 @@ function TabSummary({ result }) {
 
   return (
     <div>
-      {/* 공통 특징 */}
       {summary.common_features?.length > 0 && (
         <div style={{
           background: COLORS.accentDim, border: `1px solid rgba(59,130,246,0.3)`,
@@ -524,7 +724,6 @@ function TabSummary({ result }) {
         </div>
       )}
 
-      {/* 클러스터 카드 */}
       {clusters.length === 0 ? (
         <div style={{ textAlign: 'center', padding: 40, color: COLORS.textDim }}>
           유의미한 공통 패턴이 발견되지 않았습니다.
@@ -550,7 +749,6 @@ function TabSummary({ result }) {
               </div>
             </div>
 
-            {/* 패턴 설명 */}
             <div style={{
               fontSize: 13, color: COLORS.text, marginBottom: 14,
               padding: 10, background: '#0d1321', borderRadius: 6, lineHeight: 1.6,
@@ -558,12 +756,10 @@ function TabSummary({ result }) {
               {cluster.description || '패턴 분석 중'}
             </div>
 
-            {/* 미니 등락률 차트 */}
             {cluster.avg_return_flow?.length > 0 && (
               <MiniReturnChart returns={cluster.avg_return_flow} label="평균 등락률 흐름" />
             )}
 
-            {/* 소속 종목 */}
             <div style={{ marginTop: 12 }}>
               <div style={{ fontSize: 11, color: COLORS.textDim, marginBottom: 6 }}>소속 종목</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -580,7 +776,6 @@ function TabSummary({ result }) {
               </div>
             </div>
 
-            {/* 통계 */}
             <div style={{
               display: 'flex', gap: 20, marginTop: 12, paddingTop: 12,
               borderTop: `1px solid ${COLORS.cardBorder}`, fontSize: 12,
@@ -612,7 +807,6 @@ function TabChart({ result, preRiseDays }) {
 
   return (
     <div>
-      {/* 등락률 오버레이 차트 */}
       <div style={{
         background: COLORS.card, border: `1px solid ${COLORS.cardBorder}`,
         borderRadius: 12, padding: 18, marginBottom: 16,
@@ -623,7 +817,6 @@ function TabChart({ result, preRiseDays }) {
         <OverlayChart patterns={patterns} dataKey="returns" yLabel="등락률 (%)" />
       </div>
 
-      {/* 거래량 오버레이 차트 */}
       <div style={{
         background: COLORS.card, border: `1px solid ${COLORS.cardBorder}`,
         borderRadius: 12, padding: 18, marginBottom: 16,
@@ -634,7 +827,6 @@ function TabChart({ result, preRiseDays }) {
         <OverlayChart patterns={patterns} dataKey="volume_ratios" yLabel="거래량 배율" />
       </div>
 
-      {/* 개별 패턴 일봉 */}
       <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>
         🕯️ 개별 패턴 일봉
       </div>
@@ -678,7 +870,6 @@ function TabRecommend({ result }) {
           background: COLORS.card, border: `1px solid ${COLORS.cardBorder}`,
           borderRadius: 12, overflow: 'hidden',
         }}>
-          {/* 헤더 */}
           <div style={{
             display: 'grid', gridTemplateColumns: '1fr 90px 100px 80px',
             padding: '12px 18px', fontSize: 11, color: COLORS.textDim, fontWeight: 600,
@@ -690,7 +881,6 @@ function TabRecommend({ result }) {
             <span style={{ textAlign: 'center' }}>시그널</span>
           </div>
 
-          {/* 목록 */}
           {recs.map((rec, i) => {
             const simColor = rec.similarity >= 65 ? COLORS.green :
                             rec.similarity >= 50 ? COLORS.yellow :
@@ -714,7 +904,6 @@ function TabRecommend({ result }) {
                   {fmt(rec.current_price)}
                 </div>
                 <div style={{ textAlign: 'center' }}>
-                  {/* 유사도 바 */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
                     <div style={{
                       width: 50, height: 6, background: '#1a2234', borderRadius: 3, overflow: 'hidden',
@@ -741,7 +930,6 @@ function TabRecommend({ result }) {
         </div>
       )}
 
-      {/* 면책 */}
       <div style={{
         marginTop: 16, padding: 12, borderRadius: 8,
         background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)',
@@ -769,7 +957,6 @@ function MiniReturnChart({ returns, label }) {
     <div>
       {label && <div style={{ fontSize: 11, color: COLORS.textDim, marginBottom: 4 }}>{label}</div>}
       <svg width={W} height={H} style={{ display: 'block' }}>
-        {/* 0라인 */}
         <line x1={0} y1={H / 2} x2={W} y2={H / 2} stroke={COLORS.cardBorder} strokeWidth={1} />
         {returns.map((r, i) => {
           const x = 10 + i * (barW + 2);
@@ -781,7 +968,6 @@ function MiniReturnChart({ returns, label }) {
               fill={color} rx={1} opacity={0.8} />
           );
         })}
-        {/* D-N 라벨 */}
         <text x={10} y={H - 1} fontSize={8} fill={COLORS.textDim}>D-{returns.length}</text>
         <text x={W - 20} y={H - 1} fontSize={8} fill={COLORS.textDim}>D-1</text>
       </svg>
@@ -800,14 +986,12 @@ function OverlayChart({ patterns, dataKey, yLabel }) {
   const plotW = W - PAD * 2;
   const plotH = H - PAD * 2;
 
-  // 색상 팔레트
   const palette = [
     '#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6',
     '#ec4899', '#14b8a6', '#f97316', '#6366f1', '#06b6d4',
     '#84cc16', '#e11d48',
   ];
 
-  // 모든 데이터 수집 & 범위 계산
   const allSeries = patterns.map(p => p[dataKey] || []);
   const maxLen = Math.max(...allSeries.map(s => s.length));
   const allVals = allSeries.flat();
@@ -822,11 +1006,9 @@ function OverlayChart({ patterns, dataKey, yLabel }) {
 
   return (
     <svg width={W} height={H} style={{ display: 'block', maxWidth: '100%' }}>
-      {/* 배경 */}
       <rect x={PAD} y={PAD} width={plotW} height={plotH}
         fill="rgba(13,19,33,0.5)" rx={4} />
 
-      {/* 그리드 */}
       {[0, 0.25, 0.5, 0.75, 1].map((pct, i) => {
         const y = PAD + pct * plotH;
         const val = maxVal - pct * range;
@@ -840,13 +1022,11 @@ function OverlayChart({ patterns, dataKey, yLabel }) {
         );
       })}
 
-      {/* 0라인 (등락률 차트) */}
       {dataKey === 'returns' && minVal < 0 && maxVal > 0 && (
         <line x1={PAD} y1={toY(0)} x2={PAD + plotW} y2={toY(0)}
           stroke={COLORS.grayLight} strokeWidth={1} opacity={0.5} />
       )}
 
-      {/* X축 라벨 */}
       {Array.from({ length: Math.min(maxLen, 10) }, (_, i) => {
         const idx = Math.floor(i * (maxLen - 1) / Math.max(9, 1));
         return (
@@ -855,7 +1035,6 @@ function OverlayChart({ patterns, dataKey, yLabel }) {
         );
       })}
 
-      {/* 라인들 */}
       {allSeries.slice(0, 12).map((series, si) => {
         if (series.length < 2) return null;
         const path = series.map((v, i) =>
@@ -868,13 +1047,11 @@ function OverlayChart({ patterns, dataKey, yLabel }) {
         );
       })}
 
-      {/* Y축 라벨 */}
       <text x={12} y={PAD + plotH / 2} fontSize={10} fill={COLORS.textDim}
         textAnchor="middle" transform={`rotate(-90, 12, ${PAD + plotH / 2})`}>
         {yLabel}
       </text>
 
-      {/* 범례 */}
       {patterns.slice(0, 8).map((p, i) => (
         <g key={i} transform={`translate(${PAD + 8 + (i % 4) * 160}, ${PAD + 8 + Math.floor(i / 4) * 14})`}>
           <rect width={10} height={3} fill={palette[i % palette.length]} rx={1} />
@@ -915,10 +1092,8 @@ function MiniCandleChart({ candles }) {
 
         return (
           <g key={i}>
-            {/* 위꼬리 */}
             <line x1={x + cw / 2} y1={toY(c.high)} x2={x + cw / 2} y2={toY(c.low)}
               stroke={color} strokeWidth={0.8} />
-            {/* 몸통 */}
             <rect x={x + 1} y={bodyTop} width={Math.max(cw - 2, 2)} height={bodyH}
               fill={color} rx={0.5} />
           </g>
