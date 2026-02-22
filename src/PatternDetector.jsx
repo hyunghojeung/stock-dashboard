@@ -177,6 +177,8 @@ export default function PatternDetector() {
       }
       return merged;
     });
+    // 스캐너에서 왔으므로 ⚡작전주 프리셋 자동 적용
+    applyPreset('manipulation');
     setPageMode('analyzer');
   };
 
