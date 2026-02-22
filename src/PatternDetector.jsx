@@ -485,11 +485,237 @@ export default function PatternDetector() {
           </div>
         )}
       </div>)}
+
+      {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      {/* 사용법 가이드 — 항상 하단에 표시                */}
+      {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      <WorkflowGuide />
+
     </div>
   );
 }
 
 function tagStyle(c) { return { fontSize:10, padding:'2px 8px', borderRadius:10, background:`${c}20`, color:c, fontWeight:500 }; }
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 사용법 가이드 / Workflow Guide
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function WorkflowGuide() {
+  const [open, setOpen] = useState(true);
+
+  const sectionStyle = {
+    background: COLORS.card, border: `1px solid ${COLORS.cardBorder}`,
+    borderRadius: 12, padding: 20, marginBottom: 12,
+  };
+  const stepNumStyle = (color) => ({
+    width: 28, height: 28, borderRadius: '50%', display: 'flex', alignItems: 'center',
+    justifyContent: 'center', fontSize: 13, fontWeight: 700, color: COLORS.white,
+    background: color, flexShrink: 0,
+  });
+  const stepTitleStyle = { fontSize: 14, fontWeight: 700, color: COLORS.text };
+  const stepDescStyle = { fontSize: 12, color: COLORS.textDim, lineHeight: 1.7, marginTop: 4 };
+  const subStepStyle = {
+    fontSize: 12, color: COLORS.text, padding: '8px 12px', marginTop: 6,
+    background: '#0d1321', borderRadius: 8, lineHeight: 1.8,
+  };
+  const arrowDown = (
+    <div style={{ textAlign: 'center', padding: '4px 0', fontSize: 16, color: COLORS.gray }}>↓</div>
+  );
+  const labelBadge = (text, color) => (
+    <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 10,
+      background: `${color}20`, color: color, fontWeight: 600, marginLeft: 6 }}>{text}</span>
+  );
+
+  return (
+    <div style={{ marginTop: 32 }}>
+      {/* 토글 헤더 */}
+      <div onClick={() => setOpen(!open)} style={{
+        display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer',
+        padding: '14px 20px', background: COLORS.card, border: `1px solid ${COLORS.cardBorder}`,
+        borderRadius: open ? '12px 12px 0 0' : 12, transition: 'border-radius 0.2s',
+      }}>
+        <span style={{ fontSize: 20 }}>📖</span>
+        <span style={{ fontSize: 15, fontWeight: 700, color: COLORS.text, flex: 1 }}>
+          전체 사용 흐름 / Complete Workflow
+        </span>
+        <span style={{ fontSize: 18, color: COLORS.textDim, transition: 'transform 0.2s',
+          transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}>▾</span>
+      </div>
+
+      {open && (
+        <div style={{ background: 'rgba(17,24,39,0.5)', border: `1px solid ${COLORS.cardBorder}`,
+          borderTop: 'none', borderRadius: '0 0 12px 12px', padding: 20 }}>
+
+          {/* ━━━ Step 1: 급상승 종목 발굴 ━━━ */}
+          <div style={sectionStyle}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+              <div style={stepNumStyle(COLORS.red)}>1</div>
+              <div>
+                <div style={stepTitleStyle}>🚀 급상승 종목 발굴{labelBadge('전종목 스캔', COLORS.red)}</div>
+                <div style={stepDescStyle}>DB에 등록된 ~2,500개 전종목을 자동 스캔하여 급상승 이력 종목을 찾습니다</div>
+              </div>
+            </div>
+            <div style={subStepStyle}>
+              조건 설정 (시장 / 기간 / 상승률 / 거래량 배율)<br/>
+              {arrowDown}
+              <b style={{ color: COLORS.red }}>[전종목 스캔 시작]</b> 클릭<br/>
+              {arrowDown}
+              ~2,500개 종목 자동 스캔 (약 10~15분 소요)<br/>
+              {arrowDown}
+              결과 테이블 표시:<br/>
+              <span style={{ marginLeft: 16 }}>🔴 세력 의심 (점수 70↑) · 🟡 주의 필요 (45↑) · 🟢 일반 급등</span><br/>
+              {arrowDown}
+              관심 종목 체크 (최대 20개)<br/>
+              {arrowDown}
+              <b style={{ color: COLORS.accent }}>[🔬 선택 종목 패턴분석]</b> 클릭 → 자동으로 패턴 분석기로 이동
+            </div>
+          </div>
+
+          {/* ━━━ Step 2: 패턴 분석기 ━━━ */}
+          <div style={sectionStyle}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+              <div style={stepNumStyle(COLORS.accent)}>2</div>
+              <div>
+                <div style={stepTitleStyle}>🔬 패턴 분석기{labelBadge('DTW 엔진', COLORS.accent)}</div>
+                <div style={stepDescStyle}>선택한 종목들이 자동 입력되어 있으며, 프리셋 선택 후 분석을 시작합니다</div>
+              </div>
+            </div>
+            <div style={subStepStyle}>
+              선택한 종목들이 자동으로 입력되어 있음<br/>
+              {arrowDown}
+              프리셋 선택: 🏢 우량주 / ⚡ 작전주 / 🔧 사용자정의<br/>
+              {arrowDown}
+              <b style={{ color: COLORS.accent }}>[🔍 분석 시작]</b> 클릭
+            </div>
+          </div>
+
+          {/* ━━━ Step 3: 분석 과정 ━━━ */}
+          <div style={sectionStyle}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+              <div style={stepNumStyle(COLORS.yellow)}>3</div>
+              <div>
+                <div style={stepTitleStyle}>⚙️ 분석 시작 후 자동 처리 과정{labelBadge('자동', COLORS.yellow)}</div>
+                <div style={stepDescStyle}>분석 시작 버튼을 누르면 아래 과정이 자동으로 진행됩니다</div>
+              </div>
+            </div>
+
+            {/* 5단계 세부 과정 */}
+            {[
+              { pct: '0~35%', icon: '📥', title: '데이터 수집',
+                desc: '선택한 종목마다 네이버 금융에서 일봉 데이터를 자동 수집\n(시가 / 고가 / 저가 / 종가 / 거래량, 최대 600거래일)' },
+              { pct: '35~45%', icon: '📈', title: '급상승 구간 탐지',
+                desc: '각 종목의 과거 일봉에서 "N일 내 +X% 이상 상승한 구간"을 자동 탐색\n예) 삼성전자: 3건, SK하이닉스: 2건 발견' },
+              { pct: '45~50%', icon: '🧬', title: '패턴 벡터 추출',
+                desc: '각 급상승 직전 N일의 일봉을 3차원 벡터로 변환:\n· 매일 등락률 흐름 (몇 % 올랐다/내렸다)\n· 봉 모양 (양봉/음봉, 윗꼬리/아랫꼬리 비율)\n· 거래량 변화 (평소 대비 몇 배)' },
+              { pct: '50~75%', icon: '🔄', title: 'DTW 유사도 비교 & 클러스터링',
+                desc: '추출한 모든 패턴을 서로 DTW(Dynamic Time Warping)로 비교\n→ "급상승 전에 반복되는 공통 패턴"을 찾아냄\n→ 비슷한 패턴끼리 그룹(클러스터)으로 묶음' },
+              { pct: '75~100%', icon: '🎯', title: '현재 매수 추천 계산',
+                desc: '각 종목의 "현재 최근 N일 일봉 흐름"이\n위에서 찾은 공통 패턴과 얼마나 비슷한지 DTW로 계산\n→ 유사도 점수 산출 → 매수 시그널 판정' },
+            ].map((step, i) => (
+              <div key={i}>
+                {i > 0 && <div style={{ textAlign: 'center', padding: '2px 0', fontSize: 14, color: COLORS.gray }}>↓</div>}
+                <div style={{
+                  display: 'flex', gap: 12, padding: '10px 14px',
+                  background: '#0d1321', borderRadius: 8, alignItems: 'flex-start',
+                }}>
+                  <div style={{
+                    fontSize: 10, fontWeight: 700, color: COLORS.yellow, whiteSpace: 'nowrap',
+                    padding: '3px 8px', background: COLORS.yellowDim, borderRadius: 6, marginTop: 2,
+                  }}>{step.pct}</div>
+                  <div style={{ fontSize: 18, flexShrink: 0 }}>{step.icon}</div>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.text }}>{step.title}</div>
+                    <div style={{ fontSize: 11, color: COLORS.textDim, lineHeight: 1.7, marginTop: 4, whiteSpace: 'pre-line' }}>
+                      {step.desc}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* ━━━ Step 4: 결과 확인 ━━━ */}
+          <div style={sectionStyle}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+              <div style={stepNumStyle(COLORS.green)}>4</div>
+              <div>
+                <div style={stepTitleStyle}>📊 결과 확인 (3개 탭)</div>
+                <div style={stepDescStyle}>분석이 완료되면 3개 탭에서 결과를 확인할 수 있습니다</div>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
+              {/* 탭 1 */}
+              <div style={{ padding: 14, background: '#0d1321', borderRadius: 10, border: `1px solid ${COLORS.cardBorder}` }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.accent, marginBottom: 8 }}>📊 공통 패턴</div>
+                <div style={{ fontSize: 11, color: COLORS.textDim, lineHeight: 1.7 }}>
+                  "급상승 전에 이런 패턴이 반복되었다"<br/>
+                  · 예) 연속 5일 하락 후 양봉 전환 → 거래량 감소<br/>
+                  · 패턴별 소속 종목, 평균 상승률<br/>
+                  · 평균 등락률 차트 시각화
+                </div>
+              </div>
+              {/* 탭 2 */}
+              <div style={{ padding: 14, background: '#0d1321', borderRadius: 10, border: `1px solid ${COLORS.cardBorder}` }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.yellow, marginBottom: 8 }}>📈 차트 오버레이</div>
+                <div style={{ fontSize: 11, color: COLORS.textDim, lineHeight: 1.7 }}>
+                  여러 종목의 급상승 직전 패턴을 한 차트에 겹침<br/>
+                  · 등락률 흐름 오버레이<br/>
+                  · 거래량 흐름 오버레이<br/>
+                  · 개별 종목 미니 캔들차트
+                </div>
+              </div>
+              {/* 탭 3 */}
+              <div style={{ padding: 14, background: '#0d1321', borderRadius: 10, border: `1px solid ${COLORS.cardBorder}` }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.green, marginBottom: 8 }}>🎯 매수 추천</div>
+                <div style={{ fontSize: 11, color: COLORS.textDim, lineHeight: 1.7 }}>
+                  "현재 이 패턴과 비슷한 종목" 순위표<br/>
+                  · 🟢 강력 매수 (유사도 65%↑)<br/>
+                  · 🟡 관심 (유사도 50%↑)<br/>
+                  · ⚠️ 대기 (유사도 40%↑)<br/>
+                  · ⬜ 미해당
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 핵심 요약 */}
+          <div style={{
+            background: 'linear-gradient(135deg, rgba(59,130,246,0.1), rgba(16,185,129,0.1))',
+            border: `1px solid rgba(59,130,246,0.2)`,
+            borderRadius: 12, padding: 20, textAlign: 'center',
+          }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: COLORS.accent, marginBottom: 10 }}>
+              💡 핵심 요약
+            </div>
+            <div style={{ fontSize: 13, color: COLORS.text, lineHeight: 2 }}>
+              <b style={{ color: COLORS.red }}>스캐너</b> — 2,500개 중 "과거에 급상승한 종목" 발굴<br/>
+              <b style={{ color: COLORS.accent }}>패턴분석기</b> — 급상승 직전 패턴을 학습하여 "현재 같은 패턴인 종목" 추천
+            </div>
+            <div style={{
+              marginTop: 14, display: 'inline-flex', gap: 12, alignItems: 'center',
+              fontSize: 13, color: COLORS.text, fontWeight: 600,
+            }}>
+              <span style={{ padding: '4px 12px', borderRadius: 8, background: COLORS.redDim, color: COLORS.red }}>
+                과거 급상승
+              </span>
+              <span style={{ color: COLORS.gray }}>→</span>
+              <span style={{ padding: '4px 12px', borderRadius: 8, background: COLORS.yellowDim, color: COLORS.yellow }}>
+                직전 패턴 학습
+              </span>
+              <span style={{ color: COLORS.gray }}>→</span>
+              <span style={{ padding: '4px 12px', borderRadius: 8, background: COLORS.greenDim, color: COLORS.green }}>
+                현재 같은 패턴 추천
+              </span>
+            </div>
+          </div>
+
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ━━━ 공통 컴포넌트 ━━━
 function FilterGroup({ label, options, value, setter, color, disabled }) {
