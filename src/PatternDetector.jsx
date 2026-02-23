@@ -4,12 +4,9 @@
  * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
  * 파일경로: src/pages/PatternDetector.jsx
  *
- * [v3] 전종목 급상승 스캐너 추가
- * - 🚀 급상승 종목 발굴 (전종목 자동 스캔)
- * - 종목 검색 & 추가
- * - 비동기 분석 (진행률 표시)
- * - 프리셋: 우량주 / 작전주 / 사용자정의
- * - 2 페이지: 🚀 급상승발굴 | 🔬 패턴분석기
+ * [v3.1] 브라우저 이탈 후 재진입 시 스캔 자동 재개
+ * - 페이지 이탈/재진입 시 진행 중인 스캔 자동 감지 & 폴링 재개
+ * - scanIntervalRef로 인터벌 관리 (메모리 누수 방지)
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -65,26 +62,74 @@ export default function PatternDetector() {
   const [scanSortKey, setScanSortKey] = useState('manip_score');
   const [scanFilterLevel, setScanFilterLevel] = useState('all');
   const [selectedScanStocks, setSelectedScanStocks] = useState(new Set());
-  const [scanDate, setScanDate] = useState('');       // 마지막 스캔 일시
-  const [scanSource, setScanSource] = useState('');    // memory / db
+  const [scanDate, setScanDate] = useState('');
+  const [scanSource, setScanSource] = useState('');
   const [loadingPrev, setLoadingPrev] = useState(false);
 
-  // ━━━ 페이지 진입 시 이전 스캔 결과 자동 로드 ━━━
+  // ━━━ [v3.1] 폴링 인터벌 ref — 언마운트 시 정리용 ━━━
+  const scanIntervalRef = useRef(null);
+
+  // ━━━ [v3.1] 페이지 진입 시: 진행 중인 스캔 확인 → 자동 재개 ━━━
   useEffect(() => {
-    if (scanResult || scanning) return; // 이미 결과 있으면 스킵
+    let cancelled = false;
+
     (async () => {
+      // 1) 먼저 서버에 진행 중인 스캔이 있는지 확인
+      try {
+        const progResp = await fetch(`${API_BASE}/api/scanner/progress`);
+        const progData = await progResp.json();
+
+        if (cancelled) return;
+
+        if (progData.running) {
+          // ✅ 스캔이 아직 진행 중 → 상태 복원 & 폴링 재개
+          setScanning(true);
+          setScanProgress(progData.progress || 0);
+          setScanMsg(progData.message || '스캔 진행 중...');
+          pollScanProgress();
+          return;
+        }
+
+        // 스캔이 끝났는데 결과가 메모리에 있는 경우
+        if (!progData.running && progData.has_result) {
+          try {
+            const resResp = await fetch(`${API_BASE}/api/scanner/result`);
+            const resData = await resResp.json();
+            if (!cancelled && resData.status === 'done') {
+              setScanResult(resData);
+              setScanDate(resData.scan_date || new Date().toISOString());
+              setScanSource('memory');
+              return;
+            }
+          } catch (e) { console.log('메모리 결과 로드 실패:', e); }
+        }
+      } catch (e) {
+        console.log('진행 상태 확인 실패:', e);
+      }
+
+      if (cancelled) return;
+
+      // 2) 진행 중이 아니면 → DB에서 이전 결과 로드
       setLoadingPrev(true);
       try {
         const resp = await fetch(`${API_BASE}/api/scanner/latest`);
         const data = await resp.json();
-        if (data.status === 'done') {
+        if (!cancelled && data.status === 'done') {
           setScanResult(data);
           setScanDate(data.scan_date || '');
           setScanSource(data.source || 'db');
         }
       } catch (e) { console.log('이전 스캔 로드 실패:', e); }
-      setLoadingPrev(false);
+      if (!cancelled) setLoadingPrev(false);
     })();
+
+    return () => {
+      cancelled = true;
+      if (scanIntervalRef.current) {
+        clearInterval(scanIntervalRef.current);
+        scanIntervalRef.current = null;
+      }
+    };
   }, []);
 
   // ━━━ 분석기 상태 ━━━
@@ -144,14 +189,21 @@ export default function PatternDetector() {
     catch (e) { console.error('중지 실패:', e); }
   };
 
+  // ━━━ [v3.1] 폴링 — ref 기반 (이탈 후 재개 가능) ━━━
   const pollScanProgress = useCallback(() => {
-    const interval = setInterval(async () => {
+    if (scanIntervalRef.current) {
+      clearInterval(scanIntervalRef.current);
+      scanIntervalRef.current = null;
+    }
+
+    scanIntervalRef.current = setInterval(async () => {
       try {
         const resp = await fetch(`${API_BASE}/api/scanner/progress`);
         const data = await resp.json();
         setScanProgress(data.progress || 0); setScanMsg(data.message || '');
         if (!data.running) {
-          clearInterval(interval);
+          clearInterval(scanIntervalRef.current);
+          scanIntervalRef.current = null;
           if (data.error) { setScanError(data.error); setScanning(false); }
           else if (data.has_result) {
             const resResp = await fetch(`${API_BASE}/api/scanner/result`);
@@ -159,9 +211,16 @@ export default function PatternDetector() {
             if (resData.status === 'done') { setScanResult(resData); setScanDate(resData.scan_date || new Date().toISOString()); setScanSource('memory'); }
             else if (resData.status === 'error') setScanError(resData.error);
             setScanning(false);
+          } else {
+            setScanning(false);
           }
         }
-      } catch (e) { clearInterval(interval); setScanError('진행률 조회 실패'); setScanning(false); }
+      } catch (e) {
+        clearInterval(scanIntervalRef.current);
+        scanIntervalRef.current = null;
+        setScanError('진행률 조회 실패');
+        setScanning(false);
+      }
     }, 1500);
   }, []);
 
@@ -177,7 +236,6 @@ export default function PatternDetector() {
       }
       return merged;
     });
-    // 스캐너에서 왔으므로 ⚡작전주 프리셋 자동 적용
     applyPreset('manipulation');
     setPageMode('analyzer');
   };
@@ -285,7 +343,7 @@ export default function PatternDetector() {
         <h1 style={{ fontSize:22, fontWeight:700, margin:0, display:'flex', alignItems:'center', gap:10 }}>
           <span style={{ fontSize:26 }}>🔍</span> 급상승 패턴 탐지기
           <span style={{ fontSize:11, background:COLORS.accentDim, color:COLORS.accent,
-            padding:'3px 10px', borderRadius:20, fontWeight:500 }}>DTW Engine v3</span>
+            padding:'3px 10px', borderRadius:20, fontWeight:500 }}>DTW Engine v3.1</span>
         </h1>
         <p style={{ color:COLORS.textDim, fontSize:13, marginTop:6 }}>
           전종목 급상승 스캔 → 작전주/세력주 발굴 → DTW 패턴 분석
@@ -346,7 +404,6 @@ export default function PatternDetector() {
         {scanning && <ProgressBar progress={scanProgress} msg={scanMsg} color={COLORS.red} />}
         {scanError && <ErrorBox msg={scanError} onClose={() => setScanError('')} />}
 
-        {/* 이전 결과 로딩 중 */}
         {loadingPrev && !scanning && !scanResult && (
           <div style={{ background:COLORS.card, border:`1px solid ${COLORS.cardBorder}`,
             borderRadius:12, padding:20, marginBottom:16, textAlign:'center' }}>
@@ -381,7 +438,6 @@ export default function PatternDetector() {
 
       {/* ━━━ 페이지 2: 패턴 분석기 ━━━ */}
       {pageMode === 'analyzer' && (<div>
-        {/* 프리셋 */}
         <div style={{ display:'flex', gap:10, marginBottom:16, flexWrap:'wrap' }}>
           {Object.values(PRESETS).map(preset => {
             const isActive = activePreset === preset.key;
@@ -406,7 +462,6 @@ export default function PatternDetector() {
           })}
         </div>
 
-        {/* 종목 검색 */}
         <div style={{ background:COLORS.card, border:`1px solid ${COLORS.cardBorder}`, borderRadius:12, padding:18, marginBottom:16 }}>
           <div style={{ display:'flex', gap:12, alignItems:'flex-start', flexWrap:'wrap' }}>
             <div ref={searchRef} style={{ position:'relative', flex:1, minWidth:220 }}>
@@ -518,68 +573,32 @@ export default function PatternDetector() {
         )}
       </div>)}
 
-      {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-      {/* 사용법 가이드 — 항상 하단에 표시                */}
-      {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
       <WorkflowGuide />
-
     </div>
   );
 }
 
 function tagStyle(c) { return { fontSize:10, padding:'2px 8px', borderRadius:10, background:`${c}20`, color:c, fontWeight:500 }; }
 
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 사용법 가이드 / Workflow Guide
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function WorkflowGuide() {
   const [open, setOpen] = useState(true);
-
-  const sectionStyle = {
-    background: COLORS.card, border: `1px solid ${COLORS.cardBorder}`,
-    borderRadius: 12, padding: 20, marginBottom: 12,
-  };
-  const stepNumStyle = (color) => ({
-    width: 28, height: 28, borderRadius: '50%', display: 'flex', alignItems: 'center',
-    justifyContent: 'center', fontSize: 13, fontWeight: 700, color: COLORS.white,
-    background: color, flexShrink: 0,
-  });
+  const sectionStyle = { background: COLORS.card, border: `1px solid ${COLORS.cardBorder}`, borderRadius: 12, padding: 20, marginBottom: 12 };
+  const stepNumStyle = (color) => ({ width: 28, height: 28, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: COLORS.white, background: color, flexShrink: 0 });
   const stepTitleStyle = { fontSize: 14, fontWeight: 700, color: COLORS.text };
   const stepDescStyle = { fontSize: 12, color: COLORS.textDim, lineHeight: 1.7, marginTop: 4 };
-  const subStepStyle = {
-    fontSize: 12, color: COLORS.text, padding: '8px 12px', marginTop: 6,
-    background: '#0d1321', borderRadius: 8, lineHeight: 1.8,
-  };
-  const arrowDown = (
-    <div style={{ textAlign: 'center', padding: '4px 0', fontSize: 16, color: COLORS.gray }}>↓</div>
-  );
-  const labelBadge = (text, color) => (
-    <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 10,
-      background: `${color}20`, color: color, fontWeight: 600, marginLeft: 6 }}>{text}</span>
-  );
+  const subStepStyle = { fontSize: 12, color: COLORS.text, padding: '8px 12px', marginTop: 6, background: '#0d1321', borderRadius: 8, lineHeight: 1.8 };
+  const arrowDown = (<div style={{ textAlign: 'center', padding: '4px 0', fontSize: 16, color: COLORS.gray }}>↓</div>);
+  const labelBadge = (text, color) => (<span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 10, background: `${color}20`, color: color, fontWeight: 600, marginLeft: 6 }}>{text}</span>);
 
   return (
     <div style={{ marginTop: 32 }}>
-      {/* 토글 헤더 */}
-      <div onClick={() => setOpen(!open)} style={{
-        display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer',
-        padding: '14px 20px', background: COLORS.card, border: `1px solid ${COLORS.cardBorder}`,
-        borderRadius: open ? '12px 12px 0 0' : 12, transition: 'border-radius 0.2s',
-      }}>
+      <div onClick={() => setOpen(!open)} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '14px 20px', background: COLORS.card, border: `1px solid ${COLORS.cardBorder}`, borderRadius: open ? '12px 12px 0 0' : 12, transition: 'border-radius 0.2s' }}>
         <span style={{ fontSize: 20 }}>📖</span>
-        <span style={{ fontSize: 15, fontWeight: 700, color: COLORS.text, flex: 1 }}>
-          전체 사용 흐름 / Complete Workflow
-        </span>
-        <span style={{ fontSize: 18, color: COLORS.textDim, transition: 'transform 0.2s',
-          transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}>▾</span>
+        <span style={{ fontSize: 15, fontWeight: 700, color: COLORS.text, flex: 1 }}>전체 사용 흐름 / Complete Workflow</span>
+        <span style={{ fontSize: 18, color: COLORS.textDim, transition: 'transform 0.2s', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}>▾</span>
       </div>
-
       {open && (
-        <div style={{ background: 'rgba(17,24,39,0.5)', border: `1px solid ${COLORS.cardBorder}`,
-          borderTop: 'none', borderRadius: '0 0 12px 12px', padding: 20 }}>
-
-          {/* ━━━ Step 1: 급상승 종목 발굴 ━━━ */}
+        <div style={{ background: 'rgba(17,24,39,0.5)', border: `1px solid ${COLORS.cardBorder}`, borderTop: 'none', borderRadius: '0 0 12px 12px', padding: 20 }}>
           <div style={sectionStyle}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
               <div style={stepNumStyle(COLORS.red)}>1</div>
@@ -594,6 +613,7 @@ function WorkflowGuide() {
               <b style={{ color: COLORS.red }}>[전종목 스캔 시작]</b> 클릭<br/>
               {arrowDown}
               ~2,500개 종목 자동 스캔 (약 10~15분 소요)<br/>
+              <span style={{ fontSize: 11, color: COLORS.green }}>💡 스캔 중 다른 페이지로 이동해도 서버에서 계속 실행됩니다</span><br/>
               {arrowDown}
               결과 테이블 표시:<br/>
               <span style={{ marginLeft: 16 }}>🔴 세력 의심 (점수 70↑) · 🟡 주의 필요 (45↑) · 🟢 일반 급등</span><br/>
@@ -603,8 +623,6 @@ function WorkflowGuide() {
               <b style={{ color: COLORS.accent }}>[🔬 선택 종목 패턴분석]</b> 클릭 → 자동으로 패턴 분석기로 이동
             </div>
           </div>
-
-          {/* ━━━ Step 2: 패턴 분석기 ━━━ */}
           <div style={sectionStyle}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
               <div style={stepNumStyle(COLORS.accent)}>2</div>
@@ -621,8 +639,6 @@ function WorkflowGuide() {
               <b style={{ color: COLORS.accent }}>[🔍 분석 시작]</b> 클릭
             </div>
           </div>
-
-          {/* ━━━ Step 3: 분석 과정 ━━━ */}
           <div style={sectionStyle}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
               <div style={stepNumStyle(COLORS.yellow)}>3</div>
@@ -631,43 +647,26 @@ function WorkflowGuide() {
                 <div style={stepDescStyle}>분석 시작 버튼을 누르면 아래 과정이 자동으로 진행됩니다</div>
               </div>
             </div>
-
-            {/* 5단계 세부 과정 */}
             {[
-              { pct: '0~35%', icon: '📥', title: '데이터 수집',
-                desc: '선택한 종목마다 네이버 금융에서 일봉 데이터를 자동 수집\n(시가 / 고가 / 저가 / 종가 / 거래량, 최대 600거래일)' },
-              { pct: '35~45%', icon: '📈', title: '급상승 구간 탐지',
-                desc: '각 종목의 과거 일봉에서 "N일 내 +X% 이상 상승한 구간"을 자동 탐색\n예) 삼성전자: 3건, SK하이닉스: 2건 발견' },
-              { pct: '45~50%', icon: '🧬', title: '패턴 벡터 추출',
-                desc: '각 급상승 직전 N일의 일봉을 3차원 벡터로 변환:\n· 매일 등락률 흐름 (몇 % 올랐다/내렸다)\n· 봉 모양 (양봉/음봉, 윗꼬리/아랫꼬리 비율)\n· 거래량 변화 (평소 대비 몇 배)' },
-              { pct: '50~75%', icon: '🔄', title: 'DTW 유사도 비교 & 클러스터링',
-                desc: '추출한 모든 패턴을 서로 DTW(Dynamic Time Warping)로 비교\n→ "급상승 전에 반복되는 공통 패턴"을 찾아냄\n→ 비슷한 패턴끼리 그룹(클러스터)으로 묶음' },
-              { pct: '75~100%', icon: '🎯', title: '현재 매수 추천 계산',
-                desc: '각 종목의 "현재 최근 N일 일봉 흐름"이\n위에서 찾은 공통 패턴과 얼마나 비슷한지 DTW로 계산\n→ 유사도 점수 산출 → 매수 시그널 판정' },
+              { pct: '0~35%', icon: '📥', title: '데이터 수집', desc: '선택한 종목마다 네이버 금융에서 일봉 데이터를 자동 수집\n(시가 / 고가 / 저가 / 종가 / 거래량, 최대 600거래일)' },
+              { pct: '35~45%', icon: '📈', title: '급상승 구간 탐지', desc: '각 종목의 과거 일봉에서 "N일 내 +X% 이상 상승한 구간"을 자동 탐색\n예) 삼성전자: 3건, SK하이닉스: 2건 발견' },
+              { pct: '45~50%', icon: '🧬', title: '패턴 벡터 추출', desc: '각 급상승 직전 N일의 일봉을 3차원 벡터로 변환:\n· 매일 등락률 흐름\n· 봉 모양 (양봉/음봉, 꼬리 비율)\n· 거래량 변화 (평소 대비 몇 배)' },
+              { pct: '50~75%', icon: '🔄', title: 'DTW 유사도 비교 & 클러스터링', desc: '추출한 모든 패턴을 서로 DTW로 비교\n→ 공통 패턴 찾기 → 그룹으로 묶음' },
+              { pct: '75~100%', icon: '🎯', title: '현재 매수 추천 계산', desc: '각 종목의 현재 최근 N일 흐름이\n공통 패턴과 얼마나 비슷한지 계산\n→ 유사도 점수 → 매수 시그널 판정' },
             ].map((step, i) => (
               <div key={i}>
                 {i > 0 && <div style={{ textAlign: 'center', padding: '2px 0', fontSize: 14, color: COLORS.gray }}>↓</div>}
-                <div style={{
-                  display: 'flex', gap: 12, padding: '10px 14px',
-                  background: '#0d1321', borderRadius: 8, alignItems: 'flex-start',
-                }}>
-                  <div style={{
-                    fontSize: 10, fontWeight: 700, color: COLORS.yellow, whiteSpace: 'nowrap',
-                    padding: '3px 8px', background: COLORS.yellowDim, borderRadius: 6, marginTop: 2,
-                  }}>{step.pct}</div>
+                <div style={{ display: 'flex', gap: 12, padding: '10px 14px', background: '#0d1321', borderRadius: 8, alignItems: 'flex-start' }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: COLORS.yellow, whiteSpace: 'nowrap', padding: '3px 8px', background: COLORS.yellowDim, borderRadius: 6, marginTop: 2 }}>{step.pct}</div>
                   <div style={{ fontSize: 18, flexShrink: 0 }}>{step.icon}</div>
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.text }}>{step.title}</div>
-                    <div style={{ fontSize: 11, color: COLORS.textDim, lineHeight: 1.7, marginTop: 4, whiteSpace: 'pre-line' }}>
-                      {step.desc}
-                    </div>
+                    <div style={{ fontSize: 11, color: COLORS.textDim, lineHeight: 1.7, marginTop: 4, whiteSpace: 'pre-line' }}>{step.desc}</div>
                   </div>
                 </div>
               </div>
             ))}
           </div>
-
-          {/* ━━━ Step 4: 결과 확인 ━━━ */}
           <div style={sectionStyle}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
               <div style={stepNumStyle(COLORS.green)}>4</div>
@@ -676,73 +675,35 @@ function WorkflowGuide() {
                 <div style={stepDescStyle}>분석이 완료되면 3개 탭에서 결과를 확인할 수 있습니다</div>
               </div>
             </div>
-
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
-              {/* 탭 1 */}
               <div style={{ padding: 14, background: '#0d1321', borderRadius: 10, border: `1px solid ${COLORS.cardBorder}` }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.accent, marginBottom: 8 }}>📊 공통 패턴</div>
-                <div style={{ fontSize: 11, color: COLORS.textDim, lineHeight: 1.7 }}>
-                  "급상승 전에 이런 패턴이 반복되었다"<br/>
-                  · 예) 연속 5일 하락 후 양봉 전환 → 거래량 감소<br/>
-                  · 패턴별 소속 종목, 평균 상승률<br/>
-                  · 평균 등락률 차트 시각화
-                </div>
+                <div style={{ fontSize: 11, color: COLORS.textDim, lineHeight: 1.7 }}>급상승 전 반복 패턴 · 소속 종목 · 평균 상승률</div>
               </div>
-              {/* 탭 2 */}
               <div style={{ padding: 14, background: '#0d1321', borderRadius: 10, border: `1px solid ${COLORS.cardBorder}` }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.yellow, marginBottom: 8 }}>📈 차트 오버레이</div>
-                <div style={{ fontSize: 11, color: COLORS.textDim, lineHeight: 1.7 }}>
-                  여러 종목의 급상승 직전 패턴을 한 차트에 겹침<br/>
-                  · 등락률 흐름 오버레이<br/>
-                  · 거래량 흐름 오버레이<br/>
-                  · 개별 종목 미니 캔들차트
-                </div>
+                <div style={{ fontSize: 11, color: COLORS.textDim, lineHeight: 1.7 }}>등락률/거래량 오버레이 · 개별 미니 캔들차트</div>
               </div>
-              {/* 탭 3 */}
               <div style={{ padding: 14, background: '#0d1321', borderRadius: 10, border: `1px solid ${COLORS.cardBorder}` }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.green, marginBottom: 8 }}>🎯 매수 추천</div>
-                <div style={{ fontSize: 11, color: COLORS.textDim, lineHeight: 1.7 }}>
-                  "현재 이 패턴과 비슷한 종목" 순위표<br/>
-                  · 🟢 강력 매수 (유사도 65%↑)<br/>
-                  · 🟡 관심 (유사도 50%↑)<br/>
-                  · ⚠️ 대기 (유사도 40%↑)<br/>
-                  · ⬜ 미해당
-                </div>
+                <div style={{ fontSize: 11, color: COLORS.textDim, lineHeight: 1.7 }}>🟢 강력매수 65%↑ · 🟡 관심 50%↑ · ⚠️ 대기 40%↑</div>
               </div>
             </div>
           </div>
-
-          {/* 핵심 요약 */}
-          <div style={{
-            background: 'linear-gradient(135deg, rgba(59,130,246,0.1), rgba(16,185,129,0.1))',
-            border: `1px solid rgba(59,130,246,0.2)`,
-            borderRadius: 12, padding: 20, textAlign: 'center',
-          }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: COLORS.accent, marginBottom: 10 }}>
-              💡 핵심 요약
-            </div>
+          <div style={{ background: 'linear-gradient(135deg, rgba(59,130,246,0.1), rgba(16,185,129,0.1))', border: `1px solid rgba(59,130,246,0.2)`, borderRadius: 12, padding: 20, textAlign: 'center' }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: COLORS.accent, marginBottom: 10 }}>💡 핵심 요약</div>
             <div style={{ fontSize: 13, color: COLORS.text, lineHeight: 2 }}>
               <b style={{ color: COLORS.red }}>스캐너</b> — 2,500개 중 "과거에 급상승한 종목" 발굴<br/>
               <b style={{ color: COLORS.accent }}>패턴분석기</b> — 급상승 직전 패턴을 학습하여 "현재 같은 패턴인 종목" 추천
             </div>
-            <div style={{
-              marginTop: 14, display: 'inline-flex', gap: 12, alignItems: 'center',
-              fontSize: 13, color: COLORS.text, fontWeight: 600,
-            }}>
-              <span style={{ padding: '4px 12px', borderRadius: 8, background: COLORS.redDim, color: COLORS.red }}>
-                과거 급상승
-              </span>
+            <div style={{ marginTop: 14, display: 'inline-flex', gap: 12, alignItems: 'center', fontSize: 13, color: COLORS.text, fontWeight: 600 }}>
+              <span style={{ padding: '4px 12px', borderRadius: 8, background: COLORS.redDim, color: COLORS.red }}>과거 급상승</span>
               <span style={{ color: COLORS.gray }}>→</span>
-              <span style={{ padding: '4px 12px', borderRadius: 8, background: COLORS.yellowDim, color: COLORS.yellow }}>
-                직전 패턴 학습
-              </span>
+              <span style={{ padding: '4px 12px', borderRadius: 8, background: COLORS.yellowDim, color: COLORS.yellow }}>직전 패턴 학습</span>
               <span style={{ color: COLORS.gray }}>→</span>
-              <span style={{ padding: '4px 12px', borderRadius: 8, background: COLORS.greenDim, color: COLORS.green }}>
-                현재 같은 패턴 추천
-              </span>
+              <span style={{ padding: '4px 12px', borderRadius: 8, background: COLORS.greenDim, color: COLORS.green }}>현재 같은 패턴 추천</span>
             </div>
           </div>
-
         </div>
       )}
     </div>
@@ -751,155 +712,84 @@ function WorkflowGuide() {
 
 // ━━━ 공통 컴포넌트 ━━━
 function FilterGroup({ label, options, value, setter, color, disabled }) {
-  return (
-    <div>
-      <div style={{ fontSize:11, color:COLORS.textDim, marginBottom:6 }}>{label}</div>
-      <div style={{ display:'flex', gap:4 }}>
-        {options.map(opt => (
-          <button key={opt.v} onClick={() => setter(opt.v)} disabled={disabled} style={{
-            flex:1, padding:'6px 4px', fontSize:11, borderRadius:6, cursor:disabled?'default':'pointer',
-            border:`1px solid ${value===opt.v?color:COLORS.cardBorder}`,
-            background:value===opt.v?`${color}20`:'transparent',
-            color:value===opt.v?color:COLORS.textDim }}>{opt.l}</button>
-        ))}
-      </div>
+  return (<div>
+    <div style={{ fontSize:11, color:COLORS.textDim, marginBottom:6 }}>{label}</div>
+    <div style={{ display:'flex', gap:4 }}>
+      {options.map(opt => (<button key={opt.v} onClick={() => setter(opt.v)} disabled={disabled} style={{ flex:1, padding:'6px 4px', fontSize:11, borderRadius:6, cursor:disabled?'default':'pointer', border:`1px solid ${value===opt.v?color:COLORS.cardBorder}`, background:value===opt.v?`${color}20`:'transparent', color:value===opt.v?color:COLORS.textDim }}>{opt.l}</button>))}
     </div>
-  );
+  </div>);
 }
 
 function ProgressBar({ progress, msg, color }) {
-  return (
-    <div style={{ background:COLORS.card, border:`1px solid ${COLORS.cardBorder}`, borderRadius:12, padding:18, marginBottom:16 }}>
-      <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
-        <span style={{ fontSize:13, fontWeight:600 }}>⏳ 진행 중...</span>
-        <span style={{ fontSize:13, color, fontWeight:700 }}>{progress}%</span>
-      </div>
-      <div style={{ height:8, background:'#1a2234', borderRadius:4, overflow:'hidden' }}>
-        <div style={{ height:'100%', width:`${progress}%`, background:`linear-gradient(90deg, ${color}, ${COLORS.green})`,
-          borderRadius:4, transition:'width 0.5s ease' }} />
-      </div>
-      <div style={{ fontSize:12, color:COLORS.textDim, marginTop:6 }}>{msg}</div>
+  return (<div style={{ background:COLORS.card, border:`1px solid ${COLORS.cardBorder}`, borderRadius:12, padding:18, marginBottom:16 }}>
+    <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
+      <span style={{ fontSize:13, fontWeight:600 }}>⏳ 진행 중...</span>
+      <span style={{ fontSize:13, color, fontWeight:700 }}>{progress}%</span>
     </div>
-  );
+    <div style={{ height:8, background:'#1a2234', borderRadius:4, overflow:'hidden' }}>
+      <div style={{ height:'100%', width:`${progress}%`, background:`linear-gradient(90deg, ${color}, ${COLORS.green})`, borderRadius:4, transition:'width 0.5s ease' }} />
+    </div>
+    <div style={{ fontSize:12, color:COLORS.textDim, marginTop:6 }}>{msg}</div>
+  </div>);
 }
 
 function ErrorBox({ msg, onClose }) {
-  return (
-    <div style={{ background:COLORS.redDim, border:`1px solid ${COLORS.red}`, borderRadius:8,
-      padding:14, marginBottom:16, fontSize:13, color:COLORS.red }}>
-      ❌ {msg}
-      <span onClick={onClose} style={{ float:'right', cursor:'pointer', fontWeight:700 }}>✕</span>
-    </div>
-  );
+  return (<div style={{ background:COLORS.redDim, border:`1px solid ${COLORS.red}`, borderRadius:8, padding:14, marginBottom:16, fontSize:13, color:COLORS.red }}>
+    ❌ {msg}<span onClick={onClose} style={{ float:'right', cursor:'pointer', fontWeight:700 }}>✕</span>
+  </div>);
 }
 
 function SettingsPanel(p) {
-  return (
-    <div style={{ marginTop:14, padding:14, background:'#0d1321', borderRadius:8 }}>
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(150px, 1fr))', gap:12, marginBottom:14 }}>
+  return (<div style={{ marginTop:14, padding:14, background:'#0d1321', borderRadius:8 }}>
+    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(150px, 1fr))', gap:12, marginBottom:14 }}>
+      {[
+        { label:'조회 기간', value:p.periodDays, setter:p.setPeriodDays, opts:[{v:180,l:'6개월'},{v:365,l:'1년'},{v:730,l:'2년'},{v:1095,l:'3년'}] },
+        { label:'사전 분석일', value:p.preRiseDays, setter:p.setPreRiseDays, opts:[{v:5,l:'5일'},{v:10,l:'10일'},{v:20,l:'20일'},{v:30,l:'30일'},{v:40,l:'40일'}] },
+        { label:'급상승 기준', value:p.risePct, setter:p.setRisePct, opts:[{v:15,l:'+15%'},{v:20,l:'+20%'},{v:30,l:'+30%'},{v:50,l:'+50%'},{v:100,l:'+100%'}] },
+        { label:'상승 기간', value:p.riseWindow, setter:p.setRiseWindow, opts:[{v:3,l:'3일'},{v:5,l:'5일'},{v:10,l:'10일'},{v:15,l:'15일'}] },
+      ].map(cfg => (<div key={cfg.label}>
+        <div style={{ fontSize:11, color:COLORS.textDim, marginBottom:6 }}>{cfg.label}</div>
+        <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
+          {cfg.opts.map(opt => (<button key={opt.v} onClick={() => { cfg.setter(opt.v); p.setActivePreset('custom'); }}
+            style={{ flex:'1 1 auto', padding:'5px 4px', fontSize:11, borderRadius:6, border:`1px solid ${cfg.value===opt.v?COLORS.accent:COLORS.cardBorder}`, background:cfg.value===opt.v?COLORS.accentDim:'transparent', color:cfg.value===opt.v?COLORS.accent:COLORS.textDim, cursor:'pointer' }}>{opt.l}</button>))}
+        </div>
+      </div>))}
+    </div>
+    <div style={{ borderTop:`1px solid ${COLORS.cardBorder}`, paddingTop:14 }}>
+      <div style={{ fontSize:12, fontWeight:600, color:COLORS.text, marginBottom:10 }}>📊 DTW 비교 가중치 (합계 100%)</div>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:16 }}>
         {[
-          { label:'조회 기간', value:p.periodDays, setter:p.setPeriodDays,
-            opts:[{v:180,l:'6개월'},{v:365,l:'1년'},{v:730,l:'2년'},{v:1095,l:'3년'}] },
-          { label:'사전 분석일', value:p.preRiseDays, setter:p.setPreRiseDays,
-            opts:[{v:5,l:'5일'},{v:10,l:'10일'},{v:20,l:'20일'},{v:30,l:'30일'},{v:40,l:'40일'}] },
-          { label:'급상승 기준', value:p.risePct, setter:p.setRisePct,
-            opts:[{v:15,l:'+15%'},{v:20,l:'+20%'},{v:30,l:'+30%'},{v:50,l:'+50%'},{v:100,l:'+100%'}] },
-          { label:'상승 기간', value:p.riseWindow, setter:p.setRiseWindow,
-            opts:[{v:3,l:'3일'},{v:5,l:'5일'},{v:10,l:'10일'},{v:15,l:'15일'}] },
-        ].map(cfg => (
-          <div key={cfg.label}>
-            <div style={{ fontSize:11, color:COLORS.textDim, marginBottom:6 }}>{cfg.label}</div>
-            <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
-              {cfg.opts.map(opt => (
-                <button key={opt.v} onClick={() => { cfg.setter(opt.v); p.setActivePreset('custom'); }}
-                  style={{ flex:'1 1 auto', padding:'5px 4px', fontSize:11, borderRadius:6,
-                    border:`1px solid ${cfg.value===opt.v?COLORS.accent:COLORS.cardBorder}`,
-                    background:cfg.value===opt.v?COLORS.accentDim:'transparent',
-                    color:cfg.value===opt.v?COLORS.accent:COLORS.textDim, cursor:'pointer' }}>{opt.l}</button>
-              ))}
-            </div>
+          { label:'📈 등락률', value:p.weightReturns, setter:p.setWeightReturns, color:'#3b82f6' },
+          { label:'🕯️ 봉모양', value:p.weightCandle, setter:p.setWeightCandle, color:'#f59e0b' },
+          { label:'📊 거래량', value:p.weightVolume, setter:p.setWeightVolume, color:'#10b981' },
+        ].map(w => (<div key={w.label}>
+          <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, color:COLORS.textDim, marginBottom:6 }}>
+            <span>{w.label}</span><span style={{ color:w.color, fontWeight:700 }}>{(w.value*100).toFixed(0)}%</span>
           </div>
-        ))}
+          <input type="range" min={0} max={80} step={5} value={w.value*100}
+            onChange={e => { const nv = parseInt(e.target.value)/100; w.setter(nv); p.setActivePreset('custom'); const allW = [p.weightReturns,p.weightCandle,p.weightVolume]; const idx = allW.indexOf(w.value); const o1 = idx===0?1:0, o2 = idx===2?1:2; const rem = 1-nv; const os = allW[o1]+allW[o2]; if(os>0){ [p.setWeightReturns,p.setWeightCandle,p.setWeightVolume][o1](Math.round(allW[o1]/os*rem*100)/100); [p.setWeightReturns,p.setWeightCandle,p.setWeightVolume][o2](Math.round(allW[o2]/os*rem*100)/100); } else { [p.setWeightReturns,p.setWeightCandle,p.setWeightVolume][o1](rem/2); [p.setWeightReturns,p.setWeightCandle,p.setWeightVolume][o2](rem/2); } }}
+            style={{ width:'100%', height:6, borderRadius:3, accentColor:w.color, cursor:'pointer' }} />
+        </div>))}
       </div>
-      <div style={{ borderTop:`1px solid ${COLORS.cardBorder}`, paddingTop:14 }}>
-        <div style={{ fontSize:12, fontWeight:600, color:COLORS.text, marginBottom:10 }}>📊 DTW 비교 가중치 (합계 100%)</div>
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:16 }}>
-          {[
-            { label:'📈 등락률', value:p.weightReturns, setter:p.setWeightReturns, color:'#3b82f6' },
-            { label:'🕯️ 봉모양', value:p.weightCandle, setter:p.setWeightCandle, color:'#f59e0b' },
-            { label:'📊 거래량', value:p.weightVolume, setter:p.setWeightVolume, color:'#10b981' },
-          ].map(w => (
-            <div key={w.label}>
-              <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, color:COLORS.textDim, marginBottom:6 }}>
-                <span>{w.label}</span><span style={{ color:w.color, fontWeight:700 }}>{(w.value*100).toFixed(0)}%</span>
-              </div>
-              <input type="range" min={0} max={80} step={5} value={w.value*100}
-                onChange={e => {
-                  const nv = parseInt(e.target.value)/100; w.setter(nv); p.setActivePreset('custom');
-                  const others = [
-                    {v:p.weightReturns,s:p.setWeightReturns},{v:p.weightCandle,s:p.setWeightCandle},{v:p.weightVolume,s:p.setWeightVolume}
-                  ].filter((_,i) => i !== [p.weightReturns,p.weightCandle,p.weightVolume].indexOf(w.value));
-                  // Simplified: redistribute remaining
-                  const rem = 1-nv; const allW = [p.weightReturns,p.weightCandle,p.weightVolume];
-                  const idx = allW.indexOf(w.value);
-                  const o1 = idx===0?1:0, o2 = idx===2?1:2;
-                  const os = allW[o1]+allW[o2];
-                  if(os>0){
-                    [p.setWeightReturns,p.setWeightCandle,p.setWeightVolume][o1](Math.round(allW[o1]/os*rem*100)/100);
-                    [p.setWeightReturns,p.setWeightCandle,p.setWeightVolume][o2](Math.round(allW[o2]/os*rem*100)/100);
-                  } else {
-                    [p.setWeightReturns,p.setWeightCandle,p.setWeightVolume][o1](rem/2);
-                    [p.setWeightReturns,p.setWeightCandle,p.setWeightVolume][o2](rem/2);
-                  }
-                }}
-                style={{ width:'100%', height:6, borderRadius:3, accentColor:w.color, cursor:'pointer' }} />
-            </div>
-          ))}
-        </div>
-        <div style={{ display:'flex', height:8, borderRadius:4, overflow:'hidden', marginTop:10 }}>
-          <div style={{ width:`${p.weightReturns*100}%`, background:'#3b82f6' }} />
-          <div style={{ width:`${p.weightCandle*100}%`, background:'#f59e0b' }} />
-          <div style={{ width:`${p.weightVolume*100}%`, background:'#10b981' }} />
-        </div>
+      <div style={{ display:'flex', height:8, borderRadius:4, overflow:'hidden', marginTop:10 }}>
+        <div style={{ width:`${p.weightReturns*100}%`, background:'#3b82f6' }} />
+        <div style={{ width:`${p.weightCandle*100}%`, background:'#f59e0b' }} />
+        <div style={{ width:`${p.weightVolume*100}%`, background:'#10b981' }} />
       </div>
     </div>
-  );
+  </div>);
 }
 
-
-// ━━━ 스캔 결과 ━━━
-function ScanResultView({ scanResult, scanSortKey, setScanSortKey, scanFilterLevel, setScanFilterLevel,
-  selectedScanStocks, toggleScanStock, selectAllVisible, setSelectedScanStocks, sendToAnalyzer, getFilteredScanResults,
-  scanDate, scanSource }) {
+function ScanResultView({ scanResult, scanSortKey, setScanSortKey, scanFilterLevel, setScanFilterLevel, selectedScanStocks, toggleScanStock, selectAllVisible, setSelectedScanStocks, sendToAnalyzer, getFilteredScanResults, scanDate, scanSource }) {
   const stats = scanResult.stats || {};
   const filtered = getFilteredScanResults();
-
-  // 날짜 포맷
-  const fmtDate = (iso) => {
-    if (!iso) return '';
-    try {
-      const d = new Date(iso);
-      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
-    } catch { return iso; }
-  };
+  const fmtDate = (iso) => { if (!iso) return ''; try { const d = new Date(iso); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; } catch { return iso; } };
 
   return (<div>
-    {/* 마지막 스캔 일시 */}
-    {scanDate && (
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center',
-        padding:'10px 16px', marginBottom:12, borderRadius:8,
-        background: scanSource==='db' ? 'rgba(139,92,246,0.1)' : 'rgba(16,185,129,0.1)',
-        border: `1px solid ${scanSource==='db' ? 'rgba(139,92,246,0.2)' : 'rgba(16,185,129,0.2)'}` }}>
-        <span style={{ fontSize:12, color: scanSource==='db' ? COLORS.purple : COLORS.green }}>
-          {scanSource==='db' ? '💾 DB에서 복원된 결과' : '✅ 방금 스캔한 결과'}
-        </span>
-        <span style={{ fontSize:12, color:COLORS.textDim }}>
-          마지막 스캔: <b style={{ color:COLORS.text }}>{fmtDate(scanDate)}</b>
-          {scanResult.market && <span> · {scanResult.market==='ALL'?'전체':scanResult.market}</span>}
-        </span>
-      </div>
-    )}
-
+    {scanDate && (<div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'10px 16px', marginBottom:12, borderRadius:8, background: scanSource==='db' ? 'rgba(139,92,246,0.1)' : 'rgba(16,185,129,0.1)', border: `1px solid ${scanSource==='db' ? 'rgba(139,92,246,0.2)' : 'rgba(16,185,129,0.2)'}` }}>
+      <span style={{ fontSize:12, color: scanSource==='db' ? COLORS.purple : COLORS.green }}>{scanSource==='db' ? '💾 DB에서 복원된 결과' : '✅ 방금 스캔한 결과'}</span>
+      <span style={{ fontSize:12, color:COLORS.textDim }}>마지막 스캔: <b style={{ color:COLORS.text }}>{fmtDate(scanDate)}</b>{scanResult.market && <span> · {scanResult.market==='ALL'?'전체':scanResult.market}</span>}</span>
+    </div>)}
     <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(130px, 1fr))', gap:12, marginBottom:16 }}>
       {[
         { label:'스캔 종목', value:stats.total_scanned, unit:'개', color:COLORS.accent },
@@ -907,148 +797,79 @@ function ScanResultView({ scanResult, scanSortKey, setScanSortKey, scanFilterLev
         { label:'급상승 건수', value:stats.total_surges, unit:'건', color:COLORS.yellow },
         { label:'🔴 세력 의심', value:stats.high_manip_count, unit:'종목', color:COLORS.red },
         { label:'🟡 주의 필요', value:stats.medium_manip_count, unit:'종목', color:COLORS.yellow },
-      ].map((item,i) => (
-        <div key={i} style={{ background:COLORS.card, border:`1px solid ${COLORS.cardBorder}`, borderRadius:10, padding:14, textAlign:'center' }}>
-          <div style={{ fontSize:11, color:COLORS.textDim, marginBottom:4 }}>{item.label}</div>
-          <div style={{ fontSize:22, fontWeight:700, color:item.color }}>{item.value?.toLocaleString()??'-'}</div>
-          <div style={{ fontSize:11, color:COLORS.textDim }}>{item.unit}</div>
-        </div>
-      ))}
+      ].map((item,i) => (<div key={i} style={{ background:COLORS.card, border:`1px solid ${COLORS.cardBorder}`, borderRadius:10, padding:14, textAlign:'center' }}>
+        <div style={{ fontSize:11, color:COLORS.textDim, marginBottom:4 }}>{item.label}</div>
+        <div style={{ fontSize:22, fontWeight:700, color:item.color }}>{item.value?.toLocaleString()??'-'}</div>
+        <div style={{ fontSize:11, color:COLORS.textDim }}>{item.unit}</div>
+      </div>))}
     </div>
-
-    <div style={{ background:COLORS.card, border:`1px solid ${COLORS.cardBorder}`, borderRadius:12,
-      padding:14, marginBottom:12, display:'flex', flexWrap:'wrap', gap:12, alignItems:'center' }}>
+    <div style={{ background:COLORS.card, border:`1px solid ${COLORS.cardBorder}`, borderRadius:12, padding:14, marginBottom:12, display:'flex', flexWrap:'wrap', gap:12, alignItems:'center' }}>
       <div style={{ display:'flex', gap:4 }}>
         <span style={{ fontSize:12, color:COLORS.textDim, alignSelf:'center', marginRight:4 }}>필터:</span>
-        {[{v:'all',l:'전체',c:COLORS.accent},{v:'high',l:'🔴 세력의심',c:COLORS.red},{v:'medium',l:'🟡 주의이상',c:COLORS.yellow}].map(f => (
-          <button key={f.v} onClick={() => setScanFilterLevel(f.v)} style={{ padding:'5px 12px', fontSize:11,
-            borderRadius:6, cursor:'pointer', border:`1px solid ${scanFilterLevel===f.v?f.c:COLORS.cardBorder}`,
-            background:scanFilterLevel===f.v?`${f.c}20`:'transparent', color:scanFilterLevel===f.v?f.c:COLORS.textDim }}>{f.l}</button>
-        ))}
+        {[{v:'all',l:'전체',c:COLORS.accent},{v:'high',l:'🔴 세력의심',c:COLORS.red},{v:'medium',l:'🟡 주의이상',c:COLORS.yellow}].map(f => (<button key={f.v} onClick={() => setScanFilterLevel(f.v)} style={{ padding:'5px 12px', fontSize:11, borderRadius:6, cursor:'pointer', border:`1px solid ${scanFilterLevel===f.v?f.c:COLORS.cardBorder}`, background:scanFilterLevel===f.v?`${f.c}20`:'transparent', color:scanFilterLevel===f.v?f.c:COLORS.textDim }}>{f.l}</button>))}
       </div>
       <div style={{ display:'flex', gap:4 }}>
         <span style={{ fontSize:12, color:COLORS.textDim, alignSelf:'center', marginRight:4 }}>정렬:</span>
-        {[{v:'manip_score',l:'세력점수↓'},{v:'rise_pct',l:'상승률↓'},{v:'date',l:'최근순'},{v:'from_peak',l:'고점대비↓'}].map(s => (
-          <button key={s.v} onClick={() => setScanSortKey(s.v)} style={{ padding:'5px 10px', fontSize:11,
-            borderRadius:6, cursor:'pointer', border:`1px solid ${scanSortKey===s.v?COLORS.accent:COLORS.cardBorder}`,
-            background:scanSortKey===s.v?COLORS.accentDim:'transparent', color:scanSortKey===s.v?COLORS.accent:COLORS.textDim }}>{s.l}</button>
-        ))}
+        {[{v:'manip_score',l:'세력점수↓'},{v:'rise_pct',l:'상승률↓'},{v:'date',l:'최근순'},{v:'from_peak',l:'고점대비↓'}].map(s => (<button key={s.v} onClick={() => setScanSortKey(s.v)} style={{ padding:'5px 10px', fontSize:11, borderRadius:6, cursor:'pointer', border:`1px solid ${scanSortKey===s.v?COLORS.accent:COLORS.cardBorder}`, background:scanSortKey===s.v?COLORS.accentDim:'transparent', color:scanSortKey===s.v?COLORS.accent:COLORS.textDim }}>{s.l}</button>))}
       </div>
       <div style={{ marginLeft:'auto', display:'flex', gap:8 }}>
-        <button onClick={selectAllVisible} style={{ padding:'5px 12px', fontSize:11, borderRadius:6,
-          cursor:'pointer', border:`1px solid ${COLORS.cardBorder}`, background:'transparent', color:COLORS.textDim }}>전체선택</button>
-        <button onClick={() => setSelectedScanStocks(new Set())} style={{ padding:'5px 12px', fontSize:11,
-          borderRadius:6, cursor:'pointer', border:`1px solid ${COLORS.cardBorder}`, background:'transparent', color:COLORS.textDim }}>선택해제</button>
-        <button onClick={sendToAnalyzer} disabled={selectedScanStocks.size===0} style={{ padding:'6px 16px', fontSize:12,
-          fontWeight:700, borderRadius:8, border:'none', cursor:selectedScanStocks.size>0?'pointer':'default',
-          background:selectedScanStocks.size>0?COLORS.accent:'#374151', color:selectedScanStocks.size>0?COLORS.white:COLORS.textDim }}>
-          🔬 선택 종목 패턴분석 ({selectedScanStocks.size})</button>
+        <button onClick={selectAllVisible} style={{ padding:'5px 12px', fontSize:11, borderRadius:6, cursor:'pointer', border:`1px solid ${COLORS.cardBorder}`, background:'transparent', color:COLORS.textDim }}>전체선택</button>
+        <button onClick={() => setSelectedScanStocks(new Set())} style={{ padding:'5px 12px', fontSize:11, borderRadius:6, cursor:'pointer', border:`1px solid ${COLORS.cardBorder}`, background:'transparent', color:COLORS.textDim }}>선택해제</button>
+        <button onClick={sendToAnalyzer} disabled={selectedScanStocks.size===0} style={{ padding:'6px 16px', fontSize:12, fontWeight:700, borderRadius:8, border:'none', cursor:selectedScanStocks.size>0?'pointer':'default', background:selectedScanStocks.size>0?COLORS.accent:'#374151', color:selectedScanStocks.size>0?COLORS.white:COLORS.textDim }}>🔬 선택 종목 패턴분석 ({selectedScanStocks.size})</button>
       </div>
     </div>
-
     <div style={{ background:COLORS.card, border:`1px solid ${COLORS.cardBorder}`, borderRadius:12, overflow:'hidden' }}>
-      <div style={{ display:'grid', gridTemplateColumns:'40px 1fr 80px 80px 60px 70px 80px 80px',
-        padding:'10px 14px', fontSize:11, color:COLORS.textDim, fontWeight:600,
-        borderBottom:`1px solid ${COLORS.cardBorder}`, background:'#0d1321' }}>
-        <span></span><span>종목</span><span style={{textAlign:'right'}}>현재가</span>
-        <span style={{textAlign:'center'}}>최대상승</span><span style={{textAlign:'center'}}>횟수</span>
-        <span style={{textAlign:'center'}}>고점대비</span><span style={{textAlign:'center'}}>세력점수</span>
-        <span style={{textAlign:'center'}}>판정</span>
+      <div style={{ display:'grid', gridTemplateColumns:'40px 1fr 80px 80px 60px 70px 80px 80px', padding:'10px 14px', fontSize:11, color:COLORS.textDim, fontWeight:600, borderBottom:`1px solid ${COLORS.cardBorder}`, background:'#0d1321' }}>
+        <span></span><span>종목</span><span style={{textAlign:'right'}}>현재가</span><span style={{textAlign:'center'}}>최대상승</span><span style={{textAlign:'center'}}>횟수</span><span style={{textAlign:'center'}}>고점대비</span><span style={{textAlign:'center'}}>세력점수</span><span style={{textAlign:'center'}}>판정</span>
       </div>
-      {filtered.length===0 ? (
-        <div style={{ textAlign:'center', padding:30, color:COLORS.textDim, fontSize:13 }}>조건에 해당하는 급상승 종목이 없습니다.</div>
-      ) : filtered.map((stock, i) => {
+      {filtered.length===0 ? (<div style={{ textAlign:'center', padding:30, color:COLORS.textDim, fontSize:13 }}>조건에 해당하는 급상승 종목이 없습니다.</div>) : filtered.map((stock, i) => {
         const sel = selectedScanStocks.has(stock.code);
         const mc = stock.top_manip_level==='high'?COLORS.red:stock.top_manip_level==='medium'?COLORS.yellow:COLORS.green;
-        return (
-          <div key={stock.code} onClick={() => toggleScanStock(stock.code)} style={{
-            display:'grid', gridTemplateColumns:'40px 1fr 80px 80px 60px 70px 80px 80px',
-            padding:'10px 14px', alignItems:'center', borderBottom:`1px solid ${COLORS.cardBorder}`,
-            background:sel?'rgba(59,130,246,0.08)':i%2===0?'transparent':'rgba(255,255,255,0.015)',
-            cursor:'pointer' }}>
-            <div style={{textAlign:'center'}}>
-              <div style={{ width:18, height:18, borderRadius:4, border:`2px solid ${sel?COLORS.accent:COLORS.cardBorder}`,
-                background:sel?COLORS.accent:'transparent', display:'flex', alignItems:'center', justifyContent:'center',
-                fontSize:12, color:COLORS.white, fontWeight:700 }}>{sel&&'✓'}</div>
-            </div>
-            <div>
-              <div style={{ fontSize:13, fontWeight:600 }}>{stock.name}
-                <span style={{ fontSize:10, color:COLORS.textDim, marginLeft:6 }}>{stock.code} · {stock.market}</span>
-              </div>
-              <div style={{ fontSize:10, color:COLORS.textDim }}>최근: {stock.latest_surge_date||'-'}</div>
-            </div>
-            <div style={{ textAlign:'right', fontSize:12, fontWeight:600 }}>{fmt(stock.current_price)}</div>
-            <div style={{ textAlign:'center', fontSize:12, fontWeight:700, color:COLORS.red }}>+{stock.latest_rise_pct}%</div>
-            <div style={{ textAlign:'center', fontSize:12, fontWeight:600 }}>{stock.surge_count}회</div>
-            <div style={{ textAlign:'center', fontSize:11, fontWeight:600,
-              color:stock.latest_from_peak<-30?COLORS.accent:COLORS.textDim }}>{stock.latest_from_peak}%</div>
-            <div style={{textAlign:'center'}}>
-              <div style={{ display:'flex', alignItems:'center', gap:4, justifyContent:'center' }}>
-                <div style={{ width:36, height:6, background:'#1a2234', borderRadius:3, overflow:'hidden' }}>
-                  <div style={{ width:`${stock.top_manip_score}%`, height:'100%', background:mc, borderRadius:3 }} />
-                </div>
-                <span style={{ fontSize:11, fontWeight:700, color:mc }}>{stock.top_manip_score}</span>
-              </div>
-            </div>
-            <div style={{ textAlign:'center', fontSize:10, fontWeight:600, padding:'3px 4px', borderRadius:6,
-              background:`${mc}20`, color:mc }}>{stock.top_manip_label}</div>
-          </div>
-        );
+        return (<div key={stock.code} onClick={() => toggleScanStock(stock.code)} style={{ display:'grid', gridTemplateColumns:'40px 1fr 80px 80px 60px 70px 80px 80px', padding:'10px 14px', alignItems:'center', borderBottom:`1px solid ${COLORS.cardBorder}`, background:sel?'rgba(59,130,246,0.08)':i%2===0?'transparent':'rgba(255,255,255,0.015)', cursor:'pointer' }}>
+          <div style={{textAlign:'center'}}><div style={{ width:18, height:18, borderRadius:4, border:`2px solid ${sel?COLORS.accent:COLORS.cardBorder}`, background:sel?COLORS.accent:'transparent', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, color:COLORS.white, fontWeight:700 }}>{sel&&'✓'}</div></div>
+          <div><div style={{ fontSize:13, fontWeight:600 }}>{stock.name}<span style={{ fontSize:10, color:COLORS.textDim, marginLeft:6 }}>{stock.code} · {stock.market}</span></div><div style={{ fontSize:10, color:COLORS.textDim }}>최근: {stock.latest_surge_date||'-'}</div></div>
+          <div style={{ textAlign:'right', fontSize:12, fontWeight:600 }}>{fmt(stock.current_price)}</div>
+          <div style={{ textAlign:'center', fontSize:12, fontWeight:700, color:COLORS.red }}>+{stock.latest_rise_pct}%</div>
+          <div style={{ textAlign:'center', fontSize:12, fontWeight:600 }}>{stock.surge_count}회</div>
+          <div style={{ textAlign:'center', fontSize:11, fontWeight:600, color:stock.latest_from_peak<-30?COLORS.accent:COLORS.textDim }}>{stock.latest_from_peak}%</div>
+          <div style={{textAlign:'center'}}><div style={{ display:'flex', alignItems:'center', gap:4, justifyContent:'center' }}><div style={{ width:36, height:6, background:'#1a2234', borderRadius:3, overflow:'hidden' }}><div style={{ width:`${stock.top_manip_score}%`, height:'100%', background:mc, borderRadius:3 }} /></div><span style={{ fontSize:11, fontWeight:700, color:mc }}>{stock.top_manip_score}</span></div></div>
+          <div style={{ textAlign:'center', fontSize:10, fontWeight:600, padding:'3px 4px', borderRadius:6, background:`${mc}20`, color:mc }}>{stock.top_manip_label}</div>
+        </div>);
       })}
     </div>
     <div style={{ fontSize:12, color:COLORS.textDim, marginTop:8, textAlign:'right' }}>총 {filtered.length}개 종목</div>
-    <div style={{ marginTop:12, padding:12, borderRadius:8, background:'rgba(245,158,11,0.08)',
-      border:'1px solid rgba(245,158,11,0.2)', fontSize:11, color:COLORS.yellow, lineHeight:1.6 }}>
-      ⚠️ 세력 의심 점수는 거래량 폭증, 급등 후 급락, 매집 흔적 등을 종합한 통계적 지표이며,
-      실제 작전 여부를 확정하지 않습니다. 반드시 추가 확인 후 투자 판단하세요.
-    </div>
+    <div style={{ marginTop:12, padding:12, borderRadius:8, background:'rgba(245,158,11,0.08)', border:'1px solid rgba(245,158,11,0.2)', fontSize:11, color:COLORS.yellow, lineHeight:1.6 }}>⚠️ 세력 의심 점수는 거래량 폭증, 급등 후 급락, 매집 흔적 등을 종합한 통계적 지표이며, 실제 작전 여부를 확정하지 않습니다. 반드시 추가 확인 후 투자 판단하세요.</div>
   </div>);
 }
 
-
-// ━━━ Tab 0: 공통패턴 ━━━
 function TabSummary({ result }) {
   const clusters = result.clusters||[], summary = result.summary||{};
   return (<div>
-    {summary.common_features?.length>0 && (
-      <div style={{ background:COLORS.accentDim, border:'1px solid rgba(59,130,246,0.3)', borderRadius:10, padding:16, marginBottom:16 }}>
-        <div style={{ fontSize:13, fontWeight:600, marginBottom:8, color:COLORS.accent }}>💡 공통 패턴 특징</div>
-        {summary.common_features.map((f,i) => (
-          <div key={i} style={{ fontSize:13, color:COLORS.text, marginBottom:4, paddingLeft:12 }}>• {f}</div>
-        ))}
-      </div>
-    )}
+    {summary.common_features?.length>0 && (<div style={{ background:COLORS.accentDim, border:'1px solid rgba(59,130,246,0.3)', borderRadius:10, padding:16, marginBottom:16 }}>
+      <div style={{ fontSize:13, fontWeight:600, marginBottom:8, color:COLORS.accent }}>💡 공통 패턴 특징</div>
+      {summary.common_features.map((f,i) => (<div key={i} style={{ fontSize:13, color:COLORS.text, marginBottom:4, paddingLeft:12 }}>• {f}</div>))}
+    </div>)}
     {clusters.length===0 ? <div style={{textAlign:'center',padding:40,color:COLORS.textDim}}>유의미한 공통 패턴이 발견되지 않았습니다.</div> :
-      clusters.map((c,ci) => (
-        <div key={ci} style={{ background:COLORS.card, border:`1px solid ${COLORS.cardBorder}`, borderRadius:12, padding:18, marginBottom:12 }}>
-          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
-            <div><span style={{ fontSize:11, background:COLORS.accentDim, color:COLORS.accent, padding:'2px 10px', borderRadius:12, fontWeight:600 }}>패턴 #{ci+1}</span>
-              <span style={{ fontSize:13, fontWeight:600, marginLeft:10 }}>{c.pattern_count}건 발견</span></div>
-            <div style={{ fontSize:12, color:COLORS.textDim }}>유사도 {c.avg_similarity?.toFixed(1)}%</div>
-          </div>
-          <div style={{ fontSize:13, color:COLORS.text, marginBottom:14, padding:10, background:'#0d1321', borderRadius:6, lineHeight:1.6 }}>{c.description||'패턴 분석 중'}</div>
-          {c.avg_return_flow?.length>0 && <MiniReturnChart returns={c.avg_return_flow} label="평균 등락률 흐름" />}
-          <div style={{ marginTop:12 }}>
-            <div style={{ fontSize:11, color:COLORS.textDim, marginBottom:6 }}>소속 종목</div>
-            <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
-              {c.members?.map((m,mi) => (
-                <span key={mi} style={{ fontSize:11, padding:'3px 10px', borderRadius:12, background:'#1a2234', border:`1px solid ${COLORS.cardBorder}` }}>
-                  {m.name}<span style={{color:COLORS.green,marginLeft:4}}>+{m.rise_pct}%</span>
-                  <span style={{color:COLORS.textDim,marginLeft:4}}>{m.surge_date}</span></span>
-              ))}
-            </div>
-          </div>
-          <div style={{ display:'flex', gap:20, marginTop:12, paddingTop:12, borderTop:`1px solid ${COLORS.cardBorder}`, fontSize:12 }}>
-            <span>평균 상승: <b style={{color:COLORS.red}}>+{c.avg_rise_pct}%</b></span>
-            <span>평균 기간: <b>{c.avg_rise_days}일</b></span>
+      clusters.map((c,ci) => (<div key={ci} style={{ background:COLORS.card, border:`1px solid ${COLORS.cardBorder}`, borderRadius:12, padding:18, marginBottom:12 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+          <div><span style={{ fontSize:11, background:COLORS.accentDim, color:COLORS.accent, padding:'2px 10px', borderRadius:12, fontWeight:600 }}>패턴 #{ci+1}</span><span style={{ fontSize:13, fontWeight:600, marginLeft:10 }}>{c.pattern_count}건 발견</span></div>
+          <div style={{ fontSize:12, color:COLORS.textDim }}>유사도 {c.avg_similarity?.toFixed(1)}%</div>
+        </div>
+        <div style={{ fontSize:13, color:COLORS.text, marginBottom:14, padding:10, background:'#0d1321', borderRadius:6, lineHeight:1.6 }}>{c.description||'패턴 분석 중'}</div>
+        {c.avg_return_flow?.length>0 && <MiniReturnChart returns={c.avg_return_flow} label="평균 등락률 흐름" />}
+        <div style={{ marginTop:12 }}>
+          <div style={{ fontSize:11, color:COLORS.textDim, marginBottom:6 }}>소속 종목</div>
+          <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+            {c.members?.map((m,mi) => (<span key={mi} style={{ fontSize:11, padding:'3px 10px', borderRadius:12, background:'#1a2234', border:`1px solid ${COLORS.cardBorder}` }}>{m.name}<span style={{color:COLORS.green,marginLeft:4}}>+{m.rise_pct}%</span><span style={{color:COLORS.textDim,marginLeft:4}}>{m.surge_date}</span></span>))}
           </div>
         </div>
-      ))
-    }
+        <div style={{ display:'flex', gap:20, marginTop:12, paddingTop:12, borderTop:`1px solid ${COLORS.cardBorder}`, fontSize:12 }}>
+          <span>평균 상승: <b style={{color:COLORS.red}}>+{c.avg_rise_pct}%</b></span><span>평균 기간: <b>{c.avg_rise_days}일</b></span>
+        </div>
+      </div>))}
   </div>);
 }
 
-// ━━━ Tab 1: 차트오버레이 ━━━
 function TabChart({ result }) {
   const patterns = result.all_patterns||[];
   if(patterns.length===0) return <div style={{textAlign:'center',padding:40,color:COLORS.textDim}}>차트를 표시할 패턴이 없습니다.</div>;
@@ -1063,56 +884,41 @@ function TabChart({ result }) {
     </div>
     <div style={{ fontSize:14, fontWeight:600, marginBottom:12 }}>🕯️ 개별 패턴 일봉</div>
     <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(340px, 1fr))', gap:12 }}>
-      {patterns.slice(0,12).map((p,i) => (
-        <div key={i} style={{ background:COLORS.card, border:`1px solid ${COLORS.cardBorder}`, borderRadius:10, padding:14 }}>
-          <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
-            <span style={{ fontSize:12, fontWeight:600 }}>{p.name} <span style={{color:COLORS.textDim}}>({p.code})</span></span>
-            <span style={{ fontSize:11, color:COLORS.green }}>+{p.surge?.rise_pct}% ({p.surge?.start_date})</span>
-          </div>
-          <MiniCandleChart candles={p.candles||[]} />
+      {patterns.slice(0,12).map((p,i) => (<div key={i} style={{ background:COLORS.card, border:`1px solid ${COLORS.cardBorder}`, borderRadius:10, padding:14 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
+          <span style={{ fontSize:12, fontWeight:600 }}>{p.name} <span style={{color:COLORS.textDim}}>({p.code})</span></span>
+          <span style={{ fontSize:11, color:COLORS.green }}>+{p.surge?.rise_pct}% ({p.surge?.start_date})</span>
         </div>
-      ))}
+        <MiniCandleChart candles={p.candles||[]} />
+      </div>))}
     </div>
   </div>);
 }
 
-// ━━━ Tab 2: 매수추천 ━━━
 function TabRecommend({ result }) {
   const recs = result.recommendations||[];
   return (<div>
     {recs.length===0 ? <div style={{textAlign:'center',padding:40,color:COLORS.textDim}}>매수 추천 데이터가 없습니다.</div> : (
       <div style={{ background:COLORS.card, border:`1px solid ${COLORS.cardBorder}`, borderRadius:12, overflow:'hidden' }}>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 90px 100px 80px', padding:'12px 18px', fontSize:11,
-          color:COLORS.textDim, fontWeight:600, borderBottom:`1px solid ${COLORS.cardBorder}`, background:'#0d1321' }}>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 90px 100px 80px', padding:'12px 18px', fontSize:11, color:COLORS.textDim, fontWeight:600, borderBottom:`1px solid ${COLORS.cardBorder}`, background:'#0d1321' }}>
           <span>종목</span><span style={{textAlign:'right'}}>현재가</span><span style={{textAlign:'center'}}>유사도</span><span style={{textAlign:'center'}}>시그널</span>
         </div>
         {recs.map((rec,i) => {
           const sc = rec.similarity>=65?COLORS.green:rec.similarity>=50?COLORS.yellow:rec.similarity>=40?COLORS.grayLight:COLORS.gray;
           const sb = rec.signal_code==='strong_buy'?COLORS.greenDim:rec.signal_code==='watch'?COLORS.yellowDim:'transparent';
-          return (
-            <div key={i} style={{ display:'grid', gridTemplateColumns:'1fr 90px 100px 80px', padding:'12px 18px',
-              alignItems:'center', borderBottom:`1px solid ${COLORS.cardBorder}`,
-              background:i%2===0?'transparent':'rgba(255,255,255,0.02)' }}>
-              <div><div style={{fontSize:13,fontWeight:600}}>{rec.name}</div><div style={{fontSize:11,color:COLORS.textDim}}>{rec.code}</div></div>
-              <div style={{textAlign:'right',fontSize:13,fontWeight:600}}>{fmt(rec.current_price)}</div>
-              <div style={{textAlign:'center'}}>
-                <div style={{display:'flex',alignItems:'center',gap:6,justifyContent:'center'}}>
-                  <div style={{width:50,height:6,background:'#1a2234',borderRadius:3,overflow:'hidden'}}>
-                    <div style={{width:`${Math.min(rec.similarity,100)}%`,height:'100%',background:sc,borderRadius:3}} /></div>
-                  <span style={{fontSize:12,fontWeight:700,color:sc}}>{rec.similarity}%</span></div>
-              </div>
-              <div style={{textAlign:'center',fontSize:11,fontWeight:600,padding:'3px 6px',borderRadius:6,background:sb}}>{rec.signal}</div>
-            </div>);
+          return (<div key={i} style={{ display:'grid', gridTemplateColumns:'1fr 90px 100px 80px', padding:'12px 18px', alignItems:'center', borderBottom:`1px solid ${COLORS.cardBorder}`, background:i%2===0?'transparent':'rgba(255,255,255,0.02)' }}>
+            <div><div style={{fontSize:13,fontWeight:600}}>{rec.name}</div><div style={{fontSize:11,color:COLORS.textDim}}>{rec.code}</div></div>
+            <div style={{textAlign:'right',fontSize:13,fontWeight:600}}>{fmt(rec.current_price)}</div>
+            <div style={{textAlign:'center'}}><div style={{display:'flex',alignItems:'center',gap:6,justifyContent:'center'}}><div style={{width:50,height:6,background:'#1a2234',borderRadius:3,overflow:'hidden'}}><div style={{width:`${Math.min(rec.similarity,100)}%`,height:'100%',background:sc,borderRadius:3}} /></div><span style={{fontSize:12,fontWeight:700,color:sc}}>{rec.similarity}%</span></div></div>
+            <div style={{textAlign:'center',fontSize:11,fontWeight:600,padding:'3px 6px',borderRadius:6,background:sb}}>{rec.signal}</div>
+          </div>);
         })}
       </div>
     )}
-    <div style={{ marginTop:16, padding:12, borderRadius:8, background:'rgba(245,158,11,0.08)',
-      border:'1px solid rgba(245,158,11,0.2)', fontSize:11, color:COLORS.yellow, lineHeight:1.6 }}>
-      ⚠️ 패턴 유사도는 과거 데이터 기반 통계이며, 미래 수익을 보장하지 않습니다.</div>
+    <div style={{ marginTop:16, padding:12, borderRadius:8, background:'rgba(245,158,11,0.08)', border:'1px solid rgba(245,158,11,0.2)', fontSize:11, color:COLORS.yellow, lineHeight:1.6 }}>⚠️ 패턴 유사도는 과거 데이터 기반 통계이며, 미래 수익을 보장하지 않습니다.</div>
   </div>);
 }
 
-// ━━━ 차트 컴포넌트들 ━━━
 function MiniReturnChart({ returns, label }) {
   if(!returns||returns.length===0) return null;
   const maxAbs=Math.max(...returns.map(Math.abs),1), W=300, H=60;
@@ -1121,8 +927,7 @@ function MiniReturnChart({ returns, label }) {
     {label && <div style={{fontSize:11,color:COLORS.textDim,marginBottom:4}}>{label}</div>}
     <svg width={W} height={H} style={{display:'block'}}>
       <line x1={0} y1={H/2} x2={W} y2={H/2} stroke={COLORS.cardBorder} strokeWidth={1}/>
-      {returns.map((r,i) => { const x=10+i*(barW+2), bH=(Math.abs(r)/maxAbs)*(H/2-4), y=r>=0?H/2-bH:H/2;
-        return <rect key={i} x={x} y={y} width={barW} height={Math.max(bH,1)} fill={r>=0?COLORS.red:COLORS.accent} rx={1} opacity={0.8}/>; })}
+      {returns.map((r,i) => { const x=10+i*(barW+2), bH=(Math.abs(r)/maxAbs)*(H/2-4), y=r>=0?H/2-bH:H/2; return <rect key={i} x={x} y={y} width={barW} height={Math.max(bH,1)} fill={r>=0?COLORS.red:COLORS.accent} rx={1} opacity={0.8}/>; })}
       <text x={10} y={H-1} fontSize={8} fill={COLORS.textDim}>D-{returns.length}</text>
       <text x={W-20} y={H-1} fontSize={8} fill={COLORS.textDim}>D-1</text>
     </svg>
@@ -1134,26 +939,17 @@ function OverlayChart({ patterns, dataKey, yLabel }) {
   const W=700, H=220, PAD=40, plotW=W-PAD*2, plotH=H-PAD*2;
   const palette=['#3b82f6','#ef4444','#10b981','#f59e0b','#8b5cf6','#ec4899','#14b8a6','#f97316','#6366f1','#06b6d4','#84cc16','#e11d48'];
   const allSeries=patterns.map(p=>p[dataKey]||[]);
-  const maxLen=Math.max(...allSeries.map(s=>s.length));
   const allVals=allSeries.flat(); if(allVals.length===0) return null;
   const minVal=Math.min(...allVals), maxVal=Math.max(...allVals), range=maxVal-minVal||1;
   const toX=(i,len)=>PAD+(i/Math.max(len-1,1))*plotW, toY=v=>PAD+(1-(v-minVal)/range)*plotH;
   return (
     <svg width={W} height={H} style={{display:'block',maxWidth:'100%'}}>
       <rect x={PAD} y={PAD} width={plotW} height={plotH} fill="rgba(13,19,33,0.5)" rx={4}/>
-      {[0,0.25,0.5,0.75,1].map((pct,i) => { const y=PAD+pct*plotH, val=maxVal-pct*range;
-        return (<g key={i}><line x1={PAD} y1={y} x2={PAD+plotW} y2={y} stroke={COLORS.cardBorder} strokeDasharray="3,3"/>
-          <text x={PAD-4} y={y+4} fontSize={9} fill={COLORS.textDim} textAnchor="end">{val.toFixed(1)}</text></g>); })}
+      {[0,0.25,0.5,0.75,1].map((pct,i) => { const y=PAD+pct*plotH, val=maxVal-pct*range; return (<g key={i}><line x1={PAD} y1={y} x2={PAD+plotW} y2={y} stroke={COLORS.cardBorder} strokeDasharray="3,3"/><text x={PAD-4} y={y+4} fontSize={9} fill={COLORS.textDim} textAnchor="end">{val.toFixed(1)}</text></g>); })}
       {dataKey==='returns'&&minVal<0&&maxVal>0 && <line x1={PAD} y1={toY(0)} x2={PAD+plotW} y2={toY(0)} stroke={COLORS.grayLight} strokeWidth={1} opacity={0.5}/>}
-      {allSeries.slice(0,12).map((s,si) => { if(s.length<2) return null;
-        const path=s.map((v,i)=>`${i===0?'M':'L'}${toX(i,s.length).toFixed(1)},${toY(v).toFixed(1)}`).join(' ');
-        return <path key={si} d={path} fill="none" stroke={palette[si%palette.length]} strokeWidth={1.5} opacity={0.7}/>; })}
-      <text x={12} y={PAD+plotH/2} fontSize={10} fill={COLORS.textDim} textAnchor="middle"
-        transform={`rotate(-90, 12, ${PAD+plotH/2})`}>{yLabel}</text>
-      {patterns.slice(0,8).map((p,i) => (
-        <g key={i} transform={`translate(${PAD+8+(i%4)*160}, ${PAD+8+Math.floor(i/4)*14})`}>
-          <rect width={10} height={3} fill={palette[i%palette.length]} rx={1}/>
-          <text x={14} y={4} fontSize={9} fill={COLORS.textDim}>{p.name}</text></g>))}
+      {allSeries.slice(0,12).map((s,si) => { if(s.length<2) return null; const path=s.map((v,i)=>`${i===0?'M':'L'}${toX(i,s.length).toFixed(1)},${toY(v).toFixed(1)}`).join(' '); return <path key={si} d={path} fill="none" stroke={palette[si%palette.length]} strokeWidth={1.5} opacity={0.7}/>; })}
+      <text x={12} y={PAD+plotH/2} fontSize={10} fill={COLORS.textDim} textAnchor="middle" transform={`rotate(-90, 12, ${PAD+plotH/2})`}>{yLabel}</text>
+      {patterns.slice(0,8).map((p,i) => (<g key={i} transform={`translate(${PAD+8+(i%4)*160}, ${PAD+8+Math.floor(i/4)*14})`}><rect width={10} height={3} fill={palette[i%palette.length]} rx={1}/><text x={14} y={4} fontSize={9} fill={COLORS.textDim}>{p.name}</text></g>))}
     </svg>);
 }
 
@@ -1163,11 +959,7 @@ function MiniCandleChart({ candles }) {
   const allP=candles.flatMap(c=>[c.high,c.low]).filter(p=>p>0); if(allP.length===0) return null;
   const minP=Math.min(...allP), maxP=Math.max(...allP), rP=maxP-minP||1;
   const cw=(W-10)/candles.length, toY=p=>5+(1-(p-minP)/rP)*(H-10);
-  return (
-    <svg width={W} height={H} style={{display:'block'}}>
-      {candles.map((c,i) => { const x=5+i*cw, isUp=c.close>=c.open, color=isUp?COLORS.red:COLORS.accent;
-        const bT=toY(Math.max(c.open,c.close)), bB=toY(Math.min(c.open,c.close)), bH=Math.max(bB-bT,1);
-        return (<g key={i}><line x1={x+cw/2} y1={toY(c.high)} x2={x+cw/2} y2={toY(c.low)} stroke={color} strokeWidth={0.8}/>
-          <rect x={x+1} y={bT} width={Math.max(cw-2,2)} height={bH} fill={color} rx={0.5}/></g>); })}
-    </svg>);
+  return (<svg width={W} height={H} style={{display:'block'}}>
+    {candles.map((c,i) => { const x=5+i*cw, isUp=c.close>=c.open, color=isUp?COLORS.red:COLORS.accent; const bT=toY(Math.max(c.open,c.close)), bB=toY(Math.min(c.open,c.close)), bH=Math.max(bB-bT,1); return (<g key={i}><line x1={x+cw/2} y1={toY(c.high)} x2={x+cw/2} y2={toY(c.low)} stroke={color} strokeWidth={0.8}/><rect x={x+1} y={bT} width={Math.max(cw-2,2)} height={bH} fill={color} rx={0.5}/></g>); })}
+  </svg>);
 }
