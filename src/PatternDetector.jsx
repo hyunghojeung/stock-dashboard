@@ -546,7 +546,7 @@ export default function PatternDetector() {
           </div>
           <div style={{ display:'flex', gap:4, marginBottom:16, background:COLORS.card, borderRadius:10,
             padding:4, border:`1px solid ${COLORS.cardBorder}` }}>
-            {['📊 공통 패턴','📈 차트 오버레이','🎯 매수 추천'].map((tab, i) => (
+            {['📊 공통 패턴','📈 차트 오버레이','🎯 매수 추천','💰 가상투자'].map((tab, i) => (
               <button key={i} onClick={() => setActiveTab(i)} style={{ flex:1, padding:'10px 0', fontSize:13,
                 fontWeight:600, border:'none', borderRadius:8, cursor:'pointer',
                 background:activeTab===i?COLORS.accentDim:'transparent',
@@ -556,6 +556,7 @@ export default function PatternDetector() {
           {activeTab===0 && <TabSummary result={result} />}
           {activeTab===1 && <TabChart result={result} />}
           {activeTab===2 && <TabRecommend result={result} />}
+          {activeTab===3 && <VirtualInvestTab recommendations={result.recommendations || []} />}
         </>)}
 
         {!result && !analyzing && (
