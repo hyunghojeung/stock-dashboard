@@ -197,6 +197,25 @@ export default function PatternDetector() {
   };
 
   // ━━━ 스캐너 기능 ━━━
+  const reloadScanFromDB = async () => {
+    try {
+      setScanSource('loading');
+      const res = await fetch(`${API_BASE}/api/scanner/latest`);
+      const data = await res.json();
+      if (data.status === 'done' && data.stocks?.length > 0) {
+        setScanResultWithCache(data);
+        setScanDate(data.scan_date || '');
+        setScanSource(data.source || 'db');
+      } else {
+        setScanSource('');
+        alert('저장된 스캔 결과가 없습니다. 스캔을 먼저 실행해주세요.');
+      }
+    } catch (e) {
+      console.error('DB 리로드 실패:', e);
+      setScanSource('');
+    }
+  };
+
   const startScan = async () => {
     setScanError(''); setScanResult(null); setScanning(true);
     setScanProgress(0); setScanMsg('스캔 요청 중...'); setSelectedScanStocks(new Set());
@@ -446,7 +465,7 @@ export default function PatternDetector() {
           toggleScanStock={toggleScanStock} selectAllVisible={selectAllVisible}
           setSelectedScanStocks={setSelectedScanStocks} sendToAnalyzer={sendToAnalyzer}
           getFilteredScanResults={getFilteredScanResults}
-          scanDate={scanDate} scanSource={scanSource} />}
+          scanDate={scanDate} scanSource={scanSource} onReload={reloadScanFromDB} />}
 
         {!scanResult && !scanning && !loadingPrev && (
           <div style={{ background:COLORS.card, border:`1px solid ${COLORS.cardBorder}`,
@@ -810,14 +829,19 @@ function SettingsPanel(p) {
   </div>);
 }
 
-function ScanResultView({ scanResult, scanSortKey, setScanSortKey, scanFilterLevel, setScanFilterLevel, selectedScanStocks, toggleScanStock, selectAllVisible, setSelectedScanStocks, sendToAnalyzer, getFilteredScanResults, scanDate, scanSource }) {
+function ScanResultView({ scanResult, scanSortKey, setScanSortKey, scanFilterLevel, setScanFilterLevel, selectedScanStocks, toggleScanStock, selectAllVisible, setSelectedScanStocks, sendToAnalyzer, getFilteredScanResults, scanDate, scanSource, onReload }) {
   const stats = scanResult.stats || {};
   const filtered = getFilteredScanResults();
   const fmtDate = (iso) => { if (!iso) return ''; try { const d = new Date(iso); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; } catch { return iso; } };
 
   return (<div>
-    {scanDate && (<div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'10px 16px', marginBottom:12, borderRadius:8, background: scanSource==='db' ? 'rgba(139,92,246,0.1)' : 'rgba(16,185,129,0.1)', border: `1px solid ${scanSource==='db' ? 'rgba(139,92,246,0.2)' : 'rgba(16,185,129,0.2)'}` }}>
-      <span style={{ fontSize:12, color: scanSource==='db' ? COLORS.purple : COLORS.green }}>{scanSource==='db' ? '💾 DB에서 복원된 결과' : '✅ 방금 스캔한 결과'}</span>
+    {scanDate && (<div onClick={onReload} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'10px 16px', marginBottom:12, borderRadius:8, background: scanSource==='db' ? 'rgba(139,92,246,0.1)' : scanSource==='loading' ? 'rgba(100,100,100,0.1)' : 'rgba(16,185,129,0.1)', border: `1px solid ${scanSource==='db' ? 'rgba(139,92,246,0.2)' : scanSource==='loading' ? 'rgba(100,100,100,0.2)' : 'rgba(16,185,129,0.2)'}`, cursor:'pointer', transition:'all 0.2s' }}
+      onMouseEnter={e => e.currentTarget.style.opacity='0.8'}
+      onMouseLeave={e => e.currentTarget.style.opacity='1'}>
+      <span style={{ fontSize:12, color: scanSource==='db' ? COLORS.purple : scanSource==='loading' ? '#888' : COLORS.green }}>
+        {scanSource==='loading' ? '⏳ DB에서 불러오는 중...' : scanSource==='db' ? '💾 DB에서 복원된 결과' : '✅ 방금 스캔한 결과'}
+        <span style={{ marginLeft:8, fontSize:10, color:COLORS.textDim }}>클릭하면 DB에서 다시 불러옵니다</span>
+      </span>
       <span style={{ fontSize:12, color:COLORS.textDim }}>마지막 스캔: <b style={{ color:COLORS.text }}>{fmtDate(scanDate)}</b>{scanResult.market && <span> · {scanResult.market==='ALL'?'전체':scanResult.market}</span>}</span>
     </div>)}
     <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(130px, 1fr))', gap:12, marginBottom:16 }}>
