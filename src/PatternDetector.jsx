@@ -591,13 +591,28 @@ export default function PatternDetector() {
               </div>
             ))}
           </div>
-          <div style={{ display:'flex', gap:4, marginBottom:16, background:COLORS.card, borderRadius:10,
-            padding:4, border:`1px solid ${COLORS.cardBorder}` }}>
-            {['📊 공통 패턴','📈 차트 오버레이','🎯 매수 추천','💰 가상투자'].map((tab, i) => (
-              <button key={i} onClick={() => setActiveTab(i)} style={{ flex:1, padding:'10px 0', fontSize:13,
-                fontWeight:600, border:'none', borderRadius:8, cursor:'pointer',
-                background:activeTab===i?COLORS.accentDim:'transparent',
-                color:activeTab===i?COLORS.accent:COLORS.textDim }}>{tab}</button>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap:10, marginBottom:20 }}>
+            {[
+              {label:'공통 패턴', icon:'📊', color:'#4fc3f7'},
+              {label:'차트 오버레이', icon:'📈', color:'#ffd54f'},
+              {label:'매수 추천', icon:'🎯', color:'#4cff8b'},
+              {label:'가상투자', icon:'💰', color:'#ff9800'},
+            ].map((tab, i) => (
+              <button key={i} onClick={() => setActiveTab(i)} style={{
+                padding:'22px 10px', cursor:'pointer', transition:'all 0.2s',
+                borderRadius:14, textAlign:'center', display:'flex', flexDirection:'column', alignItems:'center', gap:6,
+                border: activeTab===i ? `3px solid ${tab.color}` : `2px solid ${tab.color}55`,
+                background: activeTab===i ? `${tab.color}25` : `${tab.color}08`,
+                color: activeTab===i ? tab.color : `${tab.color}aa`,
+                boxShadow: activeTab===i ? `0 0 20px ${tab.color}40, inset 0 0 20px ${tab.color}10` : 'none',
+              }}
+              onMouseEnter={e => { if(activeTab!==i) { e.currentTarget.style.background=`${tab.color}18`; e.currentTarget.style.borderColor=`${tab.color}99`; e.currentTarget.style.boxShadow=`0 0 12px ${tab.color}25`; }}}
+              onMouseLeave={e => { if(activeTab!==i) { e.currentTarget.style.background=`${tab.color}08`; e.currentTarget.style.borderColor=`${tab.color}55`; e.currentTarget.style.boxShadow='none'; }}}
+              >
+                <span style={{ fontSize:28 }}>{tab.icon}</span>
+                <span style={{ fontSize:16, fontWeight:800, letterSpacing:'0.5px' }}>{tab.label}</span>
+                {activeTab===i && <span style={{ fontSize:10, opacity:0.7, marginTop:2 }}>● 선택됨</span>}
+              </button>
             ))}
           </div>
           {activeTab===0 && <TabSummary result={result} />}

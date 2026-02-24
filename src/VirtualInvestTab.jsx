@@ -263,11 +263,14 @@ export default function VirtualInvestTab({ recommendations = [] }) {
   // 서브탭: backtest | realtime
   const [subTab, setSubTab] = useState("backtest");
 
-  // 매매 파라미터
-  const [takeProfit, setTakeProfit] = useState(7);
-  const [stopLoss, setStopLoss] = useState(3);
-  const [maxHoldDays, setMaxHoldDays] = useState(10);
-  const [activePreset, setActivePreset] = useState("standard");
+  // 매매 파라미터 (5개 프리셋 각각 독립)
+  const [presetParams, setPresetParams] = useState({
+    aggressive:   { tp: 10, sl: 5, days: 5 },
+    standard:     { tp: 7,  sl: 3, days: 10 },
+    conservative: { tp: 5,  sl: 2, days: 15 },
+    longterm:     { tp: 15, sl: 5, days: 30 },
+    custom:       { tp: 7,  sl: 3, days: 10 },
+  });
 
   // 실행 상태
   const [running, setRunning] = useState(false);
@@ -292,24 +295,24 @@ export default function VirtualInvestTab({ recommendations = [] }) {
 
   const pollRef = useRef(null);
 
-  // ── 프리셋 클릭 ──
-  const applyPreset = (preset) => {
-    setActivePreset(preset.key);
-    if (preset.key !== "custom") {
-      setTakeProfit(preset.tp);
-      setStopLoss(preset.sl);
-      setMaxHoldDays(preset.days);
-    }
+  // ── 프리셋 파라미터 변경 ──
+  const updateParam = (presetKey, field, value) => {
+    setPresetParams(prev => ({
+      ...prev,
+      [presetKey]: { ...prev[presetKey], [field]: value },
+    }));
   };
 
-  // ── 슬라이더 변경 시 커스텀으로 전환 ──
-  const handleSlider = (setter, value) => {
-    setter(value);
-    setActivePreset("custom");
+  // ── 프리셋 초기값으로 리셋 ──
+  const resetPreset = (presetKey) => {
+    const p = PRESETS.find(x => x.key === presetKey);
+    if (p) updateParam(presetKey, "tp", p.tp);
+    if (p) updateParam(presetKey, "sl", p.sl);
+    if (p) updateParam(presetKey, "days", p.days);
   };
 
-  // ── 손익비 계산 ──
-  const riskReward = stopLoss > 0 ? (takeProfit / stopLoss).toFixed(2) : "∞";
+  // ── 손익비 계산 (커스텀 기준) ──
+  const riskReward = presetParams.custom.sl > 0 ? (presetParams.custom.tp / presetParams.custom.sl).toFixed(2) : "∞";
 
   // ── 투자 대상 종목 (매수추천에서 전달받은 종목) ──
   const stocks = recommendations.length > 0
@@ -341,9 +344,9 @@ export default function VirtualInvestTab({ recommendations = [] }) {
         })),
         capital: 1000000,
         custom_params: {
-          take_profit_pct: takeProfit,
-          stop_loss_pct: stopLoss,
-          max_hold_days: maxHoldDays,
+          take_profit_pct: presetParams.custom.tp,
+          stop_loss_pct: presetParams.custom.sl,
+          max_hold_days: presetParams.custom.days,
         },
       };
 
@@ -408,9 +411,9 @@ export default function VirtualInvestTab({ recommendations = [] }) {
           buy_price: s.buy_price || s.current_price || 0,
         })),
         capital: 1000000,
-        take_profit_pct: takeProfit,
-        stop_loss_pct: stopLoss,
-        max_hold_days: maxHoldDays,
+        take_profit_pct: presetParams.custom.tp,
+        stop_loss_pct: presetParams.custom.sl,
+        max_hold_days: presetParams.custom.days,
       };
 
       const res = await fetch(`${API_BASE}/api/virtual-invest/realtime/start`, {
@@ -520,65 +523,71 @@ export default function VirtualInvestTab({ recommendations = [] }) {
         )}
       </div>
 
-      {/* 매매 설정 */}
+      {/* 매매 설정 — 5개 전략 동시 표시 */}
       <div style={S.card}>
-        <div style={{ fontSize: "13px", fontWeight: 600, marginBottom: "10px" }}>
-          ⚙️ 매매 설정
+        <div style={{ fontSize: "13px", fontWeight: 600, marginBottom: "14px" }}>
+          ⚙️ 매매 설정 — 전략별 파라미터
         </div>
 
-        {/* 프리셋 버튼 */}
-        <div style={{ display: "flex", gap: "6px", marginBottom: "14px", flexWrap: "wrap" }}>
-          {PRESETS.filter(p => p.key !== "custom" && p.key !== "smart").map(p => (
-            <button key={p.key} style={S.presetBtn(activePreset === p.key)} onClick={() => applyPreset(p)}>
-              {p.name}
-            </button>
-          ))}
-          <button style={S.presetBtn(activePreset === "custom")} onClick={() => setActivePreset("custom")}>
-            🎛️ 커스텀
-          </button>
-        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
+          {PRESETS.filter(p => p.key !== "smart").map(preset => {
+            const params = presetParams[preset.key] || { tp: preset.tp, sl: preset.sl, days: preset.days };
+            const rr = params.sl > 0 ? (params.tp / params.sl).toFixed(2) : "0";
 
-        {/* 슬라이더 */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "16px" }}>
-          <div>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-              <span style={S.dimText}>익절 / Take Profit</span>
-              <span style={{ ...S.mono, color: "#ff5252", fontSize: 14, fontWeight: 700 }}>{takeProfit}%</span>
-            </div>
-            <input type="range" min="3" max="20" step="1" value={takeProfit} style={S.slider}
-              onChange={e => handleSlider(setTakeProfit, Number(e.target.value))} />
-            <div style={{ display: "flex", justifyContent: "space-between", ...S.dimText, fontSize: 9 }}>
-              <span>3%</span><span>20%</span>
-            </div>
-          </div>
-          <div>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-              <span style={S.dimText}>손절 / Stop Loss</span>
-              <span style={{ ...S.mono, color: "#4488ff", fontSize: 14, fontWeight: 700 }}>{stopLoss}%</span>
-            </div>
-            <input type="range" min="1" max="10" step="0.5" value={stopLoss} style={S.slider}
-              onChange={e => handleSlider(setStopLoss, Number(e.target.value))} />
-            <div style={{ display: "flex", justifyContent: "space-between", ...S.dimText, fontSize: 9 }}>
-              <span>1%</span><span>10%</span>
-            </div>
-          </div>
-          <div>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-              <span style={S.dimText}>최대 보유일</span>
-              <span style={{ ...S.mono, color: "#ffd54f", fontSize: 14, fontWeight: 700 }}>{maxHoldDays}일</span>
-            </div>
-            <input type="range" min="3" max="30" step="1" value={maxHoldDays} style={S.slider}
-              onChange={e => handleSlider(setMaxHoldDays, Number(e.target.value))} />
-            <div style={{ display: "flex", justifyContent: "space-between", ...S.dimText, fontSize: 9 }}>
-              <span>3일</span><span>30일</span>
-            </div>
-          </div>
-        </div>
+            return (
+              <div key={preset.key} style={{
+                background: "rgba(15,22,48,0.7)", borderRadius: 10, padding: "14px 16px",
+                border: `1px solid ${preset.color}33`,
+              }}>
+                {/* 전략 헤더 */}
+                <div style={{
+                  fontSize: 13, fontWeight: 700, color: preset.color, marginBottom: 14,
+                  paddingBottom: 8, borderBottom: `1px solid ${preset.color}22`,
+                }}>
+                  {preset.name}
+                </div>
 
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "10px" }}>
-          <span style={{ ...S.dimText }}>
-            손익비: <span style={{ ...S.mono, color: "#e0e6f0", fontWeight: 600 }}>{riskReward} : 1</span>
-          </span>
+                {/* 파라미터 3개 */}
+                {[
+                  { label: "익절", en: "Take Profit", field: "tp", value: params.tp, unit: "%", color: "#FF0000",
+                    min: 3, max: 20, step: 1 },
+                  { label: "손절", en: "Stop Loss", field: "sl", value: params.sl, unit: "%", color: "#0050FF", neg: true,
+                    min: 1, max: 10, step: 0.5 },
+                  { label: "보유일", en: "Max Hold", field: "days", value: params.days, unit: "일", color: "#ffd54f",
+                    min: 3, max: 30, step: 1 },
+                ].map((p, pi) => (
+                  <div key={pi} style={{ marginBottom: pi < 2 ? 14 : 0 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                      <span style={{ color: "#8899aa", fontSize: 12 }}>
+                        {p.label} <span style={{ color: "#556677", fontSize: 10 }}>{p.en}</span>
+                      </span>
+                      <span style={{ fontFamily: "monospace", color: p.color, fontSize: 15, fontWeight: 700 }}>
+                        {p.neg ? "-" : ""}{p.value}{p.unit}
+                      </span>
+                    </div>
+                    <input type="range" min={p.min} max={p.max} step={p.step} value={p.value}
+                      style={{
+                        ...S.slider, height: 5, borderRadius: 5,
+                        background: `linear-gradient(to right, ${p.color}60 ${((p.value - p.min) / (p.max - p.min)) * 100}%, rgba(100,140,200,0.2) ${((p.value - p.min) / (p.max - p.min)) * 100}%)`,
+                        accentColor: p.color,
+                      }}
+                      onChange={e => updateParam(preset.key, p.field, Number(e.target.value))} />
+                    <div style={{ display: "flex", justifyContent: "space-between", color: "#556677", fontSize: 9, marginTop: 3 }}>
+                      <span>{p.neg ? `-${p.max}` : p.min}{p.unit}</span>
+                      <span>{p.neg ? `-${p.min}` : p.max}{p.unit}</span>
+                    </div>
+                  </div>
+                ))}
+
+                {/* 손익비 */}
+                <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px solid rgba(100,140,200,0.1)`,
+                  display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ color: "#556677", fontSize: 11 }}>손익비</span>
+                  <span style={{ fontFamily: "monospace", color: "#e0e6f0", fontSize: 13, fontWeight: 600 }}>{rr} : 1</span>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -1104,7 +1113,7 @@ function TradeCandleChart({ candles, trade }) {
     if (i % dateStep === 0 || isBuy || isSell) {
       const x = toX(i) + cw / 2;
       svg.push(<text key={`dt-${i}`} x={x} y={TOTAL_H - 8}
-        fill={isBuy ? "#4cff8b" : isSell ? "#ff5252" : "#c0c8d8"} fontSize={isBuy || isSell ? 11 : 10}
+        fill={isBuy ? "#00E676" : isSell ? "#FFD600" : "#c0c8d8"} fontSize={isBuy || isSell ? 11 : 10}
         fontFamily="monospace" textAnchor="middle" fontWeight={isBuy || isSell ? 700 : 400}>{fDate(c.date)}</text>);
     }
   });
@@ -1114,22 +1123,22 @@ function TradeCandleChart({ candles, trade }) {
     stroke="rgba(50,70,100,0.3)" />);
   svg.push(<text key="vol-lbl" x={PAD.l - 8} y={volBase - H_VOL + 12} fill="#8899aa" fontSize={9} fontFamily="monospace" textAnchor="end">VOL</text>);
 
-  // ── 거래량 바 ──
+  // ── 거래량 바 (영웅문 색상) ──
   vis.forEach((c, i) => {
     const x = toX(i);
     const isUp = c.close >= c.open;
-    const color = isUp ? "#ff4444" : "#4488ff";
+    const color = isUp ? "#FF0000" : "#0050FF";
     const barH = Math.max(((c.volume || 0) / maxVol) * H_VOL, 1);
     svg.push(<rect key={`vol-${i}`} x={x + 1} y={volBase - barH}
       width={Math.max(cw - 2, 2)} height={barH} fill={color} opacity={0.25} rx={1} />);
   });
 
-  // ── 캔들 (클리핑 적용) ──
+  // ── 캔들 (영웅문 색상: 양봉 빨강 / 음봉 파랑) ──
   const candleElements = [];
   vis.forEach((c, i) => {
     const x = toX(i);
     const isUp = c.close >= c.open;
-    const color = isUp ? "#ff4444" : "#4488ff";
+    const color = isUp ? "#FF0000" : "#0050FF";
     const bodyTop = toY(Math.max(c.open, c.close));
     const bodyBot = toY(Math.min(c.open, c.close));
     const bodyH = Math.max(bodyBot - bodyTop, 1.5);
@@ -1159,7 +1168,7 @@ function TradeCandleChart({ candles, trade }) {
   if (trade.buy_price > 0 && trade.buy_price >= pLow && trade.buy_price <= pHigh) {
     const bpY = toY(trade.buy_price);
     svg.push(<line key="bp-line" x1={PAD.l} y1={bpY} x2={W - PAD.r} y2={bpY}
-      stroke="#4cff8b" strokeWidth={1} strokeDasharray="8,4" opacity={0.3} />);
+      stroke="#00E676" strokeWidth={1} strokeDasharray="8,4" opacity={0.3} />);
   }
 
   // ── 현재가 수평선 ──
@@ -1172,33 +1181,33 @@ function TradeCandleChart({ candles, trade }) {
   svg.push(<text key="cur-txt" x={W - PAD.r - 37} y={lastY + 4} fill="#ffd54f" fontSize={11}
     fontFamily="monospace" textAnchor="middle" fontWeight={600}>{Math.round(lastPrice).toLocaleString()}</text>);
 
-  // ── 매수 마커 (▲ 녹색) ──
+  // ── 매수 마커 (▲ 밝은 초록) ──
   if (chartBuyIdx >= 0 && chartBuyIdx < vis.length) {
     const bx = toX(chartBuyIdx) + cw / 2;
     const by = toY(vis[chartBuyIdx].low) + 18;
     svg.push(
       <g key="buy-m">
-        <line x1={bx} y1={PAD.t} x2={bx} y2={PAD.t + H_CHART} stroke="#4cff8b" strokeWidth={1.5} strokeDasharray="4,3" opacity={0.5} />
-        <polygon points={`${bx},${by - 14} ${bx - 8},${by} ${bx + 8},${by}`} fill="#4cff8b" />
-        <rect x={bx - 44} y={by + 4} width={88} height={18} fill="rgba(76,255,139,0.15)" rx={4} />
-        <text x={bx} y={by + 16} fill="#4cff8b" fontSize={11} fontFamily="sans-serif" textAnchor="middle" fontWeight={700}>
+        <line x1={bx} y1={PAD.t} x2={bx} y2={PAD.t + H_CHART} stroke="#00E676" strokeWidth={1.5} strokeDasharray="4,3" opacity={0.5} />
+        <polygon points={`${bx},${by - 14} ${bx - 8},${by} ${bx + 8},${by}`} fill="#00E676" />
+        <rect x={bx - 44} y={by + 4} width={88} height={18} fill="rgba(0,230,118,0.15)" rx={4} />
+        <text x={bx} y={by + 16} fill="#00E676" fontSize={11} fontFamily="sans-serif" textAnchor="middle" fontWeight={700}>
           매수 {Math.round(trade.buy_price).toLocaleString()}
         </text>
       </g>
     );
   }
 
-  // ── 매도 마커 (▼) ──
+  // ── 매도 마커 (▼ 금색 — 캔들과 구분) ──
   if (chartSellIdx >= 0 && chartSellIdx < vis.length) {
     const sx = toX(chartSellIdx) + cw / 2;
     const sy = toY(vis[chartSellIdx].high) - 8;
-    const sellColor = trade.profit_pct >= 0 ? "#ff5252" : "#4488ff";
+    const sellColor = "#FFD600";
     const rLabel = trade.result === "익절✅" ? "익절" : trade.result === "추적✅" ? "추적" : trade.result === "손절❌" ? "손절" : "만기";
     svg.push(
       <g key="sell-m">
         <line x1={sx} y1={PAD.t} x2={sx} y2={PAD.t + H_CHART} stroke={sellColor} strokeWidth={1.5} strokeDasharray="4,3" opacity={0.5} />
         <polygon points={`${sx},${sy + 14} ${sx - 8},${sy} ${sx + 8},${sy}`} fill={sellColor} />
-        <rect x={sx - 44} y={sy - 22} width={88} height={18} fill={`${sellColor}20`} rx={4} />
+        <rect x={sx - 44} y={sy - 22} width={88} height={18} fill="rgba(255,214,0,0.15)" rx={4} />
         <text x={sx} y={sy - 9} fill={sellColor} fontSize={11} fontFamily="sans-serif" textAnchor="middle" fontWeight={700}>
           {rLabel} {Math.round(trade.sell_price).toLocaleString()}
         </text>
@@ -1207,7 +1216,7 @@ function TradeCandleChart({ candles, trade }) {
   }
 
   // ── 헤더 ──
-  const profitColor = trade.profit_pct >= 0 ? "#ff5252" : "#4488ff";
+  const profitColor = trade.profit_pct >= 0 ? "#FF0000" : "#0050FF";
   const profitSign = trade.profit_pct >= 0 ? "+" : "";
   const headerBuyDate = chartBuyIdx >= 0 ? fDateFull(vis[chartBuyIdx].date) : fDateFull(trade.buy_date) || "-";
   const headerSellDate = chartSellIdx >= 0 ? fDateFull(vis[chartSellIdx].date) : fDateFull(trade.sell_date) || "-";
@@ -1218,20 +1227,20 @@ function TradeCandleChart({ candles, trade }) {
         <div style={{ fontSize: 13, fontWeight: 700 }}>
           🕯️ {trade.stock_name}
           <span style={{ color: "#778899", fontSize: 11, marginLeft: 6 }}>({trade.stock_code})</span>
-          <span style={{ color: "#4cff8b", fontSize: 11, marginLeft: 10 }}>매수 {headerBuyDate}</span>
+          <span style={{ color: "#00E676", fontSize: 11, marginLeft: 10 }}>매수 {headerBuyDate}</span>
           <span style={{ color: "#8899aa", fontSize: 11, marginLeft: 4 }}>→</span>
-          <span style={{ color: profitColor, fontSize: 11, marginLeft: 4 }}>매도 {headerSellDate}</span>
+          <span style={{ color: "#FFD600", fontSize: 11, marginLeft: 4 }}>매도 {headerSellDate}</span>
           <span style={{ color: profitColor, fontSize: 11, marginLeft: 8, fontWeight: 700 }}>
             {profitSign}{trade.profit_pct?.toFixed(1)}% ({trade.hold_days}일)
           </span>
         </div>
         <div style={{ display: "flex", gap: 12, fontSize: 11, flexWrap: "wrap" }}>
-          <span><span style={{ color: "#ff4444" }}>■</span> 양봉</span>
-          <span><span style={{ color: "#4488ff" }}>■</span> 음봉</span>
+          <span><span style={{ color: "#FF0000" }}>■</span> 양봉</span>
+          <span><span style={{ color: "#0050FF" }}>■</span> 음봉</span>
           <span style={{ color: "#ffcc00" }}>── MA5</span>
           <span style={{ color: "#ff6699" }}>── MA20</span>
-          <span><span style={{ color: "#4cff8b" }}>▲</span> 매수</span>
-          <span><span style={{ color: profitColor }}>▼</span> 매도</span>
+          <span><span style={{ color: "#00E676" }}>▲</span> 매수</span>
+          <span><span style={{ color: "#FFD600" }}>▼</span> 매도</span>
           <span style={{ color: "#ce93d8" }}>■ DTW</span>
         </div>
       </div>
