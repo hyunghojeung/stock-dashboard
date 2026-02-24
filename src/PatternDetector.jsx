@@ -10,6 +10,7 @@
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import VirtualInvestTab from "./VirtualInvestTab";
 
 const API_BASE = "https://web-production-139e9.up.railway.app";
 
