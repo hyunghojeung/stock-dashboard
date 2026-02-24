@@ -1005,8 +1005,9 @@ function TradeCandleChart({ candles, trade }) {
     sellIdx = Math.min(buyIdx + trade.hold_days, candles.length - 1);
   }
 
-  // ── 표시 범위: 매수 30일 전 ~ 매도 30일 후 ──
-  const PAD_BEFORE = 30, PAD_AFTER = 30;
+  // ── 표시 범위: DTW시작(매수-30) 앞 30일 ~ 매도 30일 후 ──
+  // DTW 구간 = 매수 30일 전 ~ 매수일, 그 앞에 30일 더 = 총 60일 전
+  const PAD_BEFORE = 60, PAD_AFTER = 30;
   const refBuy = buyIdx >= 0 ? buyIdx : Math.floor(candles.length * 0.5);
   const refSell = sellIdx >= 0 ? sellIdx : refBuy + (trade.hold_days || 5);
   const startIdx = Math.max(0, refBuy - PAD_BEFORE);
