@@ -1004,8 +1004,17 @@ function TradeCandleChart({ candles, trade }) {
   const plotW = W - PAD.l - PAD.r;
   const cw = plotW / vis.length;
 
-  // ── 가격 범위 (8% 패딩) ──
-  const allP = vis.flatMap(c => [c.high, c.low]).filter(p => p > 0);
+  // ── 가격 범위: 매매 구간 중심으로 Y축 설정 ──
+  // 세력주는 30일 범위에서 주가가 수배 급변 → 전체 범위 쓰면 매매 구간 봉이 안 보임
+  // 해결: 매매 구간 ±10일의 가격으로 Y축 계산
+  let focusCandles = vis;
+  if (chartBuyIdx >= 0) {
+    const fs = Math.max(0, chartBuyIdx - 10);
+    const fe = Math.min(vis.length - 1, (chartSellIdx >= 0 ? chartSellIdx : chartBuyIdx) + 10);
+    const focused = vis.slice(fs, fe + 1);
+    if (focused.length >= 3) focusCandles = focused;
+  }
+  const allP = focusCandles.flatMap(c => [c.high, c.low]).filter(p => p > 0);
   const pMin = Math.min(...allP), pMax = Math.max(...allP);
   const pPad = (pMax - pMin) * 0.08 || 100;
   const pLow = pMin - pPad, pHigh = pMax + pPad, pRange = pHigh - pLow || 1;
@@ -1032,6 +1041,15 @@ function TradeCandleChart({ candles, trade }) {
 
   // ── 배경 ──
   svg.push(<rect key="bg" x={0} y={0} width={W} height={TOTAL_H} fill="rgba(8,15,30,0.95)" rx={8} />);
+
+  // ── 클리핑 영역 (차트 밖 넘침 방지) ──
+  svg.push(
+    <defs key="clip-defs">
+      <clipPath id="chart-clip">
+        <rect x={PAD.l} y={PAD.t} width={plotW} height={H_CHART} />
+      </clipPath>
+    </defs>
+  );
 
   // ── DTW 패턴 감지 구간 (매수 30일 전 ~ 매수일) ──
   if (chartBuyIdx >= 0) {
@@ -1094,7 +1112,8 @@ function TradeCandleChart({ candles, trade }) {
       width={Math.max(cw - 2, 2)} height={barH} fill={color} opacity={0.25} rx={1} />);
   });
 
-  // ── 캔들 ──
+  // ── 캔들 (클리핑 적용) ──
+  const candleElements = [];
   vis.forEach((c, i) => {
     const x = toX(i);
     const isUp = c.close >= c.open;
@@ -1103,7 +1122,7 @@ function TradeCandleChart({ candles, trade }) {
     const bodyBot = toY(Math.min(c.open, c.close));
     const bodyH = Math.max(bodyBot - bodyTop, 1.5);
     const cx = x + cw / 2;
-    svg.push(
+    candleElements.push(
       <g key={`c-${i}`}>
         <line x1={cx} y1={toY(c.high)} x2={cx} y2={toY(c.low)} stroke={color} strokeWidth={1} />
         <rect x={x + 2} y={bodyTop} width={Math.max(cw - 4, 3)} height={bodyH} fill={color} rx={1} />
@@ -1114,12 +1133,15 @@ function TradeCandleChart({ candles, trade }) {
   // ── MA5 (노란색) ──
   let ma5d = "";
   ma5.forEach((v, i) => { if (v !== null) ma5d += (ma5d ? "L" : "M") + `${toX(i) + cw / 2},${toY(v)} `; });
-  if (ma5d) svg.push(<path key="ma5" d={ma5d} fill="none" stroke="#ffcc00" strokeWidth={1.5} opacity={0.8} />);
+  if (ma5d) candleElements.push(<path key="ma5" d={ma5d} fill="none" stroke="#ffcc00" strokeWidth={1.5} opacity={0.8} />);
 
   // ── MA20 (핑크) ──
   let ma20d = "";
   ma20.forEach((v, i) => { if (v !== null) ma20d += (ma20d ? "L" : "M") + `${toX(i) + cw / 2},${toY(v)} `; });
-  if (ma20d) svg.push(<path key="ma20" d={ma20d} fill="none" stroke="#ff6699" strokeWidth={1.5} opacity={0.7} />);
+  if (ma20d) candleElements.push(<path key="ma20" d={ma20d} fill="none" stroke="#ff6699" strokeWidth={1.5} opacity={0.7} />);
+
+  // 클리핑 그룹으로 감싸서 차트 영역 밖 넘침 방지
+  svg.push(<g key="clipped-chart" clipPath="url(#chart-clip)">{candleElements}</g>);
 
   // ── 매수가 수평선 ──
   if (trade.buy_price > 0 && trade.buy_price >= pLow && trade.buy_price <= pHigh) {
