@@ -232,7 +232,7 @@ export default function PatternDetector() {
     setStocks(prev => {
       const merged = [...prev];
       for (const ns of selected) {
-        if (!merged.find(s => s.code === ns.code))
+        if (!merged.find(s => s.code === ns.code) && merged.length < 20)
           merged.push({ code: ns.code, name: ns.name });
       }
       return merged;
@@ -256,13 +256,13 @@ export default function PatternDetector() {
   const toggleScanStock = (code) => {
     setSelectedScanStocks(prev => {
       const next = new Set(prev);
-      if (next.has(code)) next.delete(code); else next.add(code);
+      if (next.has(code)) next.delete(code); else if (next.size < 20) next.add(code);
       return next;
     });
   };
 
   const selectAllVisible = () => {
-    setSelectedScanStocks(new Set(getFilteredScanResults().map(s => s.code)));
+    setSelectedScanStocks(new Set(getFilteredScanResults().slice(0, 20).map(s => s.code)));
   };
 
   // ━━━ 분석기 기능 ━━━
@@ -289,7 +289,7 @@ export default function PatternDetector() {
 
   const addStock = (code, name) => {
     if (stocks.find(s => s.code === code)) return;
-    if (stocks.length >= 100) { alert('최대 100개까지 추가 가능합니다.'); return; }
+    if (stocks.length >= 20) { alert('최대 20개까지 추가 가능합니다.'); return; }
     setStocks(prev => [...prev, { code, name }]); setSearchKeyword(''); setShowDropdown(false);
   };
   const removeStock = (code) => setStocks(prev => prev.filter(s => s.code !== code));
@@ -620,7 +620,7 @@ function WorkflowGuide() {
               결과 테이블 표시:<br/>
               <span style={{ marginLeft: 16 }}>🔴 세력 의심 (점수 70↑) · 🟡 주의 필요 (45↑) · 🟢 일반 급등</span><br/>
               {arrowDown}
-              관심 종목 체크 (전체 선택 가능)<br/>
+              관심 종목 체크 (최대 20개)<br/>
               {arrowDown}
               <b style={{ color: COLORS.accent }}>[🔬 선택 종목 패턴분석]</b> 클릭 → 자동으로 패턴 분석기로 이동
             </div>
