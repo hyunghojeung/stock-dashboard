@@ -827,11 +827,20 @@ export default function VirtualInvestTab({ recommendations = [] }) {
 
           {/* 전략별 탭 버튼 (종목 상세 빠른 전환) */}
           {!expandedStrategy && (
-            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "10px" }}>
               {(result.rankings || []).map(r => (
-                <button key={r.strategy} style={S.presetBtn(false)}
-                  onClick={() => { setChartTrade(null); setChartCandles([]); setExpandedStrategy(r.strategy); }}>
-                  {r.strategy_name} 상세보기
+                <button key={r.strategy}
+                  onClick={() => { setChartTrade(null); setChartCandles([]); setExpandedStrategy(r.strategy); }}
+                  style={{
+                    padding: "14px 10px", borderRadius: 10, cursor: "pointer", transition: "all 0.2s",
+                    border: `2px solid ${r.color}44`, background: `${r.color}15`,
+                    color: r.color, fontSize: 14, fontWeight: 700, letterSpacing: "0.3px",
+                    display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = `${r.color}30`; e.currentTarget.style.borderColor = `${r.color}88`; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = `${r.color}15`; e.currentTarget.style.borderColor = `${r.color}44`; }}>
+                  <span>{r.strategy_name}</span>
+                  <span style={{ fontSize: 12, fontWeight: 500, opacity: 0.7 }}>상세보기 →</span>
                 </button>
               ))}
             </div>
