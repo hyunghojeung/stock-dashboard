@@ -19,6 +19,7 @@ const PRESETS = [
   { key: "conservative", name: "🛡️ 보수형", tp: 5, sl: 2, days: 15, color: "#4cff8b" },
   { key: "longterm", name: "🐢 장기형", tp: 15, sl: 5, days: 30, color: "#ffd54f" },
   { key: "custom", name: "🎛️ 커스텀", tp: 7, sl: 3, days: 10, color: "#ce93d8" },
+  { key: "smart", name: "🧠 스마트형", tp: 0, sl: 5, days: 20, trailing: 3, grace: 2, color: "#ff9800" },
 ];
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -458,7 +459,7 @@ export default function VirtualInvestTab({ recommendations = [] }) {
     setChartLoading(true);
     setChartCandles([]);
     try {
-      const res = await fetch(`${API_BASE}/api/virtual-invest/candles/${trade.stock_code}?count=120`);
+      const res = await fetch(`${API_BASE}/api/virtual-invest/candles/${trade.stock_code}?count=200`);
       const data = await res.json();
       setChartCandles(data.candles || []);
     } catch (e) {
@@ -527,7 +528,7 @@ export default function VirtualInvestTab({ recommendations = [] }) {
 
         {/* 프리셋 버튼 */}
         <div style={{ display: "flex", gap: "6px", marginBottom: "14px", flexWrap: "wrap" }}>
-          {PRESETS.filter(p => p.key !== "custom").map(p => (
+          {PRESETS.filter(p => p.key !== "custom" && p.key !== "smart").map(p => (
             <button key={p.key} style={S.presetBtn(activePreset === p.key)} onClick={() => applyPreset(p)}>
               {p.name}
             </button>
@@ -689,7 +690,7 @@ export default function VirtualInvestTab({ recommendations = [] }) {
                       <td style={{ ...S.td, color: "#ff5252" }}>{r.mdd_pct}%</td>
                       <td style={S.td}>{r.risk_reward_ratio}:1</td>
                       <td style={{ ...S.td, ...S.dimText }}>
-                        {r.take_profit_pct}/{r.stop_loss_pct}/{r.max_hold_days}일
+                        {r.strategy === 'smart' ? `추적${r.trailing_stop_pct||3}%/${r.stop_loss_pct}%/${r.max_hold_days}일` : `${r.take_profit_pct}/${r.stop_loss_pct}/${r.max_hold_days}일`}
                       </td>
                     </tr>
                   ))}
@@ -723,7 +724,10 @@ export default function VirtualInvestTab({ recommendations = [] }) {
                 <div style={{ fontSize: "13px", fontWeight: 600 }}>
                   📋 종목별 상세 — {result.strategies[expandedStrategy].strategy_name}
                   <span style={{ ...S.dimText, marginLeft: 8 }}>
-                    ({result.strategies[expandedStrategy].take_profit_pct}% / {result.strategies[expandedStrategy].stop_loss_pct}% / {result.strategies[expandedStrategy].max_hold_days}일)
+                    ({expandedStrategy === 'smart'
+                      ? `추적${result.strategies[expandedStrategy].trailing_stop_pct||3}% / 손절${result.strategies[expandedStrategy].stop_loss_pct}% / ${result.strategies[expandedStrategy].max_hold_days}일`
+                      : `${result.strategies[expandedStrategy].take_profit_pct}% / ${result.strategies[expandedStrategy].stop_loss_pct}% / ${result.strategies[expandedStrategy].max_hold_days}일`
+                    })
                   </span>
                 </div>
                 <button style={{ ...S.dimText, background: "none", border: "none", cursor: "pointer", fontSize: 14 }}
@@ -935,120 +939,163 @@ export default function VirtualInvestTab({ recommendations = [] }) {
 }
 
 
+
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 종목별 일봉 차트 + 매수/매도 마커
-// Trade Candle Chart with Buy/Sell Markers
+// 종목별 일봉 차트 v2 (개선판)
+// - 매수/매도 마커 (날짜+가격+인덱스 폴백 매칭)
+// - 이동평균선 MA5, MA20
+// - 거래량 바 차트
+// - DTW 패턴 감지 구간 표시
+// - 축 라벨 흰색 + 크게
+// - 앞뒤 30일 여유
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function TradeCandleChart({ candles, trade }) {
   if (!candles || candles.length === 0) return null;
 
-  const W = 720, H_CHART = 240, H_VOL = 50, PAD_TOP = 20, PAD_BOT = 30, PAD_LEFT = 62, PAD_RIGHT = 16;
-  const TOTAL_H = H_CHART + H_VOL + PAD_TOP + PAD_BOT + 20;
-  const plotW = W - PAD_LEFT - PAD_RIGHT;
+  // ── 날짜 유틸 ──
+  const norm = (d) => d ? d.replace(/-/g, "").replace(/'/g, "").trim() : "";
+  const fDate = (d) => { const s = norm(d); return s.length >= 8 ? `${s.slice(4,6)}/${s.slice(6,8)}` : d || "-"; };
+  const fDateFull = (d) => { const s = norm(d); return s.length >= 8 ? `${s.slice(0,4)}.${s.slice(4,6)}.${s.slice(6,8)}` : d || "-"; };
 
-  // 날짜 정규화 ("20260220" 또는 "2026-02-20" → "20260220")
-  const norm = (d) => d ? d.replace(/-/g, "") : "";
-  const buyDate = norm(trade.buy_date);
-  const sellDate = norm(trade.sell_date);
+  // ── 매수/매도 인덱스 찾기 (3단계 폴백) ──
+  const buyDateN = norm(trade.buy_date);
+  const sellDateN = norm(trade.sell_date);
+  let buyIdx = -1, sellIdx = -1;
 
-  // 매수/매도 주변 여유 있게 표시 (매수일 20일전 ~ 매도일 10일후)
-  let startIdx = 0, endIdx = candles.length - 1;
-  const buyIdx = candles.findIndex(c => norm(c.date) >= buyDate);
-  if (buyIdx > 0) startIdx = Math.max(0, buyIdx - 20);
-  const sellIdx = candles.findIndex(c => norm(c.date) >= sellDate);
-  if (sellIdx >= 0) endIdx = Math.min(candles.length - 1, sellIdx + 10);
-  else endIdx = candles.length - 1;
+  // 1차: 날짜 정확 매칭
+  if (buyDateN) buyIdx = candles.findIndex(c => norm(c.date) === buyDateN);
+  if (sellDateN) sellIdx = candles.findIndex(c => norm(c.date) === sellDateN);
 
-  const visCandles = candles.slice(startIdx, endIdx + 1);
-  if (visCandles.length < 3) return null;
-
-  const allP = visCandles.flatMap(c => [c.high, c.low]).filter(p => p > 0);
-  const pMin = Math.min(...allP), pMax = Math.max(...allP);
-  const pRange = pMax - pMin || 1;
-  const maxVol = Math.max(...visCandles.map(c => c.volume), 1);
-  const cw = plotW / visCandles.length;
-
-  const toX = (i) => PAD_LEFT + i * cw;
-  const toY = (p) => PAD_TOP + (1 - (p - pMin) / pRange) * H_CHART;
-  const volY = (v) => PAD_TOP + H_CHART + 14 + H_VOL - (v / maxVol) * H_VOL;
-
-  // 날짜 포맷
-  const fDate = (d) => {
-    const s = norm(d);
-    if (s.length >= 8) return `${s.slice(4,6)}/${s.slice(6,8)}`;
-    return d;
-  };
-  const fDateFull = (d) => {
-    const s = norm(d);
-    if (s.length >= 8) return `${s.slice(0,4)}.${s.slice(4,6)}.${s.slice(6,8)}`;
-    return d;
-  };
-
-  // 매수/매도 인덱스 (차트 내)
-  const chartBuyIdx = visCandles.findIndex(c => norm(c.date) === buyDate);
-  const chartSellIdx = visCandles.findIndex(c => norm(c.date) === sellDate);
-
-  // 가격 눈금 (5단계)
-  const priceGrids = [];
-  for (let i = 0; i <= 4; i++) {
-    const p = pMin + pRange * (i / 4);
-    priceGrids.push({ p, y: toY(p) });
+  // 2차: 날짜 없으면 → 매수가에 가장 가까운 종가 (후반 60%에서)
+  if (buyIdx < 0 && trade.buy_price > 0) {
+    const searchFrom = Math.floor(candles.length * 0.3);
+    let minDiff = Infinity;
+    for (let i = searchFrom; i < candles.length; i++) {
+      const diff = Math.abs(candles[i].close - trade.buy_price);
+      if (diff < minDiff) { minDiff = diff; buyIdx = i; }
+      // 정확히 매수가와 일치하면 즉시 확정
+      if (diff === 0) break;
+    }
   }
 
-  let svgContent = [];
+  // 3차: 매도 인덱스 = 매수 + 보유일수
+  if (sellIdx < 0 && buyIdx >= 0 && trade.hold_days > 0) {
+    sellIdx = Math.min(buyIdx + trade.hold_days, candles.length - 1);
+  }
 
-  // 배경
-  svgContent.push(<rect key="bg" x={0} y={0} width={W} height={TOTAL_H} fill="rgba(8,15,30,0.9)" rx={6} />);
+  // ── 표시 범위: 매수 30일 전 ~ 매도 30일 후 ──
+  const PAD_BEFORE = 30, PAD_AFTER = 30;
+  const refBuy = buyIdx >= 0 ? buyIdx : Math.floor(candles.length * 0.5);
+  const refSell = sellIdx >= 0 ? sellIdx : refBuy + (trade.hold_days || 5);
+  const startIdx = Math.max(0, refBuy - PAD_BEFORE);
+  const endIdx = Math.min(candles.length - 1, refSell + PAD_AFTER);
+  const vis = candles.slice(startIdx, endIdx + 1);
+  if (vis.length < 5) return null;
 
-  // 매수~매도 구간 하이라이트
+  // 차트 내 인덱스 재계산
+  const chartBuyIdx = buyIdx >= 0 ? buyIdx - startIdx : -1;
+  const chartSellIdx = sellIdx >= 0 ? sellIdx - startIdx : -1;
+
+  // ── 차트 사이즈 ──
+  const W = 740, H_CHART = 260, H_VOL = 60, GAP = 18;
+  const PAD = { t: 24, b: 38, l: 68, r: 20 };
+  const TOTAL_H = PAD.t + H_CHART + GAP + H_VOL + PAD.b;
+  const plotW = W - PAD.l - PAD.r;
+  const cw = plotW / vis.length;
+
+  // ── 가격 범위 (8% 패딩) ──
+  const allP = vis.flatMap(c => [c.high, c.low]).filter(p => p > 0);
+  const pMin = Math.min(...allP), pMax = Math.max(...allP);
+  const pPad = (pMax - pMin) * 0.08 || 100;
+  const pLow = pMin - pPad, pHigh = pMax + pPad, pRange = pHigh - pLow || 1;
+  const maxVol = Math.max(...vis.map(c => c.volume || 0), 1);
+
+  const toX = (i) => PAD.l + i * cw;
+  const toY = (p) => PAD.t + (1 - (p - pLow) / pRange) * H_CHART;
+  const volBase = PAD.t + H_CHART + GAP + H_VOL;
+
+  // ── 이동평균선 계산 (원본 candles 기준 → vis에 투영) ──
+  const calcMA = (period) => {
+    return vis.map((_, i) => {
+      const gi = startIdx + i;
+      if (gi < period - 1) return null;
+      let sum = 0;
+      for (let j = 0; j < period; j++) sum += candles[gi - j].close;
+      return sum / period;
+    });
+  };
+  const ma5 = calcMA(5);
+  const ma20 = calcMA(20);
+
+  const svg = [];
+
+  // ── 배경 ──
+  svg.push(<rect key="bg" x={0} y={0} width={W} height={TOTAL_H} fill="rgba(8,15,30,0.95)" rx={8} />);
+
+  // ── DTW 패턴 감지 구간 (매수 30일 전 ~ 매수일) ──
+  if (chartBuyIdx >= 0) {
+    const dtwStart = Math.max(0, chartBuyIdx - 30);
+    const dtwEnd = chartBuyIdx;
+    const dx1 = toX(dtwStart);
+    const dx2 = toX(dtwEnd) + cw;
+    svg.push(<rect key="dtw-bg" x={dx1} y={PAD.t} width={dx2 - dx1} height={H_CHART}
+      fill="rgba(206,147,216,0.04)" stroke="rgba(206,147,216,0.15)" strokeDasharray="5,3" rx={3} />);
+    svg.push(<rect key="dtw-bar" x={dx1} y={PAD.t + H_CHART - 5} width={dx2 - dx1} height={5}
+      fill="rgba(206,147,216,0.5)" rx={2} />);
+    svg.push(<text key="dtw-lbl" x={(dx1 + dx2) / 2} y={PAD.t + 14} fill="rgba(206,147,216,0.6)" fontSize={10}
+      fontFamily="sans-serif" textAnchor="middle">DTW 패턴 감지 구간</text>);
+  }
+
+  // ── 매매 구간 하이라이트 ──
   if (chartBuyIdx >= 0) {
     const hStart = toX(chartBuyIdx);
-    const hEnd = chartSellIdx >= 0 ? toX(chartSellIdx) + cw : toX(visCandles.length - 1) + cw;
-    svgContent.push(<rect key="zone" x={hStart} y={PAD_TOP} width={hEnd - hStart} height={H_CHART}
-      fill="rgba(79,195,247,0.06)" />);
+    const hEnd = chartSellIdx >= 0 ? toX(chartSellIdx) + cw : toX(Math.min(chartBuyIdx + (trade.hold_days || 5), vis.length - 1)) + cw;
+    svg.push(<rect key="zone" x={hStart} y={PAD.t} width={Math.max(hEnd - hStart, cw)} height={H_CHART}
+      fill="rgba(79,195,247,0.07)" stroke="rgba(79,195,247,0.2)" strokeDasharray="4,4" rx={2} />);
+    svg.push(<text key="zone-lbl" x={(hStart + hEnd) / 2} y={PAD.t + H_CHART - 8} fill="rgba(79,195,247,0.5)" fontSize={10}
+      fontFamily="sans-serif" textAnchor="middle">매매 구간</text>);
   }
 
-  // 가격 눈금선 + 라벨
-  priceGrids.forEach((g, i) => {
-    svgContent.push(
-      <g key={`grid-${i}`}>
-        <line x1={PAD_LEFT} y1={g.y} x2={W - PAD_RIGHT} y2={g.y} stroke="rgba(50,70,100,0.3)" strokeDasharray="3,3" />
-        <text x={PAD_LEFT - 6} y={g.y + 4} fill="#556677" fontSize={9} fontFamily="monospace" textAnchor="end">
-          {Math.round(g.p).toLocaleString()}
-        </text>
-      </g>
-    );
-  });
+  // ── 가격 눈금 (5단계, 흰색 크게) ──
+  for (let i = 0; i <= 5; i++) {
+    const p = pLow + pRange * (i / 5);
+    const y = toY(p);
+    svg.push(<line key={`pg-${i}`} x1={PAD.l} y1={y} x2={W - PAD.r} y2={y} stroke="rgba(50,70,100,0.25)" strokeDasharray="3,3" />);
+    svg.push(<text key={`pl-${i}`} x={PAD.l - 8} y={y + 4} fill="#d0d8e8" fontSize={11}
+      fontFamily="monospace" textAnchor="end" fontWeight={500}>{Math.round(p).toLocaleString()}</text>);
+  }
 
-  // 날짜 라벨 (X축)
-  const dateInterval = Math.max(1, Math.floor(visCandles.length / 10));
-  visCandles.forEach((c, i) => {
-    if (i % dateInterval === 0 || norm(c.date) === buyDate || norm(c.date) === sellDate) {
+  // ── X축 날짜 라벨 (흰색 크게) ──
+  const dateStep = Math.max(1, Math.floor(vis.length / 12));
+  vis.forEach((c, i) => {
+    const isBuy = i === chartBuyIdx;
+    const isSell = i === chartSellIdx;
+    if (i % dateStep === 0 || isBuy || isSell) {
       const x = toX(i) + cw / 2;
-      const isBuySell = norm(c.date) === buyDate || norm(c.date) === sellDate;
-      svgContent.push(
-        <text key={`dt-${i}`} x={x} y={PAD_TOP + H_CHART + H_VOL + 30} fill={isBuySell ? "#4fc3f7" : "#556677"}
-          fontSize={isBuySell ? 10 : 9} fontFamily="monospace" textAnchor="middle" fontWeight={isBuySell ? 700 : 400}>
-          {fDate(c.date)}
-        </text>
-      );
+      svg.push(<text key={`dt-${i}`} x={x} y={TOTAL_H - 8}
+        fill={isBuy ? "#4cff8b" : isSell ? "#ff5252" : "#c0c8d8"} fontSize={isBuy || isSell ? 11 : 10}
+        fontFamily="monospace" textAnchor="middle" fontWeight={isBuy || isSell ? 700 : 400}>{fDate(c.date)}</text>);
     }
   });
 
-  // 거래량 바
-  visCandles.forEach((c, i) => {
+  // ── 거래량 구분선 + 라벨 ──
+  svg.push(<line key="vol-sep" x1={PAD.l} y1={PAD.t + H_CHART + GAP / 2} x2={W - PAD.r} y2={PAD.t + H_CHART + GAP / 2}
+    stroke="rgba(50,70,100,0.3)" />);
+  svg.push(<text key="vol-lbl" x={PAD.l - 8} y={volBase - H_VOL + 12} fill="#8899aa" fontSize={9} fontFamily="monospace" textAnchor="end">VOL</text>);
+
+  // ── 거래량 바 ──
+  vis.forEach((c, i) => {
     const x = toX(i);
     const isUp = c.close >= c.open;
     const color = isUp ? "#ff4444" : "#4488ff";
-    const barH = (c.volume / maxVol) * H_VOL;
-    svgContent.push(
-      <rect key={`vol-${i}`} x={x + 1} y={PAD_TOP + H_CHART + 14 + H_VOL - barH}
-        width={Math.max(cw - 2, 2)} height={barH} fill={color} opacity={0.2} rx={1} />
-    );
+    const barH = Math.max(((c.volume || 0) / maxVol) * H_VOL, 1);
+    svg.push(<rect key={`vol-${i}`} x={x + 1} y={volBase - barH}
+      width={Math.max(cw - 2, 2)} height={barH} fill={color} opacity={0.25} rx={1} />);
   });
 
-  // 캔들 (윅 + 바디)
-  visCandles.forEach((c, i) => {
+  // ── 캔들 ──
+  vis.forEach((c, i) => {
     const x = toX(i);
     const isUp = c.close >= c.open;
     const color = isUp ? "#ff4444" : "#4488ff";
@@ -1056,86 +1103,106 @@ function TradeCandleChart({ candles, trade }) {
     const bodyBot = toY(Math.min(c.open, c.close));
     const bodyH = Math.max(bodyBot - bodyTop, 1.5);
     const cx = x + cw / 2;
-
-    svgContent.push(
-      <g key={`candle-${i}`}>
+    svg.push(
+      <g key={`c-${i}`}>
         <line x1={cx} y1={toY(c.high)} x2={cx} y2={toY(c.low)} stroke={color} strokeWidth={1} />
         <rect x={x + 2} y={bodyTop} width={Math.max(cw - 4, 3)} height={bodyH} fill={color} rx={1} />
       </g>
     );
   });
 
-  // 매수 마커 (▲ 녹색 화살표 + 가격)
-  if (chartBuyIdx >= 0) {
+  // ── MA5 (노란색) ──
+  let ma5d = "";
+  ma5.forEach((v, i) => { if (v !== null) ma5d += (ma5d ? "L" : "M") + `${toX(i) + cw / 2},${toY(v)} `; });
+  if (ma5d) svg.push(<path key="ma5" d={ma5d} fill="none" stroke="#ffcc00" strokeWidth={1.5} opacity={0.8} />);
+
+  // ── MA20 (핑크) ──
+  let ma20d = "";
+  ma20.forEach((v, i) => { if (v !== null) ma20d += (ma20d ? "L" : "M") + `${toX(i) + cw / 2},${toY(v)} `; });
+  if (ma20d) svg.push(<path key="ma20" d={ma20d} fill="none" stroke="#ff6699" strokeWidth={1.5} opacity={0.7} />);
+
+  // ── 매수가 수평선 ──
+  if (trade.buy_price > 0 && trade.buy_price >= pLow && trade.buy_price <= pHigh) {
+    const bpY = toY(trade.buy_price);
+    svg.push(<line key="bp-line" x1={PAD.l} y1={bpY} x2={W - PAD.r} y2={bpY}
+      stroke="#4cff8b" strokeWidth={1} strokeDasharray="8,4" opacity={0.3} />);
+  }
+
+  // ── 현재가 수평선 ──
+  const lastPrice = vis[vis.length - 1].close;
+  const lastY = toY(lastPrice);
+  svg.push(<line key="cur-line" x1={PAD.l} y1={lastY} x2={W - PAD.r} y2={lastY}
+    stroke="#ffd54f" strokeWidth={1} strokeDasharray="5,3" opacity={0.5} />);
+  svg.push(<rect key="cur-bg" x={W - PAD.r - 72} y={lastY - 10} width={70} height={20}
+    fill="rgba(255,213,79,0.2)" rx={3} />);
+  svg.push(<text key="cur-txt" x={W - PAD.r - 37} y={lastY + 4} fill="#ffd54f" fontSize={11}
+    fontFamily="monospace" textAnchor="middle" fontWeight={600}>{Math.round(lastPrice).toLocaleString()}</text>);
+
+  // ── 매수 마커 (▲ 녹색) ──
+  if (chartBuyIdx >= 0 && chartBuyIdx < vis.length) {
     const bx = toX(chartBuyIdx) + cw / 2;
-    const by = toY(visCandles[chartBuyIdx].low) + 16;
-    svgContent.push(
-      <g key="buy-marker">
-        <polygon points={`${bx},${by - 12} ${bx - 7},${by} ${bx + 7},${by}`} fill="#4cff8b" />
-        <text x={bx} y={by + 14} fill="#4cff8b" fontSize={10} fontFamily="sans-serif" textAnchor="middle" fontWeight={700}>
+    const by = toY(vis[chartBuyIdx].low) + 18;
+    svg.push(
+      <g key="buy-m">
+        <line x1={bx} y1={PAD.t} x2={bx} y2={PAD.t + H_CHART} stroke="#4cff8b" strokeWidth={1.5} strokeDasharray="4,3" opacity={0.5} />
+        <polygon points={`${bx},${by - 14} ${bx - 8},${by} ${bx + 8},${by}`} fill="#4cff8b" />
+        <rect x={bx - 44} y={by + 4} width={88} height={18} fill="rgba(76,255,139,0.15)" rx={4} />
+        <text x={bx} y={by + 16} fill="#4cff8b" fontSize={11} fontFamily="sans-serif" textAnchor="middle" fontWeight={700}>
           매수 {Math.round(trade.buy_price).toLocaleString()}
         </text>
-        <line x1={bx} y1={PAD_TOP} x2={bx} y2={PAD_TOP + H_CHART} stroke="#4cff8b" strokeWidth={1} strokeDasharray="4,3" opacity={0.4} />
       </g>
     );
   }
 
-  // 매도 마커 (▼ 빨강/파랑 화살표 + 가격)
-  if (chartSellIdx >= 0) {
+  // ── 매도 마커 (▼) ──
+  if (chartSellIdx >= 0 && chartSellIdx < vis.length) {
     const sx = toX(chartSellIdx) + cw / 2;
-    const sy = toY(visCandles[chartSellIdx].high) - 6;
+    const sy = toY(vis[chartSellIdx].high) - 8;
     const sellColor = trade.profit_pct >= 0 ? "#ff5252" : "#4488ff";
-    const resultLabel = trade.result === "익절✅" ? "익절" : trade.result === "손절❌" ? "손절" : "만기";
-    svgContent.push(
-      <g key="sell-marker">
-        <polygon points={`${sx},${sy + 12} ${sx - 7},${sy} ${sx + 7},${sy}`} fill={sellColor} />
-        <text x={sx} y={sy - 6} fill={sellColor} fontSize={10} fontFamily="sans-serif" textAnchor="middle" fontWeight={700}>
-          {resultLabel} {Math.round(trade.sell_price).toLocaleString()}
+    const rLabel = trade.result === "익절✅" ? "익절" : trade.result === "추적✅" ? "추적" : trade.result === "손절❌" ? "손절" : "만기";
+    svg.push(
+      <g key="sell-m">
+        <line x1={sx} y1={PAD.t} x2={sx} y2={PAD.t + H_CHART} stroke={sellColor} strokeWidth={1.5} strokeDasharray="4,3" opacity={0.5} />
+        <polygon points={`${sx},${sy + 14} ${sx - 8},${sy} ${sx + 8},${sy}`} fill={sellColor} />
+        <rect x={sx - 44} y={sy - 22} width={88} height={18} fill={`${sellColor}20`} rx={4} />
+        <text x={sx} y={sy - 9} fill={sellColor} fontSize={11} fontFamily="sans-serif" textAnchor="middle" fontWeight={700}>
+          {rLabel} {Math.round(trade.sell_price).toLocaleString()}
         </text>
-        <line x1={sx} y1={PAD_TOP} x2={sx} y2={PAD_TOP + H_CHART} stroke={sellColor} strokeWidth={1} strokeDasharray="4,3" opacity={0.4} />
       </g>
     );
   }
 
-  // 현재가 수평선
-  const lastPrice = visCandles[visCandles.length - 1].close;
-  const lastY = toY(lastPrice);
-  svgContent.push(
-    <g key="last-price">
-      <line x1={PAD_LEFT} y1={lastY} x2={W - PAD_RIGHT} y2={lastY} stroke="#ffd54f" strokeWidth={1} strokeDasharray="5,3" opacity={0.5} />
-      <rect x={W - PAD_RIGHT - 68} y={lastY - 9} width={66} height={18} fill="rgba(255,213,79,0.2)" rx={3} />
-      <text x={W - PAD_RIGHT - 35} y={lastY + 4} fill="#ffd54f" fontSize={10} fontFamily="monospace" textAnchor="middle">
-        {Math.round(lastPrice).toLocaleString()}
-      </text>
-    </g>
-  );
-
-  // 헤더 정보
+  // ── 헤더 ──
   const profitColor = trade.profit_pct >= 0 ? "#ff5252" : "#4488ff";
   const profitSign = trade.profit_pct >= 0 ? "+" : "";
+  const headerBuyDate = chartBuyIdx >= 0 ? fDateFull(vis[chartBuyIdx].date) : fDateFull(trade.buy_date) || "-";
+  const headerSellDate = chartSellIdx >= 0 ? fDateFull(vis[chartSellIdx].date) : fDateFull(trade.sell_date) || "-";
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 6 }}>
         <div style={{ fontSize: 13, fontWeight: 700 }}>
           🕯️ {trade.stock_name}
-          <span style={{ color: "#667788", fontSize: 11, marginLeft: 6 }}>({trade.stock_code})</span>
-          <span style={{ color: "#4cff8b", fontSize: 11, marginLeft: 10 }}>매수 {fDateFull(trade.buy_date)}</span>
+          <span style={{ color: "#778899", fontSize: 11, marginLeft: 6 }}>({trade.stock_code})</span>
+          <span style={{ color: "#4cff8b", fontSize: 11, marginLeft: 10 }}>매수 {headerBuyDate}</span>
           <span style={{ color: "#8899aa", fontSize: 11, marginLeft: 4 }}>→</span>
-          <span style={{ color: profitColor, fontSize: 11, marginLeft: 4 }}>매도 {fDateFull(trade.sell_date)}</span>
+          <span style={{ color: profitColor, fontSize: 11, marginLeft: 4 }}>매도 {headerSellDate}</span>
           <span style={{ color: profitColor, fontSize: 11, marginLeft: 8, fontWeight: 700 }}>
-            {profitSign}{trade.profit_pct?.toFixed(1)}%
+            {profitSign}{trade.profit_pct?.toFixed(1)}% ({trade.hold_days}일)
           </span>
         </div>
-        <div style={{ display: "flex", gap: 12, fontSize: 11 }}>
+        <div style={{ display: "flex", gap: 12, fontSize: 11, flexWrap: "wrap" }}>
           <span><span style={{ color: "#ff4444" }}>■</span> 양봉</span>
           <span><span style={{ color: "#4488ff" }}>■</span> 음봉</span>
+          <span style={{ color: "#ffcc00" }}>── MA5</span>
+          <span style={{ color: "#ff6699" }}>── MA20</span>
           <span><span style={{ color: "#4cff8b" }}>▲</span> 매수</span>
           <span><span style={{ color: profitColor }}>▼</span> 매도</span>
+          <span style={{ color: "#ce93d8" }}>■ DTW</span>
         </div>
       </div>
       <svg width={W} height={TOTAL_H} style={{ display: "block", maxWidth: "100%" }}>
-        {svgContent}
+        {svg}
       </svg>
     </div>
   );
