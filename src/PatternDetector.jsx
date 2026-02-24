@@ -59,6 +59,24 @@ export default function PatternDetector() {
   const [scanProgress, setScanProgress] = useState(0);
   const [scanMsg, setScanMsg] = useState('');
   const [scanResult, setScanResult] = useState(null);
+
+  // ━━━ localStorage 캐시 헬퍼 (스캔 결과 보존) ━━━
+  const saveScanCache = (data) => {
+    try { localStorage.setItem('scanResultCache', JSON.stringify(data)); }
+    catch (e) { console.log('스캔 캐시 저장 실패:', e); }
+  };
+  const loadScanCache = () => {
+    try {
+      const cached = localStorage.getItem('scanResultCache');
+      if (cached) return JSON.parse(cached);
+    } catch (e) { console.log('스캔 캐시 로드 실패:', e); }
+    return null;
+  };
+  // setScanResult를 래핑하여 자동 캐시
+  const setScanResultWithCache = (data) => {
+    setScanResult(data);
+    if (data && data.stocks) saveScanCache(data);
+  };
   const [scanError, setScanError] = useState('');
   const [scanSortKey, setScanSortKey] = useState('manip_score');
   const [scanFilterLevel, setScanFilterLevel] = useState('all');
@@ -75,6 +93,14 @@ export default function PatternDetector() {
     let cancelled = false;
 
     (async () => {
+      // 0) localStorage에서 캐시된 스캔 결과 즉시 복원
+      const cached = loadScanCache();
+      if (cached && cached.stocks && !cancelled) {
+        setScanResult(cached);
+        setScanDate(cached.scan_date || '');
+        setScanSource('cache');
+      }
+
       // 1) 먼저 서버에 진행 중인 스캔이 있는지 확인
       try {
         const progResp = await fetch(`${API_BASE}/api/scanner/progress`);
@@ -97,7 +123,7 @@ export default function PatternDetector() {
             const resResp = await fetch(`${API_BASE}/api/scanner/result`);
             const resData = await resResp.json();
             if (!cancelled && resData.status === 'done') {
-              setScanResult(resData);
+              setScanResultWithCache(resData);
               setScanDate(resData.scan_date || new Date().toISOString());
               setScanSource('memory');
               return;
@@ -110,18 +136,20 @@ export default function PatternDetector() {
 
       if (cancelled) return;
 
-      // 2) 진행 중이 아니면 → DB에서 이전 결과 로드
-      setLoadingPrev(true);
-      try {
-        const resp = await fetch(`${API_BASE}/api/scanner/latest`);
-        const data = await resp.json();
-        if (!cancelled && data.status === 'done') {
-          setScanResult(data);
-          setScanDate(data.scan_date || '');
-          setScanSource(data.source || 'db');
-        }
-      } catch (e) { console.log('이전 스캔 로드 실패:', e); }
-      if (!cancelled) setLoadingPrev(false);
+      // 2) 진행 중이 아니면 → DB에서 이전 결과 로드 (캐시가 없을 때만)
+      if (!cached) {
+        setLoadingPrev(true);
+        try {
+          const resp = await fetch(`${API_BASE}/api/scanner/latest`);
+          const data = await resp.json();
+          if (!cancelled && data.status === 'done') {
+            setScanResultWithCache(data);
+            setScanDate(data.scan_date || '');
+            setScanSource(data.source || 'db');
+          }
+        } catch (e) { console.log('이전 스캔 로드 실패:', e); }
+        if (!cancelled) setLoadingPrev(false);
+      }
     })();
 
     return () => {
@@ -209,7 +237,7 @@ export default function PatternDetector() {
           else if (data.has_result) {
             const resResp = await fetch(`${API_BASE}/api/scanner/result`);
             const resData = await resResp.json();
-            if (resData.status === 'done') { setScanResult(resData); setScanDate(resData.scan_date || new Date().toISOString()); setScanSource('memory'); }
+            if (resData.status === 'done') { setScanResultWithCache(resData); setScanDate(resData.scan_date || new Date().toISOString()); setScanSource('memory'); }
             else if (resData.status === 'error') setScanError(resData.error);
             setScanning(false);
           } else {
