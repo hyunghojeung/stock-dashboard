@@ -1,7 +1,7 @@
 /**
  * 가상투자 시뮬레이터 탭 / Virtual Investment Simulator Tab
  * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- * 파일경로: src/components/VirtualInvestTab.jsx
+ * 파일경로: src/VirtualInvestTab.jsx
  *
  * PatternDetector.jsx의 4번째 탭으로 통합.
  * 매수추천 종목을 5가지 전략으로 동시 비교 백테스트 + 실시간 모의투자.
