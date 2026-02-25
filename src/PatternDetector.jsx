@@ -966,8 +966,15 @@ function TabChart({ result }) {
 
 function TabRecommend({ result }) {
   const recs = result.recommendations||[];
+  const scannedCount = result.scanned_candidates || recs.length;
+  const analyzedCodes = result.analyzed_codes || [];
   return (<div>
-    {recs.length===0 ? <div style={{textAlign:'center',padding:40,color:COLORS.textDim}}>매수 추천 데이터가 없습니다.</div> : (
+    {/* 스캔 정보 헤더 */}
+    <div style={{ marginBottom:12, padding:'10px 14px', borderRadius:8, background:'rgba(79,195,247,0.08)', border:'1px solid rgba(79,195,247,0.2)', fontSize:12, color:COLORS.accent, lineHeight:1.6 }}>
+      🔍 전종목 DB에서 <span style={{fontWeight:700,color:'#4fc3f7'}}>{scannedCount}개</span> 종목을 스캔하여,
+      분석 대상({analyzedCodes.length}개)을 <span style={{fontWeight:700,color:'#ff6b6b'}}>제외</span>한 유사 패턴 종목입니다.
+    </div>
+    {recs.length===0 ? <div style={{textAlign:'center',padding:40,color:COLORS.textDim}}>유사 패턴 종목이 발견되지 않았습니다.<br/><span style={{fontSize:11}}>클러스터가 없거나 DB에 종목이 부족합니다.</span></div> : (
       <div style={{ background:COLORS.card, border:`1px solid ${COLORS.cardBorder}`, borderRadius:12, overflow:'hidden' }}>
         <div style={{ display:'grid', gridTemplateColumns:'1fr 90px 100px 80px', padding:'12px 18px', fontSize:11, color:COLORS.textDim, fontWeight:600, borderBottom:`1px solid ${COLORS.cardBorder}`, background:'#0d1321' }}>
           <span>종목</span><span style={{textAlign:'right'}}>현재가</span><span style={{textAlign:'center'}}>유사도</span><span style={{textAlign:'center'}}>시그널</span>
