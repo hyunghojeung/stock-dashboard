@@ -726,6 +726,30 @@ export default function VirtualInvestTab({ recommendations = [] }) {
             </div>
           </div>
 
+          {/* 전략별 탭 버튼 (종목 상세 빠른 전환) */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "10px", marginTop: 8, marginBottom: 8 }}>
+              {(result.rankings || []).map(r => {
+                const isActive = expandedStrategy === r.strategy;
+                return (
+                <button key={r.strategy}
+                  onClick={() => { setChartTrade(null); setChartCandles([]); setExpandedStrategy(isActive ? null : r.strategy); }}
+                  style={{
+                    padding: "18px 12px", borderRadius: 12, cursor: "pointer", transition: "all 0.2s",
+                    border: isActive ? `2px solid ${r.color}` : `2px solid ${r.color}55`,
+                    background: isActive ? `${r.color}25` : `${r.color}12`,
+                    color: r.color, fontSize: 15, fontWeight: 700, letterSpacing: "0.3px",
+                    display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
+                    boxShadow: isActive ? `0 0 16px ${r.color}35` : `0 0 8px ${r.color}15`,
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = `${r.color}30`; e.currentTarget.style.borderColor = `${r.color}aa`; e.currentTarget.style.boxShadow = `0 0 16px ${r.color}30`; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = isActive ? `${r.color}25` : `${r.color}12`; e.currentTarget.style.borderColor = isActive ? `${r.color}` : `${r.color}55`; e.currentTarget.style.boxShadow = isActive ? `0 0 16px ${r.color}35` : `0 0 8px ${r.color}15`; }}>
+                  <span style={{ fontSize: 16 }}>{r.strategy_name}</span>
+                  <span style={{ fontSize: 12, fontWeight: 500, opacity: 0.6 }}>{isActive ? "▼ 접기" : "📋 상세보기 →"}</span>
+                </button>
+                );
+              })}
+            </div>
+
           {/* ④ 종목별 상세 */}
           {expandedStrategy && result.strategies[expandedStrategy] && (
             <div style={S.card}>
@@ -833,30 +857,6 @@ export default function VirtualInvestTab({ recommendations = [] }) {
               </table>
             </div>
           )}
-
-          {/* 전략별 탭 버튼 (종목 상세 빠른 전환) */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "10px", marginTop: 8 }}>
-              {(result.rankings || []).map(r => {
-                const isActive = expandedStrategy === r.strategy;
-                return (
-                <button key={r.strategy}
-                  onClick={() => { setChartTrade(null); setChartCandles([]); setExpandedStrategy(isActive ? null : r.strategy); }}
-                  style={{
-                    padding: "18px 12px", borderRadius: 12, cursor: "pointer", transition: "all 0.2s",
-                    border: isActive ? `2px solid ${r.color}` : `2px solid ${r.color}55`,
-                    background: isActive ? `${r.color}25` : `${r.color}12`,
-                    color: r.color, fontSize: 15, fontWeight: 700, letterSpacing: "0.3px",
-                    display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
-                    boxShadow: isActive ? `0 0 16px ${r.color}35` : `0 0 8px ${r.color}15`,
-                  }}
-                  onMouseEnter={e => { e.currentTarget.style.background = `${r.color}30`; e.currentTarget.style.borderColor = `${r.color}aa`; e.currentTarget.style.boxShadow = `0 0 16px ${r.color}30`; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = isActive ? `${r.color}25` : `${r.color}12`; e.currentTarget.style.borderColor = isActive ? `${r.color}` : `${r.color}55`; e.currentTarget.style.boxShadow = isActive ? `0 0 16px ${r.color}35` : `0 0 8px ${r.color}15`; }}>
-                  <span style={{ fontSize: 16 }}>{r.strategy_name}</span>
-                  <span style={{ fontSize: 12, fontWeight: 500, opacity: 0.6 }}>{isActive ? "▼ 접기" : "📋 상세보기 →"}</span>
-                </button>
-                );
-              })}
-            </div>
         </>
       )}
 
