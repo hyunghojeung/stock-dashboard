@@ -316,7 +316,7 @@ export default function VirtualInvestTab({ recommendations = [] }) {
 
   // ── 투자 대상 종목 (매수추천에서 전달받은 종목) ──
   const stocks = recommendations.length > 0
-    ? recommendations.slice(0, 5)
+    ? recommendations.slice(0, 10)
     : [];
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
