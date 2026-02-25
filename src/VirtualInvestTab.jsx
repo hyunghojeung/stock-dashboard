@@ -633,49 +633,6 @@ export default function VirtualInvestTab({ recommendations = [] }) {
       {/* ━━━━ 백테스트 결과 ━━━━ */}
       {subTab === "backtest" && result && (
         <>
-          {/* 전략별 탭 버튼 (최상단) */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "10px", marginBottom: 8 }}>
-              {(result.rankings || []).map(r => {
-                const isActive = expandedStrategy === r.strategy;
-                return (
-                <button key={r.strategy}
-                  onClick={() => { setChartTrade(null); setChartCandles([]); setExpandedStrategy(isActive ? null : r.strategy); }}
-                  style={{
-                    padding: "18px 12px", borderRadius: 12, cursor: "pointer", transition: "all 0.2s",
-                    border: isActive ? `2px solid ${r.color}` : `2px solid ${r.color}55`,
-                    background: isActive ? `${r.color}25` : `${r.color}12`,
-                    color: r.color, fontSize: 15, fontWeight: 700, letterSpacing: "0.3px",
-                    display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
-                    boxShadow: isActive ? `0 0 16px ${r.color}35` : `0 0 8px ${r.color}15`,
-                  }}
-                  onMouseEnter={e => { e.currentTarget.style.background = `${r.color}30`; e.currentTarget.style.borderColor = `${r.color}aa`; e.currentTarget.style.boxShadow = `0 0 16px ${r.color}30`; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = isActive ? `${r.color}25` : `${r.color}12`; e.currentTarget.style.borderColor = isActive ? `${r.color}` : `${r.color}55`; e.currentTarget.style.boxShadow = isActive ? `0 0 16px ${r.color}35` : `0 0 8px ${r.color}15`; }}>
-                  <span style={{ fontSize: 16 }}>{r.strategy_name}</span>
-                  <span style={{ fontSize: 12, fontWeight: 500, opacity: 0.6 }}>{isActive ? "▼ 접기" : "📋 상세보기 →"}</span>
-                </button>
-                );
-              })}
-            </div>
-
-          {/* ① 최적 전략 배너 */}
-          {result.best_strategy && (
-            <div style={{
-              ...S.card,
-              background: "linear-gradient(135deg, rgba(79,195,247,0.1), rgba(33,150,243,0.05))",
-              border: "1px solid rgba(79,195,247,0.3)",
-              textAlign: "center",
-              padding: "14px",
-            }}>
-              <div style={{ fontSize: 11, color: "#8899aa", marginBottom: 4 }}>🏆 최적 전략 / Best Strategy</div>
-              <div style={{ fontSize: 18, fontWeight: 700, color: "#4fc3f7" }}>
-                {result.best_strategy_name}
-              </div>
-              <div style={{ fontSize: 12, color: "#8899aa", marginTop: 4 }}>
-                {result.best_reason}
-              </div>
-            </div>
-          )}
-
           {/* ② 비교표 */}
           <div style={S.card}>
             <div style={{ fontSize: "13px", fontWeight: 600, marginBottom: "10px" }}>
