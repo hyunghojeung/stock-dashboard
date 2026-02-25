@@ -1131,7 +1131,7 @@ function TradeCandleChart({ candles, trade }) {
     const color = isUp ? "#FF0000" : "#0050FF";
     const barH = Math.max(((c.volume || 0) / maxVol) * H_VOL, 1);
     svg.push(<rect key={`vol-${i}`} x={x + 1} y={volBase - barH}
-      width={Math.max(cw - 2, 2)} height={barH} fill={color} opacity={0.25} rx={1} />);
+      width={Math.max(cw - 2, 2)} height={barH} fill={color} opacity={0.75} rx={1} />);
   });
 
   // ── 캔들 (영웅문 색상: 양봉 빨강 / 음봉 파랑) ──
