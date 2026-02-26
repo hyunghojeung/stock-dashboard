@@ -39,6 +39,41 @@ const STRATEGY_LABELS = {
   balanced: '⚖️ 기본형',
 };
 
+const STRATEGY_PARAMS = {
+  smart: {
+    label: '🧠 스마트형',
+    desc: '수익 활성화 후 추적손절 — 급등주 대응 전략',
+    params: [
+      { key: 'grace_days', label: '유예기간', value: 7, unit: '일', desc: '매수 후 청산 유예' },
+      { key: 'stop_loss_pct', label: '손절선', value: 12.0, unit: '%', desc: '최대 허용 손실' },
+      { key: 'profit_activation_pct', label: '수익 활성화', value: 15.0, unit: '%', desc: '추적손절 시작 조건' },
+      { key: 'trailing_stop_pct', label: '추적손절', value: 5.0, unit: '%', desc: '고점 대비 하락 시 매도' },
+      { key: 'max_hold_days', label: '최대보유', value: 30, unit: '일', desc: '자동 만기 청산' },
+    ],
+    flow: '매수 → 7일 유예 → 15% 수익 활성화 → 고점 대비 -5% 시 매도 / -12% 손절 / 30일 만기',
+  },
+  aggressive: {
+    label: '🔥 공격형',
+    desc: '빠른 익절/손절 — 단타 전략',
+    params: [
+      { key: 'take_profit_pct', label: '익절선', value: 10.0, unit: '%', desc: '목표 수익 도달 시 매도' },
+      { key: 'stop_loss_pct', label: '손절선', value: 5.0, unit: '%', desc: '최대 허용 손실' },
+      { key: 'max_hold_days', label: '최대보유', value: 5, unit: '일', desc: '자동 만기 청산' },
+    ],
+    flow: '매수 → +10% 익절 / -5% 손절 / 5일 만기',
+  },
+  balanced: {
+    label: '⚖️ 기본형',
+    desc: '균형 잡힌 익절/손절 — 중기 전략',
+    params: [
+      { key: 'take_profit_pct', label: '익절선', value: 7.0, unit: '%', desc: '목표 수익 도달 시 매도' },
+      { key: 'stop_loss_pct', label: '손절선', value: 3.0, unit: '%', desc: '최대 허용 손실' },
+      { key: 'max_hold_days', label: '최대보유', value: 10, unit: '일', desc: '자동 만기 청산' },
+    ],
+    flow: '매수 → +7% 익절 / -3% 손절 / 10일 만기',
+  },
+};
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 메인 컴포넌트
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -295,6 +330,9 @@ function PortfolioList({ portfolios, loading, onSelect, onRefresh }) {
 
 function PortfolioDetail({ detail, updating, onUpdate, onClose, onDelete, onBack }) {
   const { portfolio: pf, positions } = detail;
+  const [selectedCode, setSelectedCode] = useState(null);
+  const [chartData, setChartData] = useState(null);
+  const [chartLoading, setChartLoading] = useState(false);
   if (!pf) return null;
 
   const isActive = pf.status === 'active';
@@ -303,6 +341,22 @@ function PortfolioDetail({ detail, updating, onUpdate, onClose, onDelete, onBack
   const lossCount = pf.loss_count || 0;
   const winRate = (winCount + lossCount) > 0 ? Math.round((winCount / (winCount + lossCount)) * 100) : 0;
   const daysSince = pf.created_at ? Math.max(1, Math.round((Date.now() - new Date(pf.created_at).getTime()) / 86400000)) : 1;
+
+  const handleStockClick = async (pos) => {
+    if (selectedCode === pos.code) { setSelectedCode(null); setChartData(null); return; }
+    setSelectedCode(pos.code);
+    setChartLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/virtual-portfolio/candles/${pos.code}?days=120`);
+      const data = await res.json();
+      setChartData({ ...data, pos });
+    } catch (e) {
+      console.error('차트 로드 실패:', e);
+      setChartData(null);
+    } finally {
+      setChartLoading(false);
+    }
+  };
 
   return (
     <div>
@@ -361,6 +415,61 @@ function PortfolioDetail({ detail, updating, onUpdate, onClose, onDelete, onBack
         </div>
       </div>
 
+      {/* 매매 전략 설정 */}
+      {(() => {
+        const strat = STRATEGY_PARAMS[pf.strategy] || STRATEGY_PARAMS.smart;
+        return (
+          <div style={{
+            background: COLORS.card, border: `1px solid ${COLORS.cardBorder}`,
+            borderRadius: 14, padding: '18px 22px', marginBottom: 16,
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 14, fontWeight: 700, color: COLORS.white }}>⚙️ 매매 전략 설정</span>
+                <span style={{
+                  fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 6,
+                  background: COLORS.accentDim, color: COLORS.accent,
+                }}>{strat.label}</span>
+              </div>
+              <span style={{ fontSize: 11, color: COLORS.textDim }}>{strat.desc}</span>
+            </div>
+
+            {/* 파라미터 카드 */}
+            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${strat.params.length}, 1fr)`, gap: 10, marginBottom: 14 }}>
+              {strat.params.map((p, i) => (
+                <div key={i} style={{
+                  background: '#0d1321', border: `1px solid ${COLORS.cardBorder}`,
+                  borderRadius: 10, padding: '12px 10px', textAlign: 'center',
+                }}>
+                  <div style={{ fontSize: 10, color: COLORS.textDim, marginBottom: 6 }}>{p.label}</div>
+                  <div style={{
+                    fontSize: 20, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace',
+                    color: p.key.includes('loss') || p.key.includes('stop') ? COLORS.red :
+                           p.key.includes('profit') || p.key.includes('take') ? COLORS.green :
+                           p.key.includes('grace') ? COLORS.accent : COLORS.yellow,
+                  }}>
+                    {p.value}{p.unit === '%' ? '%' : ''}
+                  </div>
+                  <div style={{ fontSize: 9, color: COLORS.textDim, marginTop: 4 }}>
+                    {p.unit !== '%' ? p.unit + ' · ' : ''}{p.desc}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* 매매 플로우 */}
+            <div style={{
+              padding: '10px 14px', borderRadius: 8,
+              background: 'rgba(59,130,246,0.06)', border: `1px solid rgba(59,130,246,0.15)`,
+              fontSize: 12, color: COLORS.accent, lineHeight: 1.6,
+              fontFamily: 'JetBrains Mono, monospace',
+            }}>
+              📋 {strat.flow}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* 종목 테이블 */}
       <div style={{
         background: COLORS.card, border: `1px solid ${COLORS.cardBorder}`,
@@ -388,43 +497,80 @@ function PortfolioDetail({ detail, updating, onUpdate, onClose, onDelete, onBack
           const isProfit = (pos.profit_pct || 0) >= 0;
           const profitColor = isProfit ? COLORS.red : COLORS.accent;
           const history = Array.isArray(pos.price_history) ? pos.price_history : [];
+          const isSelected = selectedCode === pos.code;
 
           return (
-            <div key={i} style={{
-              display: 'grid', gridTemplateColumns: '1.5fr 70px 80px 80px 80px 80px 50px 90px',
-              padding: '12px 16px', alignItems: 'center',
-              borderBottom: `1px solid ${COLORS.cardBorder}`,
-              background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)',
-            }}>
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.white }}>{pos.name}</div>
-                <div style={{ fontSize: 10, color: COLORS.textDim, fontFamily: 'JetBrains Mono, monospace' }}>{pos.code}</div>
+            <React.Fragment key={i}>
+              <div onClick={() => handleStockClick(pos)} style={{
+                display: 'grid', gridTemplateColumns: '1.5fr 70px 80px 80px 80px 80px 50px 90px',
+                padding: '12px 16px', alignItems: 'center',
+                borderBottom: `1px solid ${COLORS.cardBorder}`,
+                background: isSelected ? 'rgba(59,130,246,0.08)' : i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)',
+                cursor: 'pointer', transition: 'background 0.15s',
+                borderLeft: isSelected ? `3px solid ${COLORS.accent}` : '3px solid transparent',
+              }}
+                onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'rgba(59,130,246,0.04)'; }}
+                onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)'; }}
+              >
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.white }}>
+                    {isSelected ? '▼ ' : '▶ '}{pos.name}
+                  </div>
+                  <div style={{ fontSize: 10, color: COLORS.textDim, fontFamily: 'JetBrains Mono, monospace' }}>{pos.code}</div>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <span style={{
+                    fontSize: 10, fontWeight: 600, padding: '3px 8px', borderRadius: 4,
+                    background: st.bg, color: st.color,
+                  }}>{st.label}</span>
+                </div>
+                <div style={{ textAlign: 'right', fontSize: 12, fontFamily: 'JetBrains Mono, monospace', color: COLORS.text }}>
+                  {fmt(pos.buy_price)}
+                </div>
+                <div style={{ textAlign: 'right', fontSize: 12, fontFamily: 'JetBrains Mono, monospace', fontWeight: 700, color: profitColor }}>
+                  {fmt(pos.status === 'holding' ? pos.current_price : pos.sell_price || pos.current_price)}
+                </div>
+                <div style={{ textAlign: 'right', fontSize: 12, fontFamily: 'JetBrains Mono, monospace', fontWeight: 700, color: profitColor }}>
+                  {isProfit ? '+' : ''}{pos.profit_pct || 0}%
+                </div>
+                <div style={{ textAlign: 'right', fontSize: 12, fontFamily: 'JetBrains Mono, monospace', color: profitColor }}>
+                  {isProfit ? '+' : ''}{fmt(pos.profit_won || 0)}
+                </div>
+                <div style={{ textAlign: 'center', fontSize: 12, fontFamily: 'JetBrains Mono, monospace', color: COLORS.textDim }}>
+                  {pos.hold_days || 0}
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <MiniSparkline data={history} />
+                </div>
               </div>
-              <div style={{ textAlign: 'center' }}>
-                <span style={{
-                  fontSize: 10, fontWeight: 600, padding: '3px 8px', borderRadius: 4,
-                  background: st.bg, color: st.color,
-                }}>{st.label}</span>
-              </div>
-              <div style={{ textAlign: 'right', fontSize: 12, fontFamily: 'JetBrains Mono, monospace', color: COLORS.text }}>
-                {fmt(pos.buy_price)}
-              </div>
-              <div style={{ textAlign: 'right', fontSize: 12, fontFamily: 'JetBrains Mono, monospace', fontWeight: 700, color: profitColor }}>
-                {fmt(pos.status === 'holding' ? pos.current_price : pos.sell_price || pos.current_price)}
-              </div>
-              <div style={{ textAlign: 'right', fontSize: 12, fontFamily: 'JetBrains Mono, monospace', fontWeight: 700, color: profitColor }}>
-                {isProfit ? '+' : ''}{pos.profit_pct || 0}%
-              </div>
-              <div style={{ textAlign: 'right', fontSize: 12, fontFamily: 'JetBrains Mono, monospace', color: profitColor }}>
-                {isProfit ? '+' : ''}{fmt(pos.profit_won || 0)}
-              </div>
-              <div style={{ textAlign: 'center', fontSize: 12, fontFamily: 'JetBrains Mono, monospace', color: COLORS.textDim }}>
-                {pos.hold_days || 0}
-              </div>
-              <div style={{ textAlign: 'center' }}>
-                <MiniSparkline data={history} />
-              </div>
-            </div>
+
+              {/* ━━━ 차트 패널 ━━━ */}
+              {isSelected && (
+                <div style={{
+                  padding: '20px 16px', borderBottom: `1px solid ${COLORS.cardBorder}`,
+                  background: 'rgba(8,15,30,0.6)',
+                }}>
+                  {chartLoading ? (
+                    <div style={{ textAlign: 'center', padding: 40, color: COLORS.textDim, fontSize: 13 }}>
+                      📊 {pos.name} 차트 로딩 중...
+                    </div>
+                  ) : chartData && chartData.candles && chartData.candles.length > 0 ? (
+                    <StockCandleChart
+                      candles={chartData.candles}
+                      pos={pos}
+                      buyDate={pos.buy_date?.slice(0, 10)}
+                      buyPrice={pos.buy_price}
+                      sellDate={pos.sell_date?.slice(0, 10)}
+                      sellPrice={pos.sell_price}
+                    />
+                  ) : (
+                    <div style={{ textAlign: 'center', padding: 30, color: COLORS.textDim, fontSize: 12 }}>
+                      차트 데이터를 불러올 수 없습니다
+                    </div>
+                  )}
+                </div>
+              )}
+            </React.Fragment>
           );
         })}
       </div>
@@ -542,6 +688,224 @@ function EquityCurve({ positions, capital }) {
           );
         })}
       </svg>
+    </div>
+  );
+}
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 종목 상세 캔들 차트 (MA5, MA20, 거래량, 매수/매도 포인트)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+function StockCandleChart({ candles, pos, buyDate, buyPrice, sellDate, sellPrice }) {
+  if (!candles || candles.length < 5) return null;
+
+  const W = 800, CHART_H = 280, VOL_H = 60, GAP = 24, H = CHART_H + VOL_H + GAP + 30;
+  const LEFT = 58, RIGHT = 10;
+  const plotW = W - LEFT - RIGHT;
+
+  // 최근 90개만
+  const data = candles.slice(-90);
+
+  // MA 계산
+  const calcMA = (arr, period) => arr.map((_, i) => {
+    if (i < period - 1) return null;
+    const slice = arr.slice(i - period + 1, i + 1);
+    return slice.reduce((s, c) => s + c.close, 0) / period;
+  });
+  const ma5 = calcMA(data, 5);
+  const ma20 = calcMA(data, 20);
+
+  const allP = data.flatMap(c => [c.high, c.low]).filter(p => p > 0);
+  const pMin = Math.min(...allP) * 0.995;
+  const pMax = Math.max(...allP) * 1.005;
+  const pRange = pMax - pMin || 1;
+  const maxVol = Math.max(...data.map(c => c.volume || 0), 1);
+  const cw = plotW / data.length;
+
+  const toX = (i) => LEFT + i * cw;
+  const toY = (p) => 20 + (1 - (p - pMin) / pRange) * (CHART_H - 30);
+  const volY = (v) => CHART_H + GAP + VOL_H - (v / maxVol) * VOL_H;
+
+  // 매수/매도 인덱스 찾기
+  const buyIdx = buyDate ? data.findIndex(c => c.date >= buyDate) : -1;
+  const sellIdx = sellDate ? data.findIndex(c => c.date >= sellDate) : -1;
+
+  // 수익률
+  const profitPct = pos?.profit_pct || 0;
+  const profitColor = profitPct >= 0 ? '#ff4444' : '#4488ff';
+
+  return (
+    <div>
+      {/* 차트 헤더 */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
+          <span style={{ fontSize: 15, fontWeight: 700, color: COLORS.white }}>📈 {pos.name}</span>
+          <span style={{ fontSize: 11, color: COLORS.textDim, fontFamily: 'JetBrains Mono, monospace' }}>{pos.code}</span>
+          <span style={{ fontSize: 16, fontWeight: 700, color: profitColor, fontFamily: 'JetBrains Mono, monospace' }}>
+            {fmt(pos.current_price || pos.buy_price)}원
+          </span>
+          <span style={{ fontSize: 12, color: profitColor, fontWeight: 600 }}>
+            {profitPct >= 0 ? '+' : ''}{profitPct}%
+          </span>
+        </div>
+        <div style={{ display: 'flex', gap: 14 }}>
+          <span style={{ fontSize: 11, color: '#ffcc00' }}>● MA5</span>
+          <span style={{ fontSize: 11, color: '#ff6699' }}>● MA20</span>
+          <span style={{ fontSize: 11, color: '#4cff8b' }}>▲ 매수</span>
+          {sellDate && <span style={{ fontSize: 11, color: '#ff9800' }}>▼ 매도</span>}
+        </div>
+      </div>
+
+      <svg width={W} height={H} style={{ display: 'block', maxWidth: '100%' }}>
+        {/* 배경 */}
+        <rect x="0" y="0" width={W} height={H} fill="rgba(8,15,30,0.9)" rx="8" />
+
+        {/* 가격 그리드 */}
+        {[0, 0.25, 0.5, 0.75, 1].map((pct, i) => {
+          const p = pMin + pRange * pct;
+          const y = toY(p);
+          return (
+            <g key={i}>
+              <line x1={LEFT} y1={y} x2={W - RIGHT} y2={y} stroke="rgba(50,70,100,0.2)" strokeDasharray="3,3" />
+              <text x={LEFT - 4} y={y + 4} fill="#445566" fontSize="9" fontFamily="JetBrains Mono,monospace" textAnchor="end">
+                {fmt(Math.round(p))}
+              </text>
+            </g>
+          );
+        })}
+
+        {/* 시간 라벨 */}
+        {data.map((c, i) => {
+          if (i % Math.ceil(data.length / 8) !== 0 && i !== data.length - 1) return null;
+          return (
+            <text key={i} x={toX(i) + cw / 2} y={CHART_H + 14} fill="#445566" fontSize="8"
+              fontFamily="JetBrains Mono,monospace" textAnchor="middle">
+              {c.date?.slice(5) || ''}
+            </text>
+          );
+        })}
+
+        {/* 거래량 바 */}
+        {data.map((c, i) => {
+          const x = toX(i);
+          const isUp = c.close >= c.open;
+          const color = isUp ? '#ff4444' : '#4488ff';
+          const barH = ((c.volume || 0) / maxVol) * VOL_H;
+          return (
+            <rect key={i} x={x + 1} y={CHART_H + GAP + VOL_H - barH} width={Math.max(cw - 2, 1)} height={barH}
+              fill={color} opacity={0.25} rx={1} />
+          );
+        })}
+
+        {/* 캔들 */}
+        {data.map((c, i) => {
+          const x = toX(i);
+          const isUp = c.close >= c.open;
+          const color = isUp ? '#ff4444' : '#4488ff';
+          const bodyTop = toY(Math.max(c.open, c.close));
+          const bodyBot = toY(Math.min(c.open, c.close));
+          const bodyH = Math.max(bodyBot - bodyTop, 1.5);
+          return (
+            <g key={i}>
+              <line x1={x + cw / 2} y1={toY(c.high)} x2={x + cw / 2} y2={toY(c.low)} stroke={color} strokeWidth={1} />
+              <rect x={x + 1.5} y={bodyTop} width={Math.max(cw - 3, 2)} height={bodyH} fill={color} rx={1} />
+            </g>
+          );
+        })}
+
+        {/* MA5 */}
+        {(() => {
+          let path = '';
+          ma5.forEach((v, i) => {
+            if (v === null) return;
+            path += (path ? 'L' : 'M') + `${toX(i) + cw / 2},${toY(v)} `;
+          });
+          return path ? <path d={path} fill="none" stroke="#ffcc00" strokeWidth={1.5} opacity={0.8} /> : null;
+        })()}
+
+        {/* MA20 */}
+        {(() => {
+          let path = '';
+          ma20.forEach((v, i) => {
+            if (v === null) return;
+            path += (path ? 'L' : 'M') + `${toX(i) + cw / 2},${toY(v)} `;
+          });
+          return path ? <path d={path} fill="none" stroke="#ff6699" strokeWidth={1.5} opacity={0.7} /> : null;
+        })()}
+
+        {/* 매수가 기준선 */}
+        {buyPrice > 0 && buyPrice >= pMin && buyPrice <= pMax && (
+          <g>
+            <line x1={LEFT} y1={toY(buyPrice)} x2={W - RIGHT} y2={toY(buyPrice)}
+              stroke="#4cff8b" strokeWidth={1} strokeDasharray="6,3" opacity={0.5} />
+            <rect x={W - RIGHT - 68} y={toY(buyPrice) - 9} width={66} height={18} fill="#4cff8b" rx={3} opacity={0.9} />
+            <text x={W - RIGHT - 35} y={toY(buyPrice) + 4} fill="#000" fontSize="10"
+              fontFamily="JetBrains Mono,monospace" textAnchor="middle" fontWeight="700">
+              {fmt(buyPrice)}
+            </text>
+          </g>
+        )}
+
+        {/* 매수 포인트 화살표 */}
+        {buyIdx >= 0 && (
+          <g>
+            <polygon
+              points={`${toX(buyIdx) + cw / 2},${toY(data[buyIdx].low) + 4} ${toX(buyIdx) + cw / 2 - 6},${toY(data[buyIdx].low) + 16} ${toX(buyIdx) + cw / 2 + 6},${toY(data[buyIdx].low) + 16}`}
+              fill="#4cff8b" opacity={0.95} />
+            <text x={toX(buyIdx) + cw / 2} y={toY(data[buyIdx].low) + 28}
+              fill="#4cff8b" fontSize="10" fontFamily="Noto Sans KR,sans-serif" textAnchor="middle" fontWeight="700">
+              매수
+            </text>
+          </g>
+        )}
+
+        {/* 매도 포인트 */}
+        {sellIdx >= 0 && (
+          <g>
+            <polygon
+              points={`${toX(sellIdx) + cw / 2},${toY(data[sellIdx].high) - 4} ${toX(sellIdx) + cw / 2 - 6},${toY(data[sellIdx].high) - 16} ${toX(sellIdx) + cw / 2 + 6},${toY(data[sellIdx].high) - 16}`}
+              fill="#ff9800" opacity={0.95} />
+            <text x={toX(sellIdx) + cw / 2} y={toY(data[sellIdx].high) - 20}
+              fill="#ff9800" fontSize="10" fontFamily="Noto Sans KR,sans-serif" textAnchor="middle" fontWeight="700">
+              매도
+            </text>
+          </g>
+        )}
+
+        {/* 현재가 라인 */}
+        {data.length > 0 && (() => {
+          const lastClose = data[data.length - 1].close;
+          const ly = toY(lastClose);
+          return (
+            <g>
+              <line x1={LEFT} y1={ly} x2={W - RIGHT} y2={ly} stroke="#ff4444" strokeWidth={1} strokeDasharray="5,3" opacity={0.5} />
+              <rect x={LEFT - 2} y={ly - 9} width={56} height={18} fill="#ff4444" rx={3} opacity={0.85} />
+              <text x={LEFT + 26} y={ly + 4} fill="#fff" fontSize="9" fontFamily="JetBrains Mono,monospace" textAnchor="middle">
+                {fmt(lastClose)}
+              </text>
+            </g>
+          );
+        })()}
+
+        {/* VOL 라벨 */}
+        <text x={4} y={CHART_H + GAP + 10} fill="#445566" fontSize="8" fontFamily="JetBrains Mono,monospace">VOL</text>
+        <line x1={LEFT} y1={CHART_H + GAP - 2} x2={W - RIGHT} y2={CHART_H + GAP - 2} stroke="rgba(50,70,100,0.15)" />
+      </svg>
+
+      {/* 종목 정보 바 */}
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', marginTop: 10, padding: '8px 12px',
+        background: 'rgba(15,22,42,0.5)', borderRadius: 8, fontSize: 11,
+        fontFamily: 'JetBrains Mono, monospace',
+      }}>
+        <span><span style={{ color: '#556677' }}>매수가 </span><span style={{ color: '#4cff8b' }}>{fmt(pos.buy_price)}</span></span>
+        <span><span style={{ color: '#556677' }}>현재가 </span><span style={{ color: profitColor }}>{fmt(pos.current_price)}</span></span>
+        <span><span style={{ color: '#556677' }}>최고가 </span><span style={{ color: '#ffd54f' }}>{fmt(pos.peak_price)}</span></span>
+        <span><span style={{ color: '#556677' }}>수익률 </span><span style={{ color: profitColor }}>{profitPct >= 0 ? '+' : ''}{profitPct}%</span></span>
+        <span><span style={{ color: '#556677' }}>보유일 </span><span style={{ color: COLORS.text }}>{pos.hold_days || 0}일</span></span>
+        <span><span style={{ color: '#556677' }}>유사도 </span><span style={{ color: '#4fc3f7' }}>{pos.similarity || 0}%</span></span>
+      </div>
     </div>
   );
 }
