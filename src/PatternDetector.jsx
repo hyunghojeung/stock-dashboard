@@ -618,7 +618,7 @@ export default function PatternDetector() {
           {activeTab===0 && <TabSummary result={result} />}
           {activeTab===1 && <TabChart result={result} />}
           {activeTab===2 && <TabRecommend result={result} />}
-          {activeTab===3 && <VirtualInvestTab recommendations={result.recommendations || []} />}
+          {activeTab===3 && <VirtualInvestTab recommendations={result.backtest_recommendations || result.recommendations || []} />}
         </>)}
 
         {!result && !analyzing && (
