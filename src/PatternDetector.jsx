@@ -188,6 +188,7 @@ export default function PatternDetector() {
   const [prevSessions, setPrevSessions] = useState([]);
   const [loadingPrevAnalysis, setLoadingPrevAnalysis] = useState(false);
   const [prevAnalysisSource, setPrevAnalysisSource] = useState('');  // '' | 'memory' | 'db_123'
+  const [showPrevList, setShowPrevList] = useState(false);  // 이전 기록 목록 토글
 
   const applyPreset = (presetKey) => {
     setActivePreset(presetKey);
@@ -420,8 +421,34 @@ export default function PatternDetector() {
         // 3) DB에서 이전 세션 목록 로드
         const prevResp = await fetch(`${API_BASE}/api/pattern/previous`);
         const prevData = await prevResp.json();
-        if (!cancelled && prevData.status === 'ok') {
+        if (cancelled) return;
+
+        if (prevData.status === 'ok') {
           setPrevSessions(prevData.sessions || []);
+
+          // 4) ★ 결과가 아직 없으면 → 최신 세션 자동 로드
+          if (!result && !progData.has_result && prevData.sessions?.length > 0) {
+            const latestSession = prevData.sessions[0];
+            setLoadingPrevAnalysis(true);
+            try {
+              const detailResp = await fetch(`${API_BASE}/api/pattern/previous/${latestSession.id}`);
+              const detailData = await detailResp.json();
+              if (!cancelled && detailData.status === 'done') {
+                setResult(detailData);
+                setActiveTab(0);
+                setPrevAnalysisSource(`db_${latestSession.id}`);
+                // 종목 목록 복원
+                if (detailData.stock_names) {
+                  const restoredStocks = Object.entries(detailData.stock_names).map(([code, name]) => ({ code, name }));
+                  setStocks(restoredStocks);
+                }
+                if (detailData.preset && PRESETS[detailData.preset]) {
+                  applyPreset(detailData.preset);
+                }
+              }
+            } catch (e) { console.error('최신 결과 자동 로드 실패:', e); }
+            if (!cancelled) setLoadingPrevAnalysis(false);
+          }
         }
       } catch (e) {
         console.error('이전 분석 결과 로드 실패:', e);
@@ -569,66 +596,11 @@ export default function PatternDetector() {
       {/* ━━━ 페이지 2: 패턴 분석기 ━━━ */}
       {pageMode === 'analyzer' && (<div>
 
-        {/* ── 이전 분석 결과 카드 (결과 없고, 분석 중 아닐 때만 표시) ── */}
-        {prevSessions.length > 0 && !result && !analyzing && (
-          <div style={{
-            background: COLORS.card, border: `1px solid ${COLORS.cardBorder}`,
-            borderRadius: 12, padding: 16, marginBottom: 16,
-          }}>
-            <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
-              <span style={{ fontSize:18 }}>📋</span>
-              <span style={{ fontSize:14, fontWeight:600 }}>이전 분석 결과</span>
-              <span style={{ fontSize:11, background:COLORS.accentDim, color:COLORS.accent,
-                padding:'2px 8px', borderRadius:10 }}>최근 {prevSessions.length}건</span>
-            </div>
-            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-              {prevSessions.slice(0, 5).map((session) => {
-                const dt = new Date(session.created_at);
-                const timeStr = dt.toLocaleString('ko-KR', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
-                const presetLabel = session.preset === 'bluechip' ? '🏢 우량주'
-                  : session.preset === 'manipulation' ? '⚡ 작전주' : '🔧 사용자정의';
-                const stockNames = session.stock_names
-                  ? Object.values(session.stock_names).slice(0,3).join(', ')
-                    + (Object.keys(session.stock_names).length > 3
-                      ? ` 외 ${Object.keys(session.stock_names).length - 3}개` : '')
-                  : `${session.stock_count}종목`;
-                const summary = session.result_summary || {};
-                return (
-                  <button key={session.id} onClick={() => loadPreviousAnalysis(session.id)}
-                    disabled={loadingPrevAnalysis}
-                    style={{
-                      display:'flex', alignItems:'center', justifyContent:'space-between',
-                      background:'rgba(59,130,246,0.06)', border:'1px solid rgba(59,130,246,0.15)',
-                      borderRadius:10, padding:'12px 16px', cursor:loadingPrevAnalysis?'wait':'pointer',
-                      transition:'all 0.2s', width:'100%', textAlign:'left',
-                      color:COLORS.text, fontFamily:'inherit',
-                    }}
-                    onMouseEnter={e => { e.currentTarget.style.background='rgba(59,130,246,0.12)'; e.currentTarget.style.borderColor='rgba(59,130,246,0.3)'; }}
-                    onMouseLeave={e => { e.currentTarget.style.background='rgba(59,130,246,0.06)'; e.currentTarget.style.borderColor='rgba(59,130,246,0.15)'; }}
-                  >
-                    <div style={{ flex:1 }}>
-                      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
-                        <span style={{ fontSize:12, color:COLORS.accent, fontWeight:600 }}>{timeStr}</span>
-                        <span style={{ fontSize:10, padding:'1px 6px', borderRadius:6,
-                          background:session.preset==='manipulation'?COLORS.redDim:COLORS.accentDim,
-                          color:session.preset==='manipulation'?COLORS.red:COLORS.accent }}>{presetLabel}</span>
-                      </div>
-                      <div style={{ fontSize:13, color:COLORS.textDim }}>{stockNames}</div>
-                    </div>
-                    <div style={{ textAlign:'right', flexShrink:0, marginLeft:12 }}>
-                      <div style={{ fontSize:12, color:COLORS.grayLight }}>{summary.total_patterns || session.pattern_count || 0}개 패턴</div>
-                      <div style={{ fontSize:11, color:COLORS.gray }}>{session.stock_count}종목</div>
-                    </div>
-                    <div style={{ marginLeft:12, fontSize:16, color:COLORS.accent }}>▶</div>
-                  </button>
-                );
-              })}
-            </div>
-            {loadingPrevAnalysis && (
-              <div style={{ textAlign:'center', padding:'12px 0', marginTop:8, fontSize:13, color:COLORS.accent }}>
-                ⏳ 이전 결과 불러오는 중...
-              </div>
-            )}
+        {/* ── 자동 로드 중 표시 ── */}
+        {loadingPrevAnalysis && !result && !analyzing && (
+          <div style={{ background:COLORS.card, border:`1px solid ${COLORS.cardBorder}`,
+            borderRadius:12, padding:20, marginBottom:16, textAlign:'center' }}>
+            <div style={{ fontSize:14, color:COLORS.accent }}>⏳ 마지막 분석 결과를 불러오는 중...</div>
           </div>
         )}
 
@@ -718,24 +690,100 @@ export default function PatternDetector() {
         {analyzing && <ProgressBar progress={progress} msg={progressMsg} color={currentPreset.color} />}
         {error && <ErrorBox msg={error} onClose={() => setError('')} />}
 
-        {/* ── 이전 결과 보고 있을 때 배너 ── */}
-        {result && prevAnalysisSource.startsWith('db_') && (
-          <div style={{
-            display:'flex', alignItems:'center', justifyContent:'space-between',
-            background:'rgba(245,158,11,0.08)', border:'1px solid rgba(245,158,11,0.2)',
-            borderRadius:10, padding:'10px 16px', marginBottom:12, fontSize:13,
-          }}>
-            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-              <span>📋</span>
-              <span style={{ color:COLORS.yellow }}>이전 분석 결과를 보고 있습니다</span>
-              {result.created_at && <span style={{ fontSize:11, color:COLORS.textDim }}>
-                ({new Date(result.created_at).toLocaleString('ko-KR', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' })})
-              </span>}
+        {/* ── 결과 출처 배너 + 이전 기록 토글 ── */}
+        {result && prevAnalysisSource && prevAnalysisSource !== '' && (
+          <div style={{ marginBottom:12 }}>
+            <div style={{
+              display:'flex', alignItems:'center', justifyContent:'space-between',
+              background: prevAnalysisSource.startsWith('db_') ? 'rgba(245,158,11,0.08)' : 'rgba(16,185,129,0.08)',
+              border: `1px solid ${prevAnalysisSource.startsWith('db_') ? 'rgba(245,158,11,0.2)' : 'rgba(16,185,129,0.2)'}`,
+              borderRadius: showPrevList ? '10px 10px 0 0' : 10,
+              padding:'10px 16px', fontSize:13,
+            }}>
+              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                <span>{prevAnalysisSource.startsWith('db_') ? '📋' : '✅'}</span>
+                <span style={{ color: prevAnalysisSource.startsWith('db_') ? COLORS.yellow : COLORS.green }}>
+                  {prevAnalysisSource === 'memory' ? '방금 분석한 결과' : '마지막 분석 결과'}
+                </span>
+                {result.created_at && <span style={{ fontSize:11, color:COLORS.textDim }}>
+                  ({new Date(result.created_at).toLocaleString('ko-KR', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' })})
+                </span>}
+              </div>
+              <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                {prevSessions.length > 1 && (
+                  <button onClick={() => setShowPrevList(!showPrevList)}
+                    style={{ background:'rgba(59,130,246,0.15)', border:'1px solid rgba(59,130,246,0.3)',
+                      borderRadius:8, padding:'4px 12px', color:COLORS.accent, fontSize:12,
+                      cursor:'pointer', fontFamily:'inherit' }}>
+                    📋 이전 기록 ({prevSessions.length}건) {showPrevList ? '▲' : '▼'}
+                  </button>
+                )}
+                {prevAnalysisSource.startsWith('db_') && (
+                  <button onClick={() => { setResult(null); setPrevAnalysisSource(''); setShowPrevList(false); }}
+                    style={{ background:'rgba(245,158,11,0.15)', border:'1px solid rgba(245,158,11,0.3)',
+                      borderRadius:8, padding:'4px 12px', color:COLORS.yellow, fontSize:12,
+                      cursor:'pointer', fontFamily:'inherit' }}>✕ 닫기</button>
+                )}
+              </div>
             </div>
-            <button onClick={() => { setResult(null); setPrevAnalysisSource(''); }}
-              style={{ background:'rgba(245,158,11,0.15)', border:'1px solid rgba(245,158,11,0.3)',
-                borderRadius:8, padding:'4px 12px', color:COLORS.yellow, fontSize:12,
-                cursor:'pointer', fontFamily:'inherit' }}>✕ 닫기</button>
+
+            {/* ── 이전 기록 목록 (토글) ── */}
+            {showPrevList && prevSessions.length > 0 && (
+              <div style={{
+                background:COLORS.card, border:`1px solid ${COLORS.cardBorder}`, borderTop:'none',
+                borderRadius:'0 0 10px 10px', padding:12,
+              }}>
+                <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                  {prevSessions.slice(0, 10).map((session) => {
+                    const dt = new Date(session.created_at);
+                    const timeStr = dt.toLocaleString('ko-KR', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+                    const presetLabel = session.preset === 'bluechip' ? '🏢 우량주'
+                      : session.preset === 'manipulation' ? '⚡ 작전주' : '🔧 사용자정의';
+                    const stockNames = session.stock_names
+                      ? Object.values(session.stock_names).slice(0,3).join(', ')
+                        + (Object.keys(session.stock_names).length > 3
+                          ? ` 외 ${Object.keys(session.stock_names).length - 3}개` : '')
+                      : `${session.stock_count}종목`;
+                    const isCurrentSession = prevAnalysisSource === `db_${session.id}`;
+                    return (
+                      <button key={session.id}
+                        onClick={() => { if (!isCurrentSession) { loadPreviousAnalysis(session.id); setShowPrevList(false); } }}
+                        disabled={loadingPrevAnalysis || isCurrentSession}
+                        style={{
+                          display:'flex', alignItems:'center', justifyContent:'space-between',
+                          background: isCurrentSession ? 'rgba(16,185,129,0.1)' : 'rgba(59,130,246,0.04)',
+                          border: `1px solid ${isCurrentSession ? 'rgba(16,185,129,0.3)' : 'rgba(59,130,246,0.1)'}`,
+                          borderRadius:8, padding:'10px 14px',
+                          cursor: isCurrentSession ? 'default' : loadingPrevAnalysis ? 'wait' : 'pointer',
+                          width:'100%', textAlign:'left', color:COLORS.text, fontFamily:'inherit',
+                          transition:'all 0.2s',
+                        }}
+                        onMouseEnter={e => { if (!isCurrentSession) e.currentTarget.style.background='rgba(59,130,246,0.1)'; }}
+                        onMouseLeave={e => { if (!isCurrentSession) e.currentTarget.style.background='rgba(59,130,246,0.04)'; }}
+                      >
+                        <div style={{ display:'flex', alignItems:'center', gap:8, flex:1 }}>
+                          {isCurrentSession && <span style={{ fontSize:10, color:COLORS.green }}>● 현재</span>}
+                          <span style={{ fontSize:12, color:COLORS.accent, fontWeight:600 }}>{timeStr}</span>
+                          <span style={{ fontSize:10, padding:'1px 6px', borderRadius:6,
+                            background:session.preset==='manipulation'?COLORS.redDim:COLORS.accentDim,
+                            color:session.preset==='manipulation'?COLORS.red:COLORS.accent }}>{presetLabel}</span>
+                          <span style={{ fontSize:12, color:COLORS.textDim }}>{stockNames}</span>
+                        </div>
+                        <div style={{ fontSize:11, color:COLORS.gray, flexShrink:0 }}>
+                          {session.pattern_count||0}패턴 · {session.stock_count}종목
+                        </div>
+                        {!isCurrentSession && <span style={{ marginLeft:8, fontSize:14, color:COLORS.accent }}>▶</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+                {loadingPrevAnalysis && (
+                  <div style={{ textAlign:'center', padding:'8px 0', fontSize:12, color:COLORS.accent }}>
+                    ⏳ 불러오는 중...
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
