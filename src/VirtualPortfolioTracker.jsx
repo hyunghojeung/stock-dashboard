@@ -558,9 +558,9 @@ function PortfolioDetail({ detail, updating, onUpdate, onClose, onDelete, onBack
                     <StockCandleChart
                       candles={chartData.candles}
                       pos={pos}
-                      buyDate={pos.buy_date?.slice(0, 10)}
+                      buyDate={pos.buy_date ? new Date(pos.buy_date).toLocaleDateString('sv-SE', {timeZone:'Asia/Seoul'}) : null}
                       buyPrice={pos.buy_price}
-                      sellDate={pos.sell_date?.slice(0, 10)}
+                      sellDate={pos.sell_date ? new Date(pos.sell_date).toLocaleDateString('sv-SE', {timeZone:'Asia/Seoul'}) : null}
                       sellPrice={pos.sell_price}
                     />
                   ) : (
@@ -700,7 +700,7 @@ function EquityCurve({ positions, capital }) {
 function StockCandleChart({ candles, pos, buyDate, buyPrice, sellDate, sellPrice }) {
   if (!candles || candles.length < 5) return null;
 
-  const W = 800, CHART_H = 280, VOL_H = 60, GAP = 24, H = CHART_H + VOL_H + GAP + 30;
+  const W = 800, CHART_H = 280, VOL_H = 60, GAP = 24, H = CHART_H + VOL_H + GAP + 50;
   const LEFT = 58, RIGHT = 10;
   const plotW = W - LEFT - RIGHT;
 
@@ -727,9 +727,15 @@ function StockCandleChart({ candles, pos, buyDate, buyPrice, sellDate, sellPrice
   const toY = (p) => 20 + (1 - (p - pMin) / pRange) * (CHART_H - 30);
   const volY = (v) => CHART_H + GAP + VOL_H - (v / maxVol) * VOL_H;
 
-  // 매수/매도 인덱스 찾기
-  const buyIdx = buyDate ? data.findIndex(c => c.date >= buyDate) : -1;
-  const sellIdx = sellDate ? data.findIndex(c => c.date >= sellDate) : -1;
+  // 매수/매도 인덱스 찾기 (오늘 캔들 없으면 마지막 캔들)
+  let buyIdx = buyDate ? data.findIndex(c => c.date >= buyDate) : -1;
+  if (buyIdx < 0 && buyDate && data.length > 0 && buyDate > data[data.length - 1].date) {
+    buyIdx = data.length - 1;  // 오늘 매수인데 캔들 아직 없으면 마지막에 표시
+  }
+  let sellIdx = sellDate ? data.findIndex(c => c.date >= sellDate) : -1;
+  if (sellIdx < 0 && sellDate && data.length > 0 && sellDate > data[data.length - 1].date) {
+    sellIdx = data.length - 1;
+  }
 
   // 수익률
   const profitPct = pos?.profit_pct || 0;
@@ -775,17 +781,6 @@ function StockCandleChart({ candles, pos, buyDate, buyPrice, sellDate, sellPrice
           );
         })}
 
-        {/* 시간 라벨 */}
-        {data.map((c, i) => {
-          if (i % Math.ceil(data.length / 8) !== 0 && i !== data.length - 1) return null;
-          return (
-            <text key={i} x={toX(i) + cw / 2} y={CHART_H + 14} fill="#445566" fontSize="8"
-              fontFamily="JetBrains Mono,monospace" textAnchor="middle">
-              {c.date?.slice(5) || ''}
-            </text>
-          );
-        })}
-
         {/* 거래량 바 */}
         {data.map((c, i) => {
           const x = toX(i);
@@ -794,7 +789,18 @@ function StockCandleChart({ candles, pos, buyDate, buyPrice, sellDate, sellPrice
           const barH = ((c.volume || 0) / maxVol) * VOL_H;
           return (
             <rect key={i} x={x + 1} y={CHART_H + GAP + VOL_H - barH} width={Math.max(cw - 2, 1)} height={barH}
-              fill={color} opacity={0.25} rx={1} />
+              fill={color} opacity={0.3} rx={1} />
+          );
+        })}
+
+        {/* 날짜 라벨 (거래량 바 아래) */}
+        {data.map((c, i) => {
+          if (i % Math.ceil(data.length / 8) !== 0 && i !== data.length - 1) return null;
+          return (
+            <text key={i} x={toX(i) + cw / 2} y={H - 4} fill="#556677" fontSize="9"
+              fontFamily="JetBrains Mono,monospace" textAnchor="middle">
+              {c.date?.slice(5) || ''}
+            </text>
           );
         })}
 
