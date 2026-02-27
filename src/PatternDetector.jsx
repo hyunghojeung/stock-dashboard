@@ -849,6 +849,29 @@ function ScanResultView({ scanResult, scanSortKey, setScanSortKey, scanFilterLev
   const filtered = getFilteredScanResults();
   const fmtDate = (iso) => { if (!iso) return ''; try { const d = new Date(iso); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; } catch { return iso; } };
 
+  // ★ 차트 확장 상태
+  const [chartCode, setChartCode] = React.useState(null);
+  const [chartData, setChartData] = React.useState(null);
+  const [chartLoading, setChartLoading] = React.useState(false);
+
+  const handleChartToggle = async (e, code) => {
+    e.stopPropagation(); // 체크박스 토글 방지
+    if (chartCode === code) { setChartCode(null); setChartData(null); return; }
+    setChartCode(code);
+    setChartLoading(true);
+    setChartData(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/virtual-portfolio/candles/${code}?days=130`);
+      const data = await res.json();
+      setChartData(data);
+    } catch (err) {
+      console.error('차트 로드 실패:', err);
+      setChartData(null);
+    } finally {
+      setChartLoading(false);
+    }
+  };
+
   return (<div>
     {scanDate && (<div onClick={onReload} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'10px 16px', marginBottom:12, borderRadius:8, background: scanSource==='db' ? 'rgba(139,92,246,0.1)' : scanSource==='loading' ? 'rgba(100,100,100,0.1)' : 'rgba(16,185,129,0.1)', border: `1px solid ${scanSource==='db' ? 'rgba(139,92,246,0.2)' : scanSource==='loading' ? 'rgba(100,100,100,0.2)' : 'rgba(16,185,129,0.2)'}`, cursor:'pointer', transition:'all 0.2s' }}
       onMouseEnter={e => e.currentTarget.style.opacity='0.8'}
@@ -888,13 +911,15 @@ function ScanResultView({ scanResult, scanSortKey, setScanSortKey, scanFilterLev
       </div>
     </div>
     <div style={{ background:COLORS.card, border:`1px solid ${COLORS.cardBorder}`, borderRadius:12, overflow:'hidden' }}>
-      <div style={{ display:'grid', gridTemplateColumns:'40px 1fr 80px 80px 60px 70px 80px 80px', padding:'10px 14px', fontSize:11, color:COLORS.textDim, fontWeight:600, borderBottom:`1px solid ${COLORS.cardBorder}`, background:'#0d1321' }}>
-        <span></span><span>종목</span><span style={{textAlign:'right'}}>현재가</span><span style={{textAlign:'center'}}>최대상승</span><span style={{textAlign:'center'}}>횟수</span><span style={{textAlign:'center'}}>고점대비</span><span style={{textAlign:'center'}}>세력점수</span><span style={{textAlign:'center'}}>판정</span>
+      <div style={{ display:'grid', gridTemplateColumns:'40px 1fr 80px 80px 60px 70px 80px 80px 40px', padding:'10px 14px', fontSize:11, color:COLORS.textDim, fontWeight:600, borderBottom:`1px solid ${COLORS.cardBorder}`, background:'#0d1321' }}>
+        <span></span><span>종목</span><span style={{textAlign:'right'}}>현재가</span><span style={{textAlign:'center'}}>최대상승</span><span style={{textAlign:'center'}}>횟수</span><span style={{textAlign:'center'}}>고점대비</span><span style={{textAlign:'center'}}>세력점수</span><span style={{textAlign:'center'}}>판정</span><span style={{textAlign:'center'}}>차트</span>
       </div>
       {filtered.length===0 ? (<div style={{ textAlign:'center', padding:30, color:COLORS.textDim, fontSize:13 }}>조건에 해당하는 급상승 종목이 없습니다.</div>) : filtered.map((stock, i) => {
         const sel = selectedScanStocks.has(stock.code);
         const mc = stock.top_manip_level==='high'?COLORS.red:stock.top_manip_level==='medium'?COLORS.yellow:COLORS.green;
-        return (<div key={stock.code} onClick={() => toggleScanStock(stock.code)} style={{ display:'grid', gridTemplateColumns:'40px 1fr 80px 80px 60px 70px 80px 80px', padding:'10px 14px', alignItems:'center', borderBottom:`1px solid ${COLORS.cardBorder}`, background:sel?'rgba(59,130,246,0.08)':i%2===0?'transparent':'rgba(255,255,255,0.015)', cursor:'pointer' }}>
+        const isChartOpen = chartCode === stock.code;
+        return (<React.Fragment key={stock.code}>
+          <div onClick={() => toggleScanStock(stock.code)} style={{ display:'grid', gridTemplateColumns:'40px 1fr 80px 80px 60px 70px 80px 80px 40px', padding:'10px 14px', alignItems:'center', borderBottom: isChartOpen ? 'none' : `1px solid ${COLORS.cardBorder}`, background:sel?'rgba(59,130,246,0.08)':i%2===0?'transparent':'rgba(255,255,255,0.015)', cursor:'pointer' }}>
           <div style={{textAlign:'center'}}><div style={{ width:18, height:18, borderRadius:4, border:`2px solid ${sel?COLORS.accent:COLORS.cardBorder}`, background:sel?COLORS.accent:'transparent', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, color:COLORS.white, fontWeight:700 }}>{sel&&'✓'}</div></div>
           <div><div style={{ fontSize:13, fontWeight:600 }}>{stock.name}<span style={{ fontSize:10, color:COLORS.textDim, marginLeft:6 }}>{stock.code} · {stock.market}</span></div><div style={{ fontSize:10, color:COLORS.textDim }}>최근: {stock.latest_surge_date||'-'}</div></div>
           <div style={{ textAlign:'right', fontSize:12, fontWeight:600 }}>{fmt(stock.current_price)}</div>
@@ -903,7 +928,21 @@ function ScanResultView({ scanResult, scanSortKey, setScanSortKey, scanFilterLev
           <div style={{ textAlign:'center', fontSize:11, fontWeight:600, color:stock.latest_from_peak<-30?COLORS.accent:COLORS.textDim }}>{stock.latest_from_peak}%</div>
           <div style={{textAlign:'center'}}><div style={{ display:'flex', alignItems:'center', gap:4, justifyContent:'center' }}><div style={{ width:36, height:6, background:'#1a2234', borderRadius:3, overflow:'hidden' }}><div style={{ width:`${stock.top_manip_score}%`, height:'100%', background:mc, borderRadius:3 }} /></div><span style={{ fontSize:11, fontWeight:700, color:mc }}>{stock.top_manip_score}</span></div></div>
           <div style={{ textAlign:'center', fontSize:10, fontWeight:600, padding:'3px 4px', borderRadius:6, background:`${mc}20`, color:mc }}>{stock.top_manip_label}</div>
-        </div>);
+          <div style={{ textAlign:'center' }}><button onClick={(e) => handleChartToggle(e, stock.code)} style={{ background: isChartOpen ? 'rgba(59,130,246,0.2)' : 'transparent', border: `1px solid ${isChartOpen ? COLORS.accent : COLORS.cardBorder}`, borderRadius:6, padding:'3px 6px', cursor:'pointer', fontSize:14, color: isChartOpen ? COLORS.accent : COLORS.textDim, transition:'all 0.15s' }} title="일봉 차트 보기">{isChartOpen ? '▼' : '📊'}</button></div>
+        </div>
+        {/* ★ 차트 패널 */}
+        {isChartOpen && (
+          <div style={{ padding:'16px 20px', borderBottom:`1px solid ${COLORS.cardBorder}`, background:'rgba(8,15,30,0.7)' }}>
+            {chartLoading ? (
+              <div style={{ textAlign:'center', padding:40, color:COLORS.textDim, fontSize:13 }}>📊 {stock.name} 차트 로딩 중...</div>
+            ) : chartData && chartData.candles && chartData.candles.length >= 5 ? (
+              <ScanStockChart candles={chartData.candles} stock={stock} />
+            ) : (
+              <div style={{ textAlign:'center', padding:30, color:COLORS.textDim, fontSize:12 }}>차트 데이터를 불러올 수 없습니다</div>
+            )}
+          </div>
+        )}
+        </React.Fragment>);
       })}
     </div>
     <div style={{ fontSize:12, color:COLORS.textDim, marginTop:8, textAlign:'right' }}>총 {filtered.length}개 종목</div>
@@ -1167,4 +1206,167 @@ function MiniCandleChart({ candles }) {
   return (<svg width={W} height={H} style={{display:'block'}}>
     {candles.map((c,i) => { const x=5+i*cw, isUp=c.close>=c.open, color=isUp?COLORS.red:COLORS.accent; const bT=toY(Math.max(c.open,c.close)), bB=toY(Math.min(c.open,c.close)), bH=Math.max(bB-bT,1); return (<g key={i}><line x1={x+cw/2} y1={toY(c.high)} x2={x+cw/2} y2={toY(c.low)} stroke={color} strokeWidth={0.8}/><rect x={x+1} y={bT} width={Math.max(cw-2,2)} height={bH} fill={color} rx={0.5}/></g>); })}
   </svg>);
+}
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 스캔 결과 종목 상세 캔들 차트 (MA5/MA20 + 거래량 + 급상승일 표시)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function ScanStockChart({ candles, stock }) {
+  if (!candles || candles.length < 5) return null;
+
+  const norm = (d) => d ? d.replace(/-/g, '').trim() : '';
+  const fDate = (d) => { const s = norm(d); return s.length >= 8 ? `${s.slice(4,6)}/${s.slice(6,8)}` : d || '-'; };
+
+  // 최근 90일 + OHLC 보정
+  const MAX = 90;
+  const raw = candles.length > MAX ? candles.slice(candles.length - MAX) : [...candles];
+  const vis = raw.map(c => {
+    const cl = c.close || 0;
+    if (cl <= 0) return c;
+    return { ...c, open: c.open > 0 ? c.open : cl, high: c.high > 0 ? Math.max(c.high, cl) : cl, low: c.low > 0 ? Math.min(c.low, cl) : cl, volume: c.volume || 0 };
+  });
+  if (vis.length < 5) return null;
+
+  // 차트 사이즈
+  const W = 780, H_CHART = 240, H_VOL = 45, GAP = 18;
+  const PAD = { t: 24, b: 36, l: 60, r: 70 };
+  const TOTAL_H = PAD.t + H_CHART + GAP + H_VOL + PAD.b;
+  const plotW = W - PAD.l - PAD.r;
+  const cw = plotW / vis.length;
+
+  // 가격/거래량 범위
+  const allP = vis.flatMap(c => [c.high, c.low]).filter(p => p > 0);
+  const pMin = Math.min(...allP), pMax = Math.max(...allP);
+  const pPad = (pMax - pMin) * 0.08 || 100;
+  const pLow = pMin - pPad, pHigh = pMax + pPad, pRange = pHigh - pLow || 1;
+  const maxVol = Math.max(...vis.map(c => c.volume || 0), 1);
+
+  const toX = (i) => PAD.l + i * cw;
+  const toY = (p) => PAD.t + (1 - (p - pLow) / pRange) * H_CHART;
+  const volBase = PAD.t + H_CHART + GAP + H_VOL;
+
+  // MA 계산
+  const calcMA = (period) => vis.map((_, i) => {
+    if (i < period - 1) return null;
+    let sum = 0;
+    for (let j = 0; j < period; j++) sum += vis[i - j].close;
+    return sum / period;
+  });
+  const ma5 = calcMA(5);
+  const ma20 = calcMA(20);
+
+  // 급상승일 인덱스 찾기
+  const surgeDate = norm(stock.latest_surge_date || '');
+  let surgeIdx = surgeDate ? vis.findIndex(c => norm(c.date) === surgeDate) : -1;
+  if (surgeIdx < 0 && surgeDate) surgeIdx = vis.findIndex(c => norm(c.date) >= surgeDate);
+
+  const svg = [];
+
+  // 배경
+  svg.push(<rect key="bg" x={0} y={0} width={W} height={TOTAL_H} fill="rgba(8,15,30,0.9)" rx={8} />);
+
+  // 가격 눈금 (5단계)
+  for (let i = 0; i <= 4; i++) {
+    const p = pLow + pRange * (i / 4);
+    const y = toY(p);
+    svg.push(<line key={`pg-${i}`} x1={PAD.l} y1={y} x2={W - PAD.r} y2={y} stroke="rgba(50,70,100,0.25)" strokeDasharray="3,3" />);
+    svg.push(<text key={`pl-${i}`} x={PAD.l - 8} y={y + 4} fill="#8899aa" fontSize={10} fontFamily="JetBrains Mono, monospace" textAnchor="end">{Math.round(p).toLocaleString()}</text>);
+  }
+
+  // X축 날짜 라벨
+  const dateStep = Math.max(1, Math.floor(vis.length / 12));
+  vis.forEach((c, i) => {
+    const isSurge = i === surgeIdx;
+    if (i % dateStep === 0 || isSurge || i === vis.length - 1) {
+      svg.push(<text key={`dt-${i}`} x={toX(i) + cw / 2} y={TOTAL_H - 6}
+        fill={isSurge ? COLORS.red : '#8899aa'} fontSize={isSurge ? 11 : 9}
+        fontFamily="JetBrains Mono, monospace" textAnchor="middle" fontWeight={isSurge ? 700 : 400}>{fDate(c.date)}</text>);
+    }
+  });
+
+  // 거래량 구분선
+  svg.push(<line key="vol-sep" x1={PAD.l} y1={PAD.t + H_CHART + GAP / 2} x2={W - PAD.r} y2={PAD.t + H_CHART + GAP / 2} stroke="rgba(50,70,100,0.3)" />);
+  svg.push(<text key="vol-lbl" x={PAD.l - 8} y={volBase - H_VOL + 10} fill="#556677" fontSize={8} fontFamily="monospace" textAnchor="end">VOL</text>);
+
+  // 거래량 바
+  vis.forEach((c, i) => {
+    const x = toX(i);
+    const isUp = c.close >= c.open;
+    const color = isUp ? '#ff4444' : '#4488ff';
+    const vol = c.volume || 0;
+    const barH = vol > 0 ? Math.max((vol / maxVol) * H_VOL, 2) : (c.close > 0 ? 2 : 0);
+    svg.push(<rect key={`vol-${i}`} x={x + 1} y={volBase - barH} width={Math.max(cw - 2, 2)} height={barH} fill={color} opacity={vol > 0 ? 0.3 : 0.1} rx={1} />);
+  });
+
+  // 캔들
+  vis.forEach((c, i) => {
+    const x = toX(i);
+    const isUp = c.close >= c.open;
+    const color = isUp ? '#ff4444' : '#4488ff';
+    const bodyTop = toY(Math.max(c.open, c.close));
+    const bodyBot = toY(Math.min(c.open, c.close));
+    const bodyH = Math.max(bodyBot - bodyTop, 3);
+    svg.push(<g key={`c-${i}`}>
+      <line x1={x + cw / 2} y1={toY(c.high)} x2={x + cw / 2} y2={toY(c.low)} stroke={color} strokeWidth={1} />
+      <rect x={x + 2} y={bodyTop} width={Math.max(cw - 4, 3)} height={bodyH} fill={color} rx={1} />
+    </g>);
+  });
+
+  // MA5
+  let ma5d = '';
+  ma5.forEach((v, i) => { if (v !== null) ma5d += (ma5d ? 'L' : 'M') + `${toX(i) + cw / 2},${toY(v)} `; });
+  if (ma5d) svg.push(<path key="ma5" d={ma5d} fill="none" stroke="#ffcc00" strokeWidth={1.5} opacity={0.8} />);
+
+  // MA20
+  let ma20d = '';
+  ma20.forEach((v, i) => { if (v !== null) ma20d += (ma20d ? 'L' : 'M') + `${toX(i) + cw / 2},${toY(v)} `; });
+  if (ma20d) svg.push(<path key="ma20" d={ma20d} fill="none" stroke="#ff6699" strokeWidth={1.5} opacity={0.7} />);
+
+  // 현재가 라인 + 우측 태그
+  const lastPrice = vis[vis.length - 1].close;
+  const lastY = toY(lastPrice);
+  svg.push(<line key="cur-line" x1={PAD.l} y1={lastY} x2={W - PAD.r} y2={lastY} stroke="#ff4444" strokeWidth={1} strokeDasharray="5,3" opacity={0.5} />);
+  svg.push(<rect key="cur-bg" x={W - PAD.r + 2} y={lastY - 10} width={PAD.r - 6} height={20} fill="#ff4444" rx={3} />);
+  svg.push(<text key="cur-txt" x={W - PAD.r / 2 + 1} y={lastY + 4} fill="white" fontSize={10} fontFamily="JetBrains Mono, monospace" textAnchor="middle" fontWeight={600}>{Math.round(lastPrice).toLocaleString()}</text>);
+
+  // 급상승일 마커
+  if (surgeIdx >= 0) {
+    const sx = toX(surgeIdx) + cw / 2;
+    const sy = toY(vis[surgeIdx].high) - 12;
+    svg.push(<line key="surge-vline" x1={sx} y1={PAD.t} x2={sx} y2={PAD.t + H_CHART} stroke="rgba(255,68,68,0.3)" strokeWidth={1} strokeDasharray="4,4" />);
+    svg.push(<polygon key="surge-arr" points={`${sx},${sy+10} ${sx-6},${sy} ${sx+6},${sy}`} fill={COLORS.red} opacity={0.9} />);
+    svg.push(<text key="surge-lbl" x={sx} y={sy - 4} fill={COLORS.red} fontSize={10} fontFamily="sans-serif" textAnchor="middle" fontWeight={700}>급상승</text>);
+  }
+
+  return (
+    <div>
+      {/* 차트 헤더 */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+          <span style={{ fontSize: 15, fontWeight: 700, color: COLORS.white }}>📈 {stock.name}</span>
+          <span style={{ fontSize: 11, color: COLORS.textDim, fontFamily: 'JetBrains Mono, monospace' }}>{stock.code}</span>
+          <span style={{ fontSize: 16, fontWeight: 700, color: '#ff4444', fontFamily: 'JetBrains Mono, monospace' }}>
+            {fmt(stock.current_price)}원
+          </span>
+          {stock.latest_rise_pct && <span style={{ fontSize: 12, color: COLORS.red, fontWeight: 600 }}>최대 +{stock.latest_rise_pct}%</span>}
+        </div>
+        <div style={{ display: 'flex', gap: 14 }}>
+          <span style={{ fontSize: 11 }}><span style={{ color: '#ff4444' }}>■</span> <span style={{ color: COLORS.textDim }}>양봉</span></span>
+          <span style={{ fontSize: 11 }}><span style={{ color: '#4488ff' }}>■</span> <span style={{ color: COLORS.textDim }}>음봉</span></span>
+          <span style={{ fontSize: 11, color: '#ffcc00' }}>━ MA5</span>
+          <span style={{ fontSize: 11, color: '#ff6699' }}>━ MA20</span>
+        </div>
+      </div>
+      <svg width={W} height={TOTAL_H} style={{ display: 'block', maxWidth: '100%' }}>{svg}</svg>
+      {/* 하단 정보 */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, padding: '6px 10px', background: 'rgba(15,22,42,0.5)', borderRadius: 8, fontSize: 11, fontFamily: 'JetBrains Mono, monospace' }}>
+        <span><span style={{ color: '#556677' }}>현재가 </span><span style={{ color: '#ff4444' }}>{fmt(lastPrice)}</span></span>
+        <span><span style={{ color: '#556677' }}>최대상승 </span><span style={{ color: COLORS.red }}>+{stock.latest_rise_pct}%</span></span>
+        <span><span style={{ color: '#556677' }}>세력점수 </span><span style={{ color: stock.top_manip_level === 'high' ? COLORS.red : COLORS.yellow }}>{stock.top_manip_score}</span></span>
+        <span><span style={{ color: '#556677' }}>고점대비 </span><span style={{ color: COLORS.accent }}>{stock.latest_from_peak}%</span></span>
+        <span><span style={{ color: '#556677' }}>급상승횟수 </span><span style={{ color: COLORS.text }}>{stock.surge_count}회</span></span>
+      </div>
+    </div>
+  );
 }
