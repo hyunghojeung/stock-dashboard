@@ -160,6 +160,32 @@ export default function VirtualPortfolioTracker() {
 
   useEffect(() => { loadList(); }, [loadList]);
 
+  // ── 장중 20분마다 자동 가격 갱신 (Auto-refresh every 20min during market hours) ──
+  useEffect(() => {
+    if (view !== 'detail' || !selectedId || !detail) return;
+
+    // 보유중 종목이 있는 포트폴리오만 자동갱신
+    const hasHolding = detail.positions?.some(p => p.status === 'holding');
+    if (!hasHolding) return;
+
+    const checkAndUpdate = async () => {
+      const now = new Date();
+      const kst = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }));
+      const h = kst.getHours(), m = kst.getMinutes();
+      const mins = h * 60 + m;
+      const day = kst.getDay(); // 0=Sun, 6=Sat
+
+      // 장중: 평일 09:00 ~ 15:30 KST
+      if (day >= 1 && day <= 5 && mins >= 540 && mins <= 930) {
+        console.log(`⏰ 자동 가격 갱신 (${kst.toLocaleTimeString('ko-KR')})`);
+        await handleUpdatePrices(selectedId);
+      }
+    };
+
+    const interval = setInterval(checkAndUpdate, 20 * 60 * 1000); // 20분
+    return () => clearInterval(interval);
+  }, [view, selectedId, detail]);
+
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: 20 }}>
       {/* 헤더 */}
@@ -381,6 +407,7 @@ function PortfolioDetail({ detail, updating, onUpdate, onClose, onDelete, onBack
                   background: COLORS.accentDim, color: COLORS.accent, cursor: 'pointer',
                   fontSize: 12, fontWeight: 600, opacity: updating ? 0.5 : 1,
                 }}>🔄 {updating ? '갱신 중...' : '가격 갱신'}</button>
+                <span style={{ fontSize: 10, color: COLORS.textDim, alignSelf: 'center' }}>⏱ 장중 20분 자동</span>
                 <button onClick={onClose} style={{
                   padding: '7px 16px', borderRadius: 8, border: `1px solid ${COLORS.red}40`,
                   background: COLORS.redDim, color: COLORS.red, cursor: 'pointer', fontSize: 12, fontWeight: 600,
@@ -714,8 +741,21 @@ function StockCandleChart({ candles, pos, buyDate, buyPrice, sellDate, sellPrice
 
   // ── 전체 90일 표시 (윈도우 없이 전체 캔들 사용) ──
   const MAX_CANDLES = 90;
-  const vis = candles.length > MAX_CANDLES ? candles.slice(candles.length - MAX_CANDLES) : [...candles];
+  const raw = candles.length > MAX_CANDLES ? candles.slice(candles.length - MAX_CANDLES) : [...candles];
   const offsetIdx = candles.length > MAX_CANDLES ? candles.length - MAX_CANDLES : 0;
+
+  // ★ OHLC 보정: open/high/low가 0이면 close로 채우기 (거래 희박 종목 대응)
+  const vis = raw.map(c => {
+    const cl = c.close || 0;
+    if (cl <= 0) return c;
+    return {
+      ...c,
+      open:   c.open  > 0 ? c.open  : cl,
+      high:   c.high  > 0 ? Math.max(c.high, cl) : cl,
+      low:    c.low   > 0 ? Math.min(c.low, cl)  : cl,
+      volume: c.volume || 0,
+    };
+  });
   if (vis.length < 5) return null;
 
   // ── 매수/매도 인덱스 찾기 (날짜 → 가격 → 인덱스 순서로 폴백) ──
@@ -864,9 +904,11 @@ function StockCandleChart({ candles, pos, buyDate, buyPrice, sellDate, sellPrice
     const x = toX(i);
     const isUp = c.close >= c.open;
     const color = isUp ? '#ff4444' : '#4488ff';
-    const barH = Math.max(((c.volume || 0) / maxVol) * H_VOL, 1);
+    const vol = c.volume || 0;
+    // ★ 거래량 0이어도 종가 존재 시 최소 2px 바 표시
+    const barH = vol > 0 ? Math.max((vol / maxVol) * H_VOL, 2) : (c.close > 0 ? 2 : 0);
     svg.push(<rect key={`vol-${i}`} x={x + 1} y={volBase - barH}
-      width={Math.max(cw - 2, 2)} height={barH} fill={color} opacity={0.3} rx={1} />);
+      width={Math.max(cw - 2, 2)} height={barH} fill={color} opacity={vol > 0 ? 0.3 : 0.12} rx={1} />);
   });
 
   // ── 캔들 ──
@@ -876,7 +918,8 @@ function StockCandleChart({ candles, pos, buyDate, buyPrice, sellDate, sellPrice
     const color = isUp ? '#ff4444' : '#4488ff';
     const bodyTop = toY(Math.max(c.open, c.close));
     const bodyBot = toY(Math.min(c.open, c.close));
-    const bodyH = Math.max(bodyBot - bodyTop, 1.5);
+    // ★ 최소 바디 높이 3px (평탄 종목도 캔들 보이도록)
+    const bodyH = Math.max(bodyBot - bodyTop, 3);
     const cx = x + cw / 2;
     svg.push(
       <g key={`c-${i}`}>
