@@ -259,7 +259,7 @@ function EquityCurveChart({ strategies }) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 메인 컴포넌트 / Main Component
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-export default function VirtualInvestTab({ recommendations = [] }) {
+export default function VirtualInvestTab({ recommendations = [], selectedRecStocks, setSelectedRecStocks }) {
   // 서브탭: backtest | realtime
   const [subTab, setSubTab] = useState("backtest");
 
@@ -314,10 +314,13 @@ export default function VirtualInvestTab({ recommendations = [] }) {
   // ── 손익비 계산 (커스텀 기준) ──
   const riskReward = presetParams.custom.sl > 0 ? (presetParams.custom.tp / presetParams.custom.sl).toFixed(2) : "∞";
 
-  // ── 투자 대상 종목 (매수추천에서 전달받은 종목) ──
-  const stocks = recommendations.length > 0
-    ? recommendations.slice(0, 10)
-    : [];
+  // ── 투자 대상 종목 (매수추천에서 선택된 종목 우선, 없으면 전체) ──
+  const stocks = (() => {
+    if (selectedRecStocks && selectedRecStocks.size > 0) {
+      return recommendations.filter(r => selectedRecStocks.has(r.code || r.stock_code)).slice(0, 10);
+    }
+    return recommendations.length > 0 ? recommendations.slice(0, 10) : [];
+  })();
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // 백테스트 비교 실행
@@ -502,12 +505,26 @@ export default function VirtualInvestTab({ recommendations = [] }) {
 
       {/* 투자 대상 종목 */}
       <div style={S.card}>
-        <div style={{ fontSize: "13px", fontWeight: 600, marginBottom: "8px" }}>
-          📋 투자 대상 종목 ({stocks.length}개)
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: "8px" }}>
+          <div style={{ fontSize: "13px", fontWeight: 600 }}>
+            📋 투자 대상 종목 ({stocks.length}개)
+            {selectedRecStocks && selectedRecStocks.size > 0 && (
+              <span style={{ fontSize:11, color:'#10b981', marginLeft:8, fontWeight:400 }}>
+                ✅ 매수추천에서 선택됨
+              </span>
+            )}
+          </div>
+          {selectedRecStocks && selectedRecStocks.size > 0 && setSelectedRecStocks && (
+            <button onClick={() => setSelectedRecStocks(new Set())} style={{
+              padding:'4px 10px', fontSize:11, borderRadius:6, cursor:'pointer',
+              background:'rgba(245,158,11,0.1)', border:'1px solid rgba(245,158,11,0.3)',
+              color:'#f59e0b', fontFamily:'inherit',
+            }}>선택 초기화</button>
+          )}
         </div>
         {stocks.length === 0 ? (
           <div style={{ ...S.dimText, padding: "12px 0" }}>
-            🎯 매수추천 탭에서 분석을 실행하면 추천 종목이 여기에 표시됩니다.
+            🎯 매수추천 탭에서 종목을 선택한 후 "💰 가상투자 등록" 버튼을 클릭하세요.
           </div>
         ) : (
           <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
