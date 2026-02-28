@@ -259,9 +259,9 @@ function EquityCurveChart({ strategies }) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 메인 컴포넌트 / Main Component
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-export default function VirtualInvestTab({ recommendations = [], selectedRecStocks, setSelectedRecStocks }) {
+export default function VirtualInvestTab({ recommendations = [], selectedRecStocks, setSelectedRecStocks, newRtSessionId, setNewRtSessionId }) {
   // 서브탭: backtest | realtime
-  const [subTab, setSubTab] = useState("backtest");
+  const [subTab, setSubTab] = useState(newRtSessionId ? "realtime" : "backtest");
 
   // 매매 파라미터 (5개 프리셋 각각 독립)
   const [presetParams, setPresetParams] = useState({
@@ -289,9 +289,14 @@ export default function VirtualInvestTab({ recommendations = [], selectedRecStoc
   const [chartCandles, setChartCandles] = useState([]); // 일봉 데이터
   const [chartLoading, setChartLoading] = useState(false);
 
-  // 실시간 모의투자
+  // 실시간 모의투자 — 단일 세션 (레거시)
   const [rtSessionId, setRtSessionId] = useState(null);
   const [rtStatus, setRtStatus] = useState(null);
+
+  // ━━━ 실시간 세션 목록 (신규) ━━━
+  const [rtSessions, setRtSessions] = useState([]);
+  const [rtSessionsLoading, setRtSessionsLoading] = useState(false);
+  const [selectedSession, setSelectedSession] = useState(null);  // 세션 클릭 시 상세
 
   const pollRef = useRef(null);
 
@@ -453,6 +458,36 @@ export default function VirtualInvestTab({ recommendations = [], selectedRecStoc
       if (pollRef.current) clearInterval(pollRef.current);
     };
   }, []);
+
+  // ━━━ 세션 목록 로드 ━━━
+  const fetchRtSessions = useCallback(async () => {
+    setRtSessionsLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/virtual-invest/realtime/sessions`);
+      const data = await res.json();
+      setRtSessions(data.sessions || data || []);
+    } catch (e) {
+      console.error("세션 목록 로드 실패:", e);
+    } finally {
+      setRtSessionsLoading(false);
+    }
+  }, []);
+
+  // 실시간 서브탭 활성화 시 세션 목록 로드
+  useEffect(() => {
+    if (subTab === "realtime") {
+      fetchRtSessions();
+    }
+  }, [subTab, fetchRtSessions]);
+
+  // 모달에서 새 세션 등록 후 자동 전환
+  useEffect(() => {
+    if (newRtSessionId) {
+      setSubTab("realtime");
+      fetchRtSessions();
+      if (setNewRtSessionId) setNewRtSessionId(null);  // 소비 후 초기화
+    }
+  }, [newRtSessionId]);
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // 종목 클릭 → 봉차트 로드
@@ -834,87 +869,209 @@ export default function VirtualInvestTab({ recommendations = [], selectedRecStoc
         </>
       )}
 
-      {/* ━━━━ 실시간 모의투자 ━━━━ */}
+      {/* ━━━━ 실시간 가상투자 추적 ━━━━ */}
       {subTab === "realtime" && (
-        <div style={S.card}>
-          {!rtSessionId ? (
-            <div style={{ textAlign: "center", padding: "30px 0" }}>
-              <div style={{ fontSize: 40, marginBottom: 10 }}>🔴</div>
-              <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>실시간 모의투자</div>
-              <div style={S.dimText}>
-                매수추천 종목을 지금부터 가상 매수하고<br />
-                매일 장 마감 후 수익률을 자동 업데이트합니다.
+        <div>
+          {/* 헤더 */}
+          <div style={{ ...S.card, marginBottom: 12 }}>
+            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>📊 실시간 가상투자 추적</div>
+            <div style={S.dimText}>매수추천 종목으로 가상 포트폴리오를 만들고 실시간으로 수익을 추적합니다</div>
+          </div>
+
+          {/* 요약 카드 */}
+          {(() => {
+            const total = rtSessions.length;
+            const tracking = rtSessions.filter(s => s.status === 'active' || s.status === 'tracking').length;
+            const ended = rtSessions.filter(s => s.status === 'ended' || s.status === 'completed').length;
+            const totalProfit = rtSessions.reduce((sum, s) => sum + (s.total_profit || s.profit || 0), 0);
+            return (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 12 }}>
+                <div style={{ ...S.card, textAlign: "center", padding: 14 }}>
+                  <div style={S.dimText}>전체</div>
+                  <div style={{ ...S.mono, fontSize: 22, fontWeight: 700 }}>{total}</div>
+                  <div style={{ fontSize: 11, color: '#6b7280' }}>개</div>
+                </div>
+                <div style={{ ...S.card, textAlign: "center", padding: 14 }}>
+                  <div style={S.dimText}>추적중</div>
+                  <div style={{ ...S.mono, fontSize: 22, fontWeight: 700, color: '#4fc3f7' }}>{tracking}</div>
+                  <div style={{ fontSize: 11, color: '#6b7280' }}>개</div>
+                </div>
+                <div style={{ ...S.card, textAlign: "center", padding: 14 }}>
+                  <div style={S.dimText}>종료</div>
+                  <div style={{ ...S.mono, fontSize: 22, fontWeight: 700 }}>{ended}</div>
+                  <div style={{ fontSize: 11, color: '#6b7280' }}>개</div>
+                </div>
+                <div style={{ ...S.card, textAlign: "center", padding: 14 }}>
+                  <div style={S.dimText}>총 수익</div>
+                  <div style={{ ...S.mono, fontSize: 18, fontWeight: 700, color: pctColor(totalProfit) }}>
+                    {fmtWon(totalProfit)}
+                  </div>
+                </div>
               </div>
-              <div style={{ ...S.dimText, marginTop: 12 }}>
-                위 ▶ 전체 비교 실행 버튼을 클릭하면 시작됩니다.
+            );
+          })()}
+
+          {/* 세션 목록 */}
+          {rtSessionsLoading ? (
+            <div style={{ ...S.card, textAlign: "center", padding: 30, ...S.dimText }}>⏳ 세션 목록 로드 중...</div>
+          ) : rtSessions.length === 0 ? (
+            <div style={{ ...S.card, textAlign: "center", padding: 30 }}>
+              <div style={{ fontSize: 40, marginBottom: 10 }}>📋</div>
+              <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>등록된 가상투자 세션이 없습니다</div>
+              <div style={S.dimText}>
+                🎯 매수추천 탭에서 종목을 선택한 후<br />
+                "💰 가상투자 등록" 버튼을 클릭하세요.
               </div>
             </div>
-          ) : rtStatus ? (
-            <>
-              {/* 실시간 현황 */}
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                <div>
-                  <span style={{ fontSize: 13, fontWeight: 600 }}>🔴 모의투자 진행 중</span>
-                  <span style={{ ...S.dimText, marginLeft: 8 }}>세션: {rtSessionId}</span>
-                </div>
-                <div style={{ ...S.mono, fontSize: 18, fontWeight: 700, color: pctColor((rtStatus.total_asset || 1000000) - 1000000) }}>
-                  {fmt(rtStatus.total_asset || 1000000)}원
-                </div>
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "10px", marginBottom: 12 }}>
-                <div style={{ textAlign: "center", background: "rgba(8,15,30,0.5)", borderRadius: 8, padding: 10 }}>
-                  <div style={S.dimText}>가용 현금</div>
-                  <div style={{ ...S.mono, fontWeight: 600 }}>{fmt(rtStatus.cash || 0)}원</div>
-                </div>
-                <div style={{ textAlign: "center", background: "rgba(8,15,30,0.5)", borderRadius: 8, padding: 10 }}>
-                  <div style={S.dimText}>보유 평가</div>
-                  <div style={{ ...S.mono, fontWeight: 600 }}>{fmt(rtStatus.holding_value || 0)}원</div>
-                </div>
-                <div style={{ textAlign: "center", background: "rgba(8,15,30,0.5)", borderRadius: 8, padding: 10 }}>
-                  <div style={S.dimText}>보유 종목</div>
-                  <div style={{ ...S.mono, fontWeight: 600 }}>{rtStatus.holding_count || 0} / {5}</div>
-                </div>
-              </div>
-
-              {/* 포지션 목록 */}
-              {rtStatus.positions && rtStatus.positions.length > 0 && (
-                <table style={S.table}>
-                  <thead>
-                    <tr>
-                      <th style={S.th}>종목</th>
-                      <th style={S.th}>매수가</th>
-                      <th style={S.th}>현재가</th>
-                      <th style={S.th}>수익률</th>
-                      <th style={S.th}>보유일</th>
-                      <th style={S.th}>상태</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rtStatus.positions.map((p, i) => {
-                      const pct = p.buy_price > 0 ? ((p.current_price - p.buy_price) / p.buy_price * 100) : 0;
-                      return (
-                        <tr key={i}>
-                          <td style={{ ...S.td, textAlign: "left" }}>{p.stock_name}</td>
-                          <td style={S.td}>{fmt(p.buy_price)}</td>
-                          <td style={S.td}>{fmt(p.current_price)}</td>
-                          <td style={{ ...S.td, color: pctColor(pct), fontWeight: 600 }}>{fmtPct(pct)}</td>
-                          <td style={S.td}>{p.hold_days || 0}일</td>
-                          <td style={S.td}>
-                            {p.status === "holding" ? "📈 보유중" :
-                              p.status === "sold_profit" ? "익절✅" :
-                                p.status === "sold_loss" ? "손절❌" : "만기⏰"}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              )}
-            </>
           ) : (
-            <div style={{ textAlign: "center", padding: 20, ...S.dimText }}>로딩 중...</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {rtSessions.map((session, idx) => {
+                const profitPct = session.total_profit_pct || session.profit_pct || 0;
+                const profit = session.total_profit || session.profit || 0;
+                const isActive = session.status === 'active' || session.status === 'tracking';
+                const stocks = session.stocks || session.stock_names || [];
+                const stockCount = session.stock_count || stocks.length || 0;
+                const dateStr = session.created_at ? fmtDate(session.created_at.split('T')[0]) : '-';
+                const presetLabel = {
+                  smart: '🧠 스마트형', aggressive: '🔥 공격형',
+                  standard: '⚖️ 기본형', conservative: '🛡️ 보수형',
+                  longterm: '🐢 장기형',
+                }[session.preset] || session.preset || '';
+
+                return (
+                  <div key={session.session_id || session.id || idx}
+                    style={{
+                      ...S.card, padding: '16px 20px', cursor: 'pointer',
+                      border: selectedSession === (session.session_id || session.id)
+                        ? '1px solid rgba(79,195,247,0.5)' : '1px solid rgba(100,140,200,0.15)',
+                    }}
+                    onClick={() => {
+                      const sid = session.session_id || session.id;
+                      if (selectedSession === sid) {
+                        setSelectedSession(null); setRtStatus(null);
+                      } else {
+                        setSelectedSession(sid);
+                        // 세션 목록 응답에 이미 positions 포함 — API 재호출 불필요
+                        setRtStatus({
+                          cash: session.cash || 0,
+                          holding_value: session.holding_value || 0,
+                          holding_count: session.holding_count || 0,
+                          total_asset: session.total_asset || session.capital || 0,
+                          positions: session.positions || [],
+                        });
+                      }
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <div style={{
+                          padding: '4px 10px', borderRadius: 8, fontSize: 12, fontWeight: 600,
+                          background: isActive ? 'rgba(79,195,247,0.15)' : 'rgba(107,114,128,0.15)',
+                          color: isActive ? '#4fc3f7' : '#6b7280',
+                        }}>{dateStr}</div>
+                        <div>
+                          <div style={{ fontSize: 14, fontWeight: 600 }}>{session.title || `세션 ${idx + 1}`}</div>
+                          <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>
+                            {stockCount}종목 · 투자금 {fmt(session.capital || 1000000)}원 · {presetLabel}
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: 14 }}>
+                        <div>
+                          <div style={{ ...S.mono, fontSize: 15, fontWeight: 700, color: pctColor(profitPct) }}>
+                            {profitPct > 0 ? '+' : ''}{profitPct.toFixed(2)}%
+                          </div>
+                          <div style={{ ...S.mono, fontSize: 11, color: pctColor(profit) }}>
+                            {fmtWon(profit)}
+                          </div>
+                        </div>
+                        <div style={{
+                          fontSize: 11, padding: '4px 10px', borderRadius: 8,
+                          background: isActive ? 'rgba(16,185,129,0.15)' : 'rgba(107,114,128,0.15)',
+                          color: isActive ? '#10b981' : '#6b7280',
+                        }}>● {isActive ? '추적중' : '종료'}</div>
+                      </div>
+                    </div>
+
+                    {/* 종목 태그 */}
+                    {stocks.length > 0 && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 10 }}>
+                        {(typeof stocks[0] === 'string' ? stocks : stocks.map(s => s.name || s.stock_name || s.code)).map((name, si) => (
+                          <span key={si} style={{
+                            fontSize: 11, padding: '3px 10px', borderRadius: 6,
+                            background: 'rgba(79,195,247,0.1)', color: '#4fc3f7',
+                          }}>{name}</span>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* 선택된 세션 상세 */}
+                    {selectedSession === (session.session_id || session.id) && rtStatus && (
+                      <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid rgba(100,140,200,0.15)' }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "10px", marginBottom: 12 }}>
+                          <div style={{ textAlign: "center", background: "rgba(8,15,30,0.5)", borderRadius: 8, padding: 10 }}>
+                            <div style={S.dimText}>가용 현금</div>
+                            <div style={{ ...S.mono, fontWeight: 600 }}>{fmt(rtStatus.cash || 0)}원</div>
+                          </div>
+                          <div style={{ textAlign: "center", background: "rgba(8,15,30,0.5)", borderRadius: 8, padding: 10 }}>
+                            <div style={S.dimText}>보유 평가</div>
+                            <div style={{ ...S.mono, fontWeight: 600 }}>{fmt(rtStatus.holding_value || 0)}원</div>
+                          </div>
+                          <div style={{ textAlign: "center", background: "rgba(8,15,30,0.5)", borderRadius: 8, padding: 10 }}>
+                            <div style={S.dimText}>보유 종목</div>
+                            <div style={{ ...S.mono, fontWeight: 600 }}>{rtStatus.holding_count || 0} / {stockCount}</div>
+                          </div>
+                        </div>
+
+                        {rtStatus.positions && rtStatus.positions.length > 0 && (
+                          <table style={S.table}>
+                            <thead>
+                              <tr>
+                                <th style={S.th}>종목</th>
+                                <th style={S.th}>매수가</th>
+                                <th style={S.th}>현재가</th>
+                                <th style={S.th}>수익률</th>
+                                <th style={S.th}>보유일</th>
+                                <th style={S.th}>상태</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {rtStatus.positions.map((p, i) => {
+                                const pct = p.buy_price > 0 ? ((p.current_price - p.buy_price) / p.buy_price * 100) : 0;
+                                return (
+                                  <tr key={i} style={{ cursor: 'pointer' }} onClick={(e) => { e.stopPropagation(); openChart(p); }}>
+                                    <td style={{ ...S.td, textAlign: "left" }}>{p.stock_name}</td>
+                                    <td style={S.td}>{fmt(p.buy_price)}</td>
+                                    <td style={S.td}>{fmt(p.current_price)}</td>
+                                    <td style={{ ...S.td, color: pctColor(pct), fontWeight: 600 }}>{fmtPct(pct)}</td>
+                                    <td style={S.td}>{p.hold_days || 0}일</td>
+                                    <td style={S.td}>
+                                      {p.status === "holding" ? "📈 보유중" :
+                                        p.status === "sold_profit" ? "익절✅" :
+                                          p.status === "sold_loss" ? "손절❌" : "만기⏰"}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           )}
+
+          {/* 새로고침 버튼 */}
+          <div style={{ marginTop: 10, textAlign: 'center' }}>
+            <button onClick={fetchRtSessions} style={{
+              padding: '8px 20px', borderRadius: 8, cursor: 'pointer', fontSize: 12,
+              background: 'transparent', border: '1px solid rgba(100,140,200,0.15)',
+              color: '#9ca3af', fontFamily: 'inherit',
+            }}>🔄 새로고침</button>
+          </div>
         </div>
       )}
 
