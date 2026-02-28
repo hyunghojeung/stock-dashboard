@@ -386,6 +386,60 @@ export default function VirtualPortfolioTracker() {
           setEditingCompound={setEditingCompound}
         />
       )}
+
+      {/* ★ 복리 그룹 수정 모달 (부모 레벨 — 목록/상세 어디서든 접근 가능) */}
+      {editingCompound && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={() => setEditingCompound(null)}>
+          <div style={{ background: '#1a2234', border: '1px solid rgba(100,140,200,0.3)', borderRadius: 16, padding: 24, width: 420, maxWidth: '90vw' }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: '#e5e7eb', marginBottom: 16 }}>✏️ 복리 그룹 수정</div>
+
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 4 }}>그룹명</div>
+              <input value={editingCompound.name} onChange={e => setEditingCompound({ ...editingCompound, name: e.target.value })}
+                style={{ width: '100%', padding: '8px 12px', fontSize: 13, background: '#0d1321', border: '1px solid #1e293b', borderRadius: 6, color: '#e5e7eb', outline: 'none', fontFamily: 'inherit' }} />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+              <div>
+                <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 4 }}>시드머니</div>
+                <input type="number" value={editingCompound.seed_money}
+                  onChange={e => setEditingCompound({ ...editingCompound, seed_money: Number(e.target.value) })}
+                  style={{ width: '100%', padding: '8px 12px', fontSize: 13, background: '#0d1321', border: '1px solid #1e293b', borderRadius: 6, color: '#e5e7eb', outline: 'none', fontFamily: 'inherit' }} />
+                <div style={{ fontSize: 9, color: '#6b7280', marginTop: 2 }}>※ 회차 시작 전만 수정 가능</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 4 }}>목표금액</div>
+                <input type="number" value={editingCompound.goal_amount}
+                  onChange={e => setEditingCompound({ ...editingCompound, goal_amount: Number(e.target.value) })}
+                  style={{ width: '100%', padding: '8px 12px', fontSize: 13, background: '#0d1321', border: '1px solid #1e293b', borderRadius: 6, color: '#e5e7eb', outline: 'none', fontFamily: 'inherit' }} />
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 4 }}>전략</div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {['smart', 'aggressive', 'standard', 'conservative', 'longterm'].map(s => (
+                  <button key={s} onClick={() => setEditingCompound({ ...editingCompound, strategy: s })}
+                    style={{ flex: 1, padding: '6px 4px', fontSize: 10, borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit',
+                      border: editingCompound.strategy === s ? '1px solid #4fc3f7' : '1px solid #1e293b',
+                      background: editingCompound.strategy === s ? 'rgba(79,195,247,0.15)' : 'transparent',
+                      color: editingCompound.strategy === s ? '#4fc3f7' : '#9ca3af',
+                    }}>{s}</button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button onClick={() => setEditingCompound(null)}
+                style={{ padding: '8px 16px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontFamily: 'inherit', background: 'transparent', border: '1px solid #374151', color: '#9ca3af' }}>취소</button>
+              <button onClick={handleEditCompound}
+                style={{ padding: '8px 24px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit', background: '#4fc3f7', border: 'none', color: '#000' }}>저장</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1441,60 +1495,6 @@ function CompoundGroupList({ groups, loading, onSelect, onRefresh, onStop, onDel
               </div>
             );
           })}
-        </div>
-      )}
-
-      {/* ★ 수정 모달 */}
-      {editingCompound && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          onClick={() => setEditingCompound(null)}>
-          <div style={{ background: '#1a2234', border: '1px solid rgba(100,140,200,0.3)', borderRadius: 16, padding: 24, width: 420, maxWidth: '90vw' }}
-            onClick={e => e.stopPropagation()}>
-            <div style={{ fontSize: 16, fontWeight: 700, color: '#e5e7eb', marginBottom: 16 }}>✏️ 복리 그룹 수정</div>
-
-            <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 4 }}>그룹명</div>
-              <input value={editingCompound.name} onChange={e => setEditingCompound({ ...editingCompound, name: e.target.value })}
-                style={{ width: '100%', padding: '8px 12px', fontSize: 13, background: '#0d1321', border: '1px solid #1e293b', borderRadius: 6, color: '#e5e7eb', outline: 'none', fontFamily: 'inherit' }} />
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
-              <div>
-                <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 4 }}>시드머니</div>
-                <input type="number" value={editingCompound.seed_money}
-                  onChange={e => setEditingCompound({ ...editingCompound, seed_money: Number(e.target.value) })}
-                  style={{ width: '100%', padding: '8px 12px', fontSize: 13, background: '#0d1321', border: '1px solid #1e293b', borderRadius: 6, color: '#e5e7eb', outline: 'none', fontFamily: 'inherit' }} />
-                <div style={{ fontSize: 9, color: '#6b7280', marginTop: 2 }}>※ 회차 시작 전만 수정 가능</div>
-              </div>
-              <div>
-                <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 4 }}>목표금액</div>
-                <input type="number" value={editingCompound.goal_amount}
-                  onChange={e => setEditingCompound({ ...editingCompound, goal_amount: Number(e.target.value) })}
-                  style={{ width: '100%', padding: '8px 12px', fontSize: 13, background: '#0d1321', border: '1px solid #1e293b', borderRadius: 6, color: '#e5e7eb', outline: 'none', fontFamily: 'inherit' }} />
-              </div>
-            </div>
-
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 4 }}>전략</div>
-              <div style={{ display: 'flex', gap: 6 }}>
-                {['smart', 'aggressive', 'standard', 'conservative', 'longterm'].map(s => (
-                  <button key={s} onClick={() => setEditingCompound({ ...editingCompound, strategy: s })}
-                    style={{ flex: 1, padding: '6px 4px', fontSize: 10, borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit',
-                      border: editingCompound.strategy === s ? '1px solid #4fc3f7' : '1px solid #1e293b',
-                      background: editingCompound.strategy === s ? 'rgba(79,195,247,0.15)' : 'transparent',
-                      color: editingCompound.strategy === s ? '#4fc3f7' : '#9ca3af',
-                    }}>{s}</button>
-                ))}
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-              <button onClick={() => setEditingCompound(null)}
-                style={{ padding: '8px 16px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontFamily: 'inherit', background: 'transparent', border: '1px solid #374151', color: '#9ca3af' }}>취소</button>
-              <button onClick={onSaveEdit}
-                style={{ padding: '8px 24px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit', background: '#4fc3f7', border: 'none', color: '#000' }}>저장</button>
-            </div>
-          </div>
         </div>
       )}
     </div>
