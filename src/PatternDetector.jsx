@@ -184,6 +184,61 @@ export default function PatternDetector() {
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState(0);
   const [selectedRecStocks, setSelectedRecStocks] = useState(new Set());  // 매수추천 선택 종목
+  // ━━━ 가상투자 등록 모달 상태 ━━━
+  const [showRegModal, setShowRegModal] = useState(false);
+  const [regTitle, setRegTitle] = useState('');
+  const [regPreset, setRegPreset] = useState('smart');
+  const [regCapital, setRegCapital] = useState(1000000);
+  const [regLoading, setRegLoading] = useState(false);
+
+  // ━━━ 가상투자 등록 함수 ━━━
+  const openRegModal = () => {
+    if (selectedRecStocks.size === 0) return;
+    const today = new Date();
+    const dateStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+    setRegTitle(dateStr);
+    setShowRegModal(true);
+  };
+
+  const doRegisterVirtual = async () => {
+    const recs = result?.recommendations || [];
+    const selRecs = recs.filter(r => selectedRecStocks.has(r.code));
+    if (selRecs.length === 0) return;
+    setRegLoading(true);
+    try {
+      const presetDefs = {
+        aggressive:   { tp:10, sl:5, days:5, trailing:0, grace:0 },
+        standard:     { tp:7,  sl:3, days:10, trailing:0, grace:0 },
+        conservative: { tp:5,  sl:2, days:15, trailing:0, grace:0 },
+        longterm:     { tp:15, sl:5, days:30, trailing:0, grace:0 },
+        smart:        { tp:15, sl:12, days:30, trailing:5, grace:7 },
+      };
+      const p = presetDefs[regPreset] || presetDefs.smart;
+      const body = {
+        title: regTitle || 'Untitled',
+        stocks: selRecs.map(s => ({
+          code: s.code || '', name: s.name || '',
+          buy_price: s.current_price || 0,
+        })),
+        capital: regCapital,
+        preset: regPreset,
+        take_profit_pct: p.tp, stop_loss_pct: p.sl,
+        max_hold_days: p.days, trailing_stop_pct: p.trailing, grace_days: p.grace,
+      };
+      const res = await fetch(`${API_BASE}/api/virtual-invest/realtime/start`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (data.error) { alert('등록 실패: ' + data.error); }
+      else {
+        setShowRegModal(false);
+        setSelectedRecStocks(new Set());
+        setActiveTab(3);
+      }
+    } catch(e) { alert('등록 실패: ' + e.message); }
+    finally { setRegLoading(false); }
+  };
 
   // ━━━ 이전 분석 결과 상태 ━━━
   const [prevSessions, setPrevSessions] = useState([]);
@@ -833,7 +888,7 @@ export default function PatternDetector() {
           </div>
           {activeTab===0 && <TabSummary result={result} />}
           {activeTab===1 && <TabChart result={result} />}
-          {activeTab===2 && <TabRecommend result={result} selectedRecStocks={selectedRecStocks} setSelectedRecStocks={setSelectedRecStocks} setActiveTab={setActiveTab} />}
+          {activeTab===2 && <TabRecommend result={result} selectedRecStocks={selectedRecStocks} setSelectedRecStocks={setSelectedRecStocks} onRegister={openRegModal} />}
           {activeTab===3 && <VirtualInvestTab recommendations={result.recommendations || []} selectedRecStocks={selectedRecStocks} setSelectedRecStocks={setSelectedRecStocks} />}
         </>)}
 
@@ -854,6 +909,110 @@ export default function PatternDetector() {
       </div>)}
 
       <WorkflowGuide />
+
+      {/* ━━━ 가상투자 등록 모달 / Virtual Invest Registration Modal ━━━ */}
+      {showRegModal && (
+        <div style={{
+          position:'fixed', top:0, left:0, right:0, bottom:0,
+          background:'rgba(0,0,0,0.7)', zIndex:9999,
+          display:'flex', alignItems:'center', justifyContent:'center',
+        }} onClick={() => !regLoading && setShowRegModal(false)}>
+          <div style={{
+            background:'#1a2234', border:'1px solid rgba(100,140,200,0.3)',
+            borderRadius:16, padding:28, width:440, maxWidth:'90vw',
+            boxShadow:'0 20px 60px rgba(0,0,0,0.5)',
+          }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize:18, fontWeight:700, marginBottom:20, color:'#e5e7eb' }}>
+              💰 가상투자 등록
+            </div>
+
+            {/* 제목 입력 */}
+            <div style={{ marginBottom:16 }}>
+              <div style={{ fontSize:12, color:'#9ca3af', marginBottom:6 }}>포트폴리오 제목</div>
+              <input value={regTitle} onChange={e => setRegTitle(e.target.value)}
+                placeholder="예: 2026-02-28 패턴분석"
+                autoFocus
+                style={{
+                  width:'100%', padding:'10px 14px', fontSize:14, fontFamily:'inherit',
+                  background:'#0d1321', border:'1px solid #1e293b',
+                  borderRadius:8, color:'#e5e7eb', outline:'none',
+                }} />
+            </div>
+
+            {/* 전략 선택 */}
+            <div style={{ marginBottom:16 }}>
+              <div style={{ fontSize:12, color:'#9ca3af', marginBottom:8 }}>매매 전략</div>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:6 }}>
+                {[
+                  { key:'smart', label:'🧠 스마트', desc:'추적손절', color:'#ff9800' },
+                  { key:'aggressive', label:'🔥 공격형', desc:'10/5%', color:'#ff5252' },
+                  { key:'standard', label:'⚖️ 기본형', desc:'7/3%', color:'#4fc3f7' },
+                  { key:'conservative', label:'🛡️ 보수형', desc:'5/2%', color:'#4cff8b' },
+                  { key:'longterm', label:'🐢 장기형', desc:'15/5%', color:'#ffd54f' },
+                ].map(s => (
+                  <button key={s.key} onClick={() => setRegPreset(s.key)} style={{
+                    padding:'10px 6px', borderRadius:8, cursor:'pointer', textAlign:'center',
+                    border: regPreset===s.key ? `2px solid ${s.color}` : '1px solid #1e293b',
+                    background: regPreset===s.key ? `${s.color}20` : 'transparent',
+                    color: regPreset===s.key ? s.color : '#9ca3af', fontSize:11, fontFamily:'inherit',
+                  }}>
+                    <div style={{ fontWeight:600, marginBottom:2 }}>{s.label}</div>
+                    <div style={{ fontSize:10, opacity:0.7 }}>{s.desc}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 투자금 */}
+            <div style={{ marginBottom:20 }}>
+              <div style={{ fontSize:12, color:'#9ca3af', marginBottom:6 }}>투자금액</div>
+              <div style={{ display:'flex', gap:8 }}>
+                {[500000, 1000000, 3000000, 5000000].map(v => (
+                  <button key={v} onClick={() => setRegCapital(v)} style={{
+                    flex:1, padding:'8px 4px', borderRadius:6, cursor:'pointer', fontSize:12, fontFamily:'inherit',
+                    border: regCapital===v ? '1px solid #4fc3f7' : '1px solid #1e293b',
+                    background: regCapital===v ? 'rgba(79,195,247,0.15)' : 'transparent',
+                    color: regCapital===v ? '#4fc3f7' : '#9ca3af',
+                  }}>{(v/10000).toFixed(0)}만</button>
+                ))}
+              </div>
+            </div>
+
+            {/* 선택 종목 표시 */}
+            <div style={{
+              marginBottom:20, padding:10, borderRadius:8,
+              background:'rgba(16,185,129,0.08)', border:'1px solid rgba(16,185,129,0.2)',
+            }}>
+              <div style={{ fontSize:11, color:'#10b981', marginBottom:6 }}>
+                📋 선택 종목 ({selectedRecStocks.size}개)
+              </div>
+              <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
+                {(result?.recommendations||[]).filter(r => selectedRecStocks.has(r.code)).map(r => (
+                  <span key={r.code} style={{
+                    fontSize:11, padding:'3px 10px', borderRadius:6,
+                    background:'rgba(16,185,129,0.15)', color:'#10b981',
+                  }}>{r.name}</span>
+                ))}
+              </div>
+            </div>
+
+            {/* 버튼 */}
+            <div style={{ display:'flex', gap:10, justifyContent:'flex-end' }}>
+              <button onClick={() => setShowRegModal(false)} disabled={regLoading}
+                style={{
+                  padding:'10px 20px', borderRadius:8, cursor:'pointer', fontSize:13, fontFamily:'inherit',
+                  background:'transparent', border:'1px solid #374151', color:'#9ca3af',
+                }}>취소</button>
+              <button onClick={doRegisterVirtual} disabled={regLoading}
+                style={{
+                  padding:'10px 28px', borderRadius:8, cursor:'pointer', fontSize:14, fontWeight:700, fontFamily:'inherit',
+                  background: regLoading ? '#374151' : '#10b981', border:'none',
+                  color: regLoading ? '#6b7280' : 'white',
+                }}>{regLoading ? '⏳ 등록 중...' : '✅ 등록하기'}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1180,7 +1339,7 @@ function TabChart({ result }) {
   </div>);
 }
 
-function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, setActiveTab }) {
+function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegister }) {
   const recs = result.recommendations||[];
   const scannedCount = result.scanned_candidates || recs.length;
   const analyzedCodes = result.analyzed_codes || [];
@@ -1199,11 +1358,6 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, setActi
     } else {
       setSelectedRecStocks(new Set(recs.map(r => r.code)));
     }
-  };
-
-  const handleRegisterVirtual = () => {
-    // 가상투자 탭으로 이동 (VirtualInvestTab이 recommendations에서 selectedRecStocks를 참조)
-    setActiveTab(3);
   };
 
   return (<div>
@@ -1235,7 +1389,7 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, setActi
           </span>
         </div>
         <button
-          onClick={handleRegisterVirtual}
+          onClick={onRegister}
           disabled={selectedRecStocks.size === 0}
           style={{
             padding:'8px 20px', fontSize:13, fontWeight:600, borderRadius:8,
@@ -1300,7 +1454,7 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, setActi
           ✅ <b>{selectedRecStocks.size}개</b> 종목 선택 — 
           {recs.filter(r => selectedRecStocks.has(r.code)).map(r => r.name).join(', ')}
         </div>
-        <button onClick={handleRegisterVirtual} style={{
+        <button onClick={onRegister} style={{
           padding:'10px 24px', fontSize:14, fontWeight:700, borderRadius:8,
           border:'none', cursor:'pointer', background:COLORS.green, color:COLORS.white,
         }}>💰 가상투자 등록 →</button>
