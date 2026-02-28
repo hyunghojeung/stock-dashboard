@@ -190,8 +190,7 @@ export default function PatternDetector() {
   const [regPreset, setRegPreset] = useState('smart');
   const [regCapital, setRegCapital] = useState(1000000);
   const [regLoading, setRegLoading] = useState(false);
-
-  // ━━━ 가상투자 등록 함수 ━━━
+  const [newRtSessionId, setNewRtSessionId] = useState(null);  // 모달에서 생성된 세션 ID
   const openRegModal = () => {
     if (selectedRecStocks.size === 0) return;
     const today = new Date();
@@ -234,6 +233,7 @@ export default function PatternDetector() {
       else {
         setShowRegModal(false);
         setSelectedRecStocks(new Set());
+        setNewRtSessionId(data.session_id || null);
         setActiveTab(3);
       }
     } catch(e) { alert('등록 실패: ' + e.message); }
@@ -889,7 +889,7 @@ export default function PatternDetector() {
           {activeTab===0 && <TabSummary result={result} />}
           {activeTab===1 && <TabChart result={result} />}
           {activeTab===2 && <TabRecommend result={result} selectedRecStocks={selectedRecStocks} setSelectedRecStocks={setSelectedRecStocks} onRegister={openRegModal} />}
-          {activeTab===3 && <VirtualInvestTab recommendations={result.recommendations || []} selectedRecStocks={selectedRecStocks} setSelectedRecStocks={setSelectedRecStocks} />}
+          {activeTab===3 && <VirtualInvestTab recommendations={result.recommendations || []} selectedRecStocks={selectedRecStocks} setSelectedRecStocks={setSelectedRecStocks} newRtSessionId={newRtSessionId} setNewRtSessionId={setNewRtSessionId} />}
         </>)}
 
         {!result && !analyzing && (
