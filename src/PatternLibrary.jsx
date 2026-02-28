@@ -10,7 +10,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 
-const API = import.meta.env.VITE_API_URL || '';
+const API = "https://web-production-139e9.up.railway.app";
 
 const C = {
   bg: '#0a0e1a', card: '#111827', cardBorder: '#1e293b',
