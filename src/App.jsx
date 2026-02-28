@@ -3,6 +3,7 @@ import SwingBacktest from "./SwingBacktest";
 import PatternDetector from "./PatternDetector";
 import VirtualPortfolioTracker from "./VirtualPortfolioTracker";
 import PatternLibrary from "./PatternLibrary";
+import SurgeSimulator from "./SurgeSimulator";
 // ============================================================
 // API Helper
 // ============================================================
@@ -120,6 +121,89 @@ function MiniChart({data,width=500,height=120,color="#4cff8b"}) {
   );
 }
 
+// ★ v2: 자산 이력 차트 (누적 라인 + 일별 수익 막대 + MDD)
+function AssetHistoryChart({data,width=420,height=160}) {
+  if(!data||data.length<2) return <MiniChart data={data} width={width} height={height}/>;
+
+  const W=width,CHART_H=height*0.6,BAR_H=height*0.3,GAP=height*0.1;
+  const vals=data.map(d=>d.total_asset);
+
+  // 일별 수익 (전일 대비)
+  const dailyPnl=vals.map((v,i)=>i===0?0:v-vals[i-1]);
+  const maxPnl=Math.max(...dailyPnl.map(Math.abs),1);
+
+  // 자산 라인 범위
+  const mn=Math.min(...vals)*0.998,mx=Math.max(...vals)*1.002,rng=mx-mn||1;
+  const toY=v=>8+(1-(v-mn)/rng)*(CHART_H-16);
+
+  // MDD (최대 낙폭) 구간 찾기
+  let peak=vals[0],mddStart=0,mddEnd=0,mddVal=0,currentStart=0;
+  for(let i=1;i<vals.length;i++){
+    if(vals[i]>peak){peak=vals[i];currentStart=i;}
+    const dd=(vals[i]-peak)/peak*100;
+    if(dd<mddVal){mddVal=dd;mddStart=currentStart;mddEnd=i;}
+  }
+
+  const bw=Math.max(2,Math.floor((W-20)/vals.length)-1);
+  const step=(W-20)/vals.length;
+
+  // 누적 라인 경로
+  const linePts=vals.map((v,i)=>`${10+i*step+step/2},${toY(v)}`).join(" ");
+  const areaPts=linePts+` ${10+vals.length*step-step/2},${CHART_H} ${10+step/2},${CHART_H}`;
+
+  return (
+    <svg width={W} height={height} style={{display:"block"}}>
+      <defs>
+        <linearGradient id="ahcg" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#4cff8b" stopOpacity="0.25"/>
+          <stop offset="100%" stopColor="#4cff8b" stopOpacity="0"/>
+        </linearGradient>
+      </defs>
+
+      {/* 배경 */}
+      <rect x="0" y="0" width={W} height={height} fill="rgba(8,15,30,0.6)" rx="4"/>
+
+      {/* MDD 하이라이트 */}
+      {mddVal<-1&&<rect x={10+mddStart*step} y={0} width={(mddEnd-mddStart+1)*step} height={CHART_H}
+        fill="rgba(255,68,68,0.06)" stroke="rgba(255,68,68,0.15)" strokeDasharray="3,3" rx="2"/>}
+      {mddVal<-1&&<text x={10+(mddStart+mddEnd)/2*step} y={CHART_H-4} fill="#ff4444" fontSize="8" textAnchor="middle" opacity="0.7">
+        MDD {mddVal.toFixed(1)}%
+      </text>}
+
+      {/* 그리드 라인 */}
+      {[0.25,0.5,0.75].map(p=><line key={p} x1="10" y1={toY(mn+rng*p)} x2={W-10} y2={toY(mn+rng*p)} stroke="rgba(50,70,100,0.2)" strokeDasharray="2,3"/>)}
+
+      {/* 누적 자산 영역 + 라인 */}
+      <polygon points={areaPts} fill="url(#ahcg)"/>
+      <polyline points={linePts} fill="none" stroke="#4cff8b" strokeWidth="1.8" strokeLinejoin="round"/>
+
+      {/* 일별 수익/손실 막대 (하단) */}
+      {dailyPnl.map((pnl,i)=>{
+        if(i===0) return null;
+        const barH=Math.abs(pnl)/maxPnl*(BAR_H-4);
+        const x=10+i*step+(step-bw)/2;
+        const isPos=pnl>=0;
+        const y=isPos?CHART_H+GAP+(BAR_H-4)/2-barH:CHART_H+GAP+(BAR_H-4)/2;
+        return <rect key={i} x={x} y={y} width={bw} height={Math.max(barH,1)} rx="1"
+          fill={isPos?"#4cff8b":"#ff4444"} opacity="0.5"/>;
+      })}
+
+      {/* 하단 0라인 */}
+      <line x1="10" y1={CHART_H+GAP+(BAR_H-4)/2} x2={W-10} y2={CHART_H+GAP+(BAR_H-4)/2}
+        stroke="rgba(100,140,200,0.2)" strokeDasharray="2,2"/>
+
+      {/* 날짜 레이블 (시작/끝) */}
+      {data.length>1&&<>
+        <text x="10" y={height-1} fill="#445566" fontSize="8" fontFamily="monospace">{data[0].record_date?.slice(5)}</text>
+        <text x={W-10} y={height-1} fill="#445566" fontSize="8" fontFamily="monospace" textAnchor="end">{data[data.length-1].record_date?.slice(5)}</text>
+      </>}
+
+      {/* 범례 */}
+      <text x={W/2} y={height-1} fill="#556677" fontSize="7" textAnchor="middle">▬ 누적자산 ┃ ▮ 일별손익</text>
+    </svg>
+  );
+}
+
 function CandleChart({code,width=560,height=280}) {
   const {data:candles}=useApi(code?`/api/stock/minute/${code}`:null,60000);
   const dc=(candles&&candles.length>5)?candles.slice(0,35).reverse():null;
@@ -147,6 +231,8 @@ function DashboardPage() {
   const {data:assetHistory}=useApi("/api/portfolio/asset-history",0);
   const {data:summary}=useApi("/api/portfolio/summary",iv);
   const {data:strategies}=useApi("/api/strategy/",0);
+  const {data:compoundData}=useApi("/api/virtual-portfolio/compound/list",0);
+  const {data:scanProgress}=useApi("/api/scanner/progress",0);
 
   const tList=trades||[],hList=holdings||[],wList=watchlist||[];
   const hist=(assetHistory||[]).sort((a,b)=>a.record_date?.localeCompare(b.record_date));
@@ -161,17 +247,25 @@ function DashboardPage() {
   const chartStock=hList[0]||wList[0]||null;
   const chartCode=mkt.isOpen?(chartStock?.stock_code||""):"";
 
+  // 복리 그룹 요약
+  const cGroups=(compoundData?.groups||[]).filter(g=>g.status==="active");
+  const topGroup=cGroups[0]||null;
+
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
+      {/* Row 1: 핵심 카드 4개 */}
       <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
         <Card icon="💰" title="총 자산" value={totalAsset?`${fmt(totalAsset)}원`:"—"} sub={totalAsset?fmtPct(cumRet):"로딩..."} color={totalAsset?"#4cff8b":"#e0e6f0"}/>
         <Card icon="📈" title="오늘 순수익" value={!mkt.isOpen?"—":fmtWon(todayProfit)} sub={!mkt.isOpen?mkt.status:"수수료·세금 차감"} color={!mkt.isOpen?"#ff9800":clr(todayProfit)}/>
         <Card icon="💼" title="보유 종목" value={`${hList.length} 종목`} sub={`미실현 ${fmtWon(totalUnrealized)}`} color="#64b5f6"/>
-        <Card icon="🔄" title="오늘 매매" value={!mkt.isOpen?"0회 (휴장)":`${sells.length}회 (${wins}승 ${losses}패)`} sub={!mkt.isOpen?mkt.status:`승률 ${sells.length?Math.round(wins/sells.length*100):0}%`} color={!mkt.isOpen?"#ff9800":"#ffd54f"}/>
+        <Card icon="🤖" title="시스템 상태"
+          value={mkt.isOpen?"🟢 자동매매 중":"🟡 대기"}
+          sub={scanProgress?.last_scan?`최종스캔 ${scanProgress.last_scan.slice(11,16)}`:(mkt.isOpen?"스케줄러 동작 중":mkt.status)}
+          color={mkt.isOpen?"#4cff8b":"#ff9800"}/>
       </div>
 
+      {/* Row 2: 차트 + 감시/보유 */}
       <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
-        {/* Chart */}
         <div style={{flex:"1 1 550px",background:"linear-gradient(135deg,rgba(25,35,65,0.9),rgba(15,22,48,0.95))",border:"1px solid rgba(100,140,200,0.15)",borderRadius:12,padding:16}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
             <div><span style={{color:"#e0e6f0",fontWeight:600,fontSize:15}}>📈 실시간 차트</span><span style={{color:"#6688aa",fontSize:12,marginLeft:12}}>{chartStock?`${chartStock.stock_name} (${chartStock.stock_code})`:"종목 없음"}</span></div>
@@ -180,8 +274,6 @@ function DashboardPage() {
           <CandleChart code={chartCode}/>
           <div style={{display:"flex",gap:6,marginTop:8}}>{["1분","3분","5분","15분","일봉"].map((tf,i)=><button key={tf} style={{background:i===2?"rgba(79,195,247,0.2)":"transparent",color:i===2?"#4fc3f7":"#556677",border:"1px solid "+(i===2?"rgba(79,195,247,0.3)":"transparent"),borderRadius:6,padding:"4px 12px",fontSize:11,cursor:"pointer"}}>{tf}</button>)}</div>
         </div>
-
-        {/* Watchlist + Holdings */}
         <div style={{flex:"1 1 400px",display:"flex",flexDirection:"column",gap:12}}>
           <div style={{background:"linear-gradient(135deg,rgba(25,35,65,0.9),rgba(15,22,48,0.95))",border:"1px solid rgba(100,140,200,0.15)",borderRadius:12,padding:16}}>
             <div style={{color:"#e0e6f0",fontWeight:600,fontSize:15,marginBottom:12}}>🔍 오늘의 감시 종목</div>
@@ -203,7 +295,7 @@ function DashboardPage() {
         </div>
       </div>
 
-      {/* Trade Log + Growth */}
+      {/* Row 3: 매매로그 + 성장여정(강화) + 복리요약 */}
       <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
         <div style={{flex:"1 1 500px",background:"linear-gradient(135deg,rgba(25,35,65,0.9),rgba(15,22,48,0.95))",border:"1px solid rgba(100,140,200,0.15)",borderRadius:12,padding:16}}>
           <div style={{color:"#e0e6f0",fontWeight:600,fontSize:15,marginBottom:12}}>📋 오늘 매매 로그</div>
@@ -220,7 +312,7 @@ function DashboardPage() {
         </div>
         <div style={{flex:"1 1 400px",background:"linear-gradient(135deg,rgba(25,35,65,0.9),rgba(15,22,48,0.95))",border:"1px solid rgba(100,140,200,0.15)",borderRadius:12,padding:16}}>
           <div style={{color:"#e0e6f0",fontWeight:600,fontSize:15,marginBottom:12}}>🎯 100만원 → 10억 여정</div>
-          <MiniChart data={hist} width={420} height={130}/>
+          <AssetHistoryChart data={hist} width={420} height={160}/>
           <div style={{display:"flex",justifyContent:"space-between",marginTop:12,gap:8}}>
             {[["시작금액",`${fmt(initCap)}원`,"#e0e6f0"],["현재자산",totalAsset?`${fmt(totalAsset)}원`:"—","#4cff8b"],["남은금액",totalAsset?`${fmt(1000000000-totalAsset)}원`:"—","#ffd54f"]].map(([l,v,c])=><div key={l} style={{flex:1}}><div style={{color:"#556677",fontSize:11}}>{l}</div><div style={{color:c,fontSize:13,fontWeight:600,fontFamily:"monospace"}}>{v}</div></div>)}
           </div>
@@ -230,6 +322,41 @@ function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* Row 4: 복리 그룹 미니 요약 */}
+      {topGroup && (
+        <div style={{background:"linear-gradient(135deg,rgba(25,35,65,0.9),rgba(15,22,48,0.95))",border:"1px solid rgba(100,140,200,0.15)",borderRadius:12,padding:16}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+            <div style={{color:"#e0e6f0",fontWeight:600,fontSize:15}}>🔄 복리 그룹 현황</div>
+            <span style={{fontSize:11,color:"#6688aa"}}>활성 {cGroups.length}개 그룹</span>
+          </div>
+          <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+            {cGroups.slice(0,3).map(g=>{
+              const isProfit=g.current_capital>g.seed_money;
+              const growPct=g.seed_money>0?((g.current_capital/g.seed_money-1)*100):0;
+              const prog=g.goal_progress||0;
+              return (
+                <div key={g.id} style={{flex:"1 1 300px",background:"rgba(10,18,40,0.6)",borderRadius:8,padding:12,border:"1px solid rgba(100,140,200,0.1)"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                    <span style={{color:"#e0e6f0",fontWeight:600,fontSize:13}}>{g.name}</span>
+                    <span style={{fontSize:10,color:isProfit?"#4cff8b":"#ff4c4c",fontFamily:"monospace"}}>
+                      {growPct>=0?"+":""}{growPct.toFixed(1)}% ({g.growth_multiple||1}×)
+                    </span>
+                  </div>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#6688aa",marginBottom:6}}>
+                    <span>{fmt(g.seed_money)} → <span style={{color:isProfit?"#4cff8b":"#ff4c4c",fontWeight:600}}>{fmt(g.current_capital)}</span></span>
+                    <span>{g.current_round}회차 · {g.win_rounds}승{g.loss_rounds}패</span>
+                  </div>
+                  <div style={{background:"rgba(100,140,200,0.1)",borderRadius:4,height:6,overflow:"hidden"}}>
+                    <div style={{width:`${Math.min(prog,100)}%`,height:"100%",borderRadius:4,background:prog>=100?"linear-gradient(90deg,#ffd700,#ffaa00)":"linear-gradient(90deg,#4fc3f7,#4cff8b)"}}/>
+                  </div>
+                  <div style={{textAlign:"right",fontSize:9,color:"#556677",marginTop:2}}>목표 {prog.toFixed(1)}%</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -359,7 +486,7 @@ function StrategyPage() {
   const [tab,setTab]=useState("overview");
   const {data:strategies,loading}=useApi("/api/strategy/",0);
   if(loading) return <Loader t="전략 정보 로딩..."/>;
-  const tabs=[{id:"overview",label:"📊 전체 요약",color:"#64b5f6"},{id:"dip",label:"📉 눌림목전략",color:"#4cff8b"},{id:"gap",label:"📈 갭상승전략",color:"#ffd54f"}];
+  const tabs=[{id:"overview",label:"📊 전체 요약",color:"#64b5f6"},{id:"dip",label:"📉 눌림목전략",color:"#4cff8b"},{id:"gap",label:"📈 갭상승전략",color:"#ffd54f"},{id:"compare",label:"⚖️ 전략비교",color:"#ff9800"}];
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
       <div style={{display:"flex",gap:4,padding:4,background:"rgba(10,18,40,0.6)",borderRadius:10,border:"1px solid rgba(100,140,200,0.1)"}}>
@@ -368,6 +495,7 @@ function StrategyPage() {
       {tab==="overview"&&<StrategyOverviewTab/>}
       {tab==="dip"&&<DipStrategyTab/>}
       {tab==="gap"&&<GapStrategyTab/>}
+      {tab==="compare"&&<ComparePage/>}
     </div>
   );
 }
@@ -840,19 +968,14 @@ function BacktestChart({ data, initialCapital }) {
 // ============================================================
 const MENU=[
   {id:"dashboard",icon:"📊",label:"대시보드"},
-  {id:"compare",icon:"⚖️",label:"전략 비교"},
-  {id:"history",icon:"📋",label:"매매이력"},
-  {id:"watchlist",icon:"🔍",label:"감시종목"},
-  {id:"performance",icon:"📈",label:"수익분석"},
-  {id:"growth",icon:"🎯",label:"성장여정"},
   {id:"strategy",icon:"📖",label:"전략정리"},
-  {id:"backtest",icon:"🧪",label:"백테스트"},
-   {id:"swing",icon:"📊",label:"스윙백테스트"},
   {id:"pattern",icon:"🔍",label:"패턴탐지기"},
-  {id:"pattern-lib",icon:"📚",label:"패턴라이브러리"},
-  {id:"virtual-portfolio",icon:"📊",label:"실시간 추적"},
+  {id:"pattern-library",icon:"📚",label:"패턴라이브러리"},
+  {id:"virtual-portfolio",icon:"💼",label:"실시간 추적"},
+  {id:"swing",icon:"📊",label:"스윙백테스트"},
+  {id:"backtest",icon:"🧪",label:"백테스트"},
+  {id:"surge-sim",icon:"🚀",label:"급등시뮬레이터"},
   {id:"settings",icon:"⚙️",label:"설정"},
-
 ];
 
 export default function App() {
@@ -887,20 +1010,14 @@ export default function App() {
   const render=()=>{
     switch(page){
       case "dashboard": return <DashboardPage/>;
-      case "compare": return <ComparePage/>;
-      case "history": return <HistoryPage/>;
-      case "watchlist": return <WatchlistPage/>;
-      case "portfolio": return <PortfolioPage/>;
-      case "performance": return <PerformancePage/>;
-      case "growth": return <GrowthPage/>;
       case "strategy": return <StrategyPage/>;
-      case "backtest": return <BacktestPage/>;
-      case "swing": return <SwingBacktest/>;
-      case "settings": return <SettingsPage/>;
       case "pattern": return <PatternDetector/>;
-      case "pattern-lib": return <PatternLibrary/>;
+      case "pattern-library": return <PatternLibrary/>;
       case "virtual-portfolio": return <VirtualPortfolioTracker/>;
-      case "swing": return <SwingBacktest />;
+      case "swing": return <SwingBacktest/>;
+      case "backtest": return <BacktestPage/>;
+      case "surge-sim": return <SurgeSimulator/>;
+      case "settings": return <SettingsPage/>;
       default: return <DashboardPage/>;
     }
   };
