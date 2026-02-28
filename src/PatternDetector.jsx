@@ -196,13 +196,27 @@ export default function PatternDetector() {
   const [regPreset, setRegPreset] = useState('smart');
   const [regCapital, setRegCapital] = useState(1000000);
   const [regLoading, setRegLoading] = useState(false);
-  const [newRtSessionId, setNewRtSessionId] = useState(null);  // 모달에서 생성된 세션 ID
-  const openRegModal = () => {
+  const [newRtSessionId, setNewRtSessionId] = useState(null);
+  // ★ 복리 그룹 상태
+  const [compoundGroups, setCompoundGroups] = useState([]);
+  const [selectedCompound, setSelectedCompound] = useState(null); // null=새 포트폴리오, {id,name,...}=복리 그룹
+  const [newCompoundName, setNewCompoundName] = useState('10억 도전');
+  const [newCompoundSeed, setNewCompoundSeed] = useState(100000);
+  const [newCompoundGoal, setNewCompoundGoal] = useState(1000000000);
+  const [regMode, setRegMode] = useState('portfolio'); // 'portfolio' | 'compound' | 'new-compound'
+
+  const openRegModal = async () => {
     if (selectedRecStocks.size === 0) return;
     const today = new Date();
     const dateStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
     setRegTitle(dateStr);
     setShowRegModal(true);
+    // 복리 그룹 목록 로드
+    try {
+      const res = await fetch(`${API_BASE}/api/virtual-portfolio/compound/list`);
+      const data = await res.json();
+      if (data.success) setCompoundGroups(data.groups || []);
+    } catch(e) { console.error('복리 그룹 로드 실패:', e); }
   };
 
   const doRegisterVirtual = async () => {
@@ -219,28 +233,65 @@ export default function PatternDetector() {
         smart:        { tp:15, sl:12, days:30, trailing:5, grace:7 },
       };
       const p = presetDefs[regPreset] || presetDefs.smart;
-      const body = {
-        title: regTitle || 'Untitled',
-        stocks: selRecs.map(s => ({
-          code: s.code || '', name: s.name || '',
-          buy_price: s.current_price || 0,
-        })),
-        capital: regCapital,
-        preset: regPreset,
-        take_profit_pct: p.tp, stop_loss_pct: p.sl,
-        max_hold_days: p.days, trailing_stop_pct: p.trailing, grace_days: p.grace,
-      };
-      const res = await fetch(`${API_BASE}/api/virtual-invest/realtime/start`, {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify(body),
-      });
-      const data = await res.json();
+      const stocksList = selRecs.map(s => ({
+        code: s.code || '', name: s.name || '',
+        buy_price: s.current_price || 0, current_price: s.current_price || 0,
+        similarity: s.similarity || 0, signal: s.signal || '',
+      }));
+
+      let data;
+
+      if (regMode === 'new-compound') {
+        // ★ 새 복리 그룹 생성 + 1회차 등록
+        const res = await fetch(`${API_BASE}/api/virtual-portfolio/compound/create`, {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({
+            name: newCompoundName || '10억 도전',
+            seed_money: newCompoundSeed,
+            goal_amount: newCompoundGoal,
+            strategy: regPreset,
+            stocks: stocksList,
+          }),
+        });
+        data = await res.json();
+
+      } else if (regMode === 'compound' && selectedCompound) {
+        // ★ 기존 복리 그룹에 다음 회차 등록
+        const res = await fetch(`${API_BASE}/api/virtual-portfolio/compound/${selectedCompound.id}/next-round`, {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({
+            stocks: stocksList,
+            preset: regPreset,
+            take_profit_pct: p.tp, stop_loss_pct: p.sl,
+            max_hold_days: p.days, trailing_stop_pct: p.trailing, grace_days: p.grace,
+          }),
+        });
+        data = await res.json();
+
+      } else {
+        // ★ 기존 방식: 독립 포트폴리오
+        const body = {
+          title: regTitle || 'Untitled',
+          stocks: stocksList,
+          capital: regCapital,
+          preset: regPreset,
+          take_profit_pct: p.tp, stop_loss_pct: p.sl,
+          max_hold_days: p.days, trailing_stop_pct: p.trailing, grace_days: p.grace,
+        };
+        const res = await fetch(`${API_BASE}/api/virtual-invest/realtime/start`, {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify(body),
+        });
+        data = await res.json();
+      }
+
       if (data.error) { alert('등록 실패: ' + data.error); }
       else {
         setShowRegModal(false);
         setSelectedRecStocks(new Set());
-        setNewRtSessionId(data.session_id || null);
+        setNewRtSessionId(data.session_id || data.portfolio_id || null);
         setActiveTab(3);
+        alert(data.message || '등록 완료!');
       }
     } catch(e) { alert('등록 실패: ' + e.message); }
     finally { setRegLoading(false); }
@@ -658,10 +709,7 @@ export default function PatternDetector() {
           toggleScanStock={toggleScanStock} selectAllVisible={selectAllVisible}
           setSelectedScanStocks={setSelectedScanStocks} sendToAnalyzer={sendToAnalyzer}
           getFilteredScanResults={getFilteredScanResults}
-          scanDate={scanDate} scanSource={scanSource} onReload={reloadScanFromDB}
-          scanChartCode={scanChartCode} setScanChartCode={setScanChartCode}
-          scanChartCandles={scanChartCandles} scanChartLoading={scanChartLoading}
-          fetchScanChart={fetchScanChart} scanChartStock={scanChartStock} />}
+          scanDate={scanDate} scanSource={scanSource} onReload={reloadScanFromDB} />}
 
         {!scanResult && !scanning && !loadingPrev && (
           <div style={{ background:COLORS.card, border:`1px solid ${COLORS.cardBorder}`,
@@ -920,7 +968,7 @@ export default function PatternDetector() {
           {activeTab===0 && <TabSummary result={result} />}
           {activeTab===1 && <TabChart result={result} />}
           {activeTab===2 && <TabRecommend result={result} selectedRecStocks={selectedRecStocks} setSelectedRecStocks={setSelectedRecStocks} onRegister={openRegModal} />}
-          {activeTab===3 && <VirtualInvestTab recommendations={result.recommendations || []} selectedRecStocks={selectedRecStocks} setSelectedRecStocks={setSelectedRecStocks} newRtSessionId={newRtSessionId} setNewRtSessionId={setNewRtSessionId} />}
+          {activeTab===3 && <VirtualInvestTab recommendations={result.recommendations || []} backtestRecommendations={result.backtest_recommendations || []} selectedRecStocks={selectedRecStocks} setSelectedRecStocks={setSelectedRecStocks} newRtSessionId={newRtSessionId} setNewRtSessionId={setNewRtSessionId} />}
         </>)}
 
         {!result && !analyzing && (
@@ -950,25 +998,126 @@ export default function PatternDetector() {
         }} onClick={() => !regLoading && setShowRegModal(false)}>
           <div style={{
             background:'#1a2234', border:'1px solid rgba(100,140,200,0.3)',
-            borderRadius:16, padding:28, width:440, maxWidth:'90vw',
+            borderRadius:16, padding:28, width:520, maxWidth:'92vw',
             boxShadow:'0 20px 60px rgba(0,0,0,0.5)',
           }} onClick={e => e.stopPropagation()}>
             <div style={{ fontSize:18, fontWeight:700, marginBottom:20, color:'#e5e7eb' }}>
               💰 가상투자 등록
             </div>
 
-            {/* 제목 입력 */}
+            {/* ★ 등록 대상 선택: 포트폴리오 vs 복리 그룹 */}
             <div style={{ marginBottom:16 }}>
-              <div style={{ fontSize:12, color:'#9ca3af', marginBottom:6 }}>포트폴리오 제목</div>
-              <input value={regTitle} onChange={e => setRegTitle(e.target.value)}
-                placeholder="예: 2026-02-28 패턴분석"
-                autoFocus
-                style={{
-                  width:'100%', padding:'10px 14px', fontSize:14, fontFamily:'inherit',
-                  background:'#0d1321', border:'1px solid #1e293b',
-                  borderRadius:8, color:'#e5e7eb', outline:'none',
-                }} />
+              <div style={{ fontSize:12, color:'#9ca3af', marginBottom:8 }}>등록 대상</div>
+              <div style={{ display:'flex', gap:6 }}>
+                {[
+                  { key:'portfolio', label:'📋 포트폴리오', desc:'1회성 추적' },
+                  { key:'compound', label:'🔄 기존 복리그룹', desc:`${compoundGroups.filter(g=>g.status==='active').length}개`, hide: compoundGroups.filter(g=>g.status==='active').length === 0 },
+                  { key:'new-compound', label:'✨ 새 복리그룹', desc:'시드→목표' },
+                ].filter(m => !m.hide).map(m => (
+                  <button key={m.key} onClick={() => setRegMode(m.key)} style={{
+                    flex:1, padding:'10px 6px', borderRadius:8, cursor:'pointer', textAlign:'center',
+                    border: regMode===m.key ? '2px solid #ffd54f' : '1px solid #1e293b',
+                    background: regMode===m.key ? 'rgba(255,213,79,0.12)' : 'transparent',
+                    color: regMode===m.key ? '#ffd54f' : '#9ca3af', fontSize:11, fontFamily:'inherit',
+                  }}>
+                    <div style={{ fontWeight:600, marginBottom:2 }}>{m.label}</div>
+                    <div style={{ fontSize:10, opacity:0.7 }}>{m.desc}</div>
+                  </button>
+                ))}
+              </div>
             </div>
+
+            {/* ★ 기존 복리 그룹 선택 (compound 모드) */}
+            {regMode === 'compound' && (
+              <div style={{ marginBottom:16 }}>
+                <div style={{ fontSize:12, color:'#9ca3af', marginBottom:6 }}>복리 그룹 선택</div>
+                <div style={{ display:'flex', flexDirection:'column', gap:6, maxHeight:140, overflowY:'auto' }}>
+                  {compoundGroups.filter(g => g.status === 'active').map(g => (
+                    <button key={g.id} onClick={() => setSelectedCompound(g)} style={{
+                      padding:'10px 12px', borderRadius:8, cursor:'pointer', textAlign:'left',
+                      border: selectedCompound?.id === g.id ? '2px solid #ff9800' : '1px solid #1e293b',
+                      background: selectedCompound?.id === g.id ? 'rgba(255,152,0,0.12)' : '#0d1321',
+                      color:'#e5e7eb', fontSize:12, fontFamily:'inherit',
+                    }}>
+                      <div style={{ display:'flex', justifyContent:'space-between' }}>
+                        <span style={{ fontWeight:600 }}>🔄 {g.name}</span>
+                        <span style={{ color:'#ffd54f', fontSize:11 }}>{g.current_round}회차</span>
+                      </div>
+                      <div style={{ fontSize:10, color:'#9ca3af', marginTop:4 }}>
+                        현재 원금: <span style={{ color: g.current_capital >= g.seed_money ? '#4cff8b' : '#ff5252' }}>
+                          {Number(g.current_capital).toLocaleString()}원
+                        </span>
+                        {' · '}목표: {Number(g.goal_amount).toLocaleString()}원
+                        {' · '}진행률: {(g.goal_progress || 0).toFixed(1)}%
+                      </div>
+                    </button>
+                  ))}
+                </div>
+                {selectedCompound && (
+                  <div style={{ marginTop:8, padding:8, borderRadius:6, background:'rgba(255,152,0,0.08)',
+                    border:'1px solid rgba(255,152,0,0.2)', fontSize:11, color:'#ff9800' }}>
+                    💡 {selectedCompound.name} {selectedCompound.current_round}회차에 투자금
+                    <b> {Number(selectedCompound.current_capital).toLocaleString()}원</b>으로 등록됩니다
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ★ 새 복리 그룹 설정 (new-compound 모드) */}
+            {regMode === 'new-compound' && (
+              <div style={{ marginBottom:16 }}>
+                <div style={{ fontSize:12, color:'#9ca3af', marginBottom:6 }}>새 복리 그룹 설정</div>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8 }}>
+                  <div>
+                    <div style={{ fontSize:10, color:'#556677', marginBottom:3 }}>그룹명</div>
+                    <input value={newCompoundName} onChange={e => setNewCompoundName(e.target.value)}
+                      style={{ width:'100%', padding:'7px 10px', fontSize:12, fontFamily:'inherit',
+                        background:'#0d1321', border:'1px solid #1e293b', borderRadius:6, color:'#e5e7eb', outline:'none' }} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize:10, color:'#556677', marginBottom:3 }}>시드머니</div>
+                    <select value={newCompoundSeed} onChange={e => setNewCompoundSeed(Number(e.target.value))}
+                      style={{ width:'100%', padding:'7px 10px', fontSize:12, fontFamily:'inherit',
+                        background:'#0d1321', border:'1px solid #1e293b', borderRadius:6, color:'#e5e7eb', outline:'none' }}>
+                      <option value={100000}>10만원</option>
+                      <option value={500000}>50만원</option>
+                      <option value={1000000}>100만원</option>
+                      <option value={5000000}>500만원</option>
+                      <option value={10000000}>1000만원</option>
+                    </select>
+                  </div>
+                  <div>
+                    <div style={{ fontSize:10, color:'#556677', marginBottom:3 }}>목표금액</div>
+                    <select value={newCompoundGoal} onChange={e => setNewCompoundGoal(Number(e.target.value))}
+                      style={{ width:'100%', padding:'7px 10px', fontSize:12, fontFamily:'inherit',
+                        background:'#0d1321', border:'1px solid #1e293b', borderRadius:6, color:'#e5e7eb', outline:'none' }}>
+                      <option value={10000000}>1천만원</option>
+                      <option value={100000000}>1억원</option>
+                      <option value={1000000000}>10억원</option>
+                      <option value={10000000000}>100억원</option>
+                    </select>
+                  </div>
+                </div>
+                <div style={{ marginTop:6, fontSize:10, color:'#ffd54f' }}>
+                  💡 {Number(newCompoundSeed).toLocaleString()}원 → {Number(newCompoundGoal).toLocaleString()}원
+                  ({newCompoundSeed > 0 ? Math.round(newCompoundGoal / newCompoundSeed).toLocaleString() : 0}배 목표)
+                </div>
+              </div>
+            )}
+
+            {/* 제목 입력 (포트폴리오 모드만) */}
+            {regMode === 'portfolio' && (
+              <div style={{ marginBottom:16 }}>
+                <div style={{ fontSize:12, color:'#9ca3af', marginBottom:6 }}>포트폴리오 제목</div>
+                <input value={regTitle} onChange={e => setRegTitle(e.target.value)}
+                  placeholder="예: 2026-03-01 패턴분석"
+                  style={{
+                    width:'100%', padding:'10px 14px', fontSize:14, fontFamily:'inherit',
+                    background:'#0d1321', border:'1px solid #1e293b',
+                    borderRadius:8, color:'#e5e7eb', outline:'none',
+                  }} />
+              </div>
+            )}
 
             {/* 전략 선택 */}
             <div style={{ marginBottom:16 }}>
@@ -994,20 +1143,22 @@ export default function PatternDetector() {
               </div>
             </div>
 
-            {/* 투자금 */}
-            <div style={{ marginBottom:20 }}>
-              <div style={{ fontSize:12, color:'#9ca3af', marginBottom:6 }}>투자금액</div>
-              <div style={{ display:'flex', gap:8 }}>
-                {[500000, 1000000, 3000000, 5000000].map(v => (
-                  <button key={v} onClick={() => setRegCapital(v)} style={{
-                    flex:1, padding:'8px 4px', borderRadius:6, cursor:'pointer', fontSize:12, fontFamily:'inherit',
-                    border: regCapital===v ? '1px solid #4fc3f7' : '1px solid #1e293b',
-                    background: regCapital===v ? 'rgba(79,195,247,0.15)' : 'transparent',
-                    color: regCapital===v ? '#4fc3f7' : '#9ca3af',
-                  }}>{(v/10000).toFixed(0)}만</button>
-                ))}
+            {/* 투자금 (포트폴리오 모드만) */}
+            {regMode === 'portfolio' && (
+              <div style={{ marginBottom:20 }}>
+                <div style={{ fontSize:12, color:'#9ca3af', marginBottom:6 }}>투자금액</div>
+                <div style={{ display:'flex', gap:8 }}>
+                  {[500000, 1000000, 3000000, 5000000].map(v => (
+                    <button key={v} onClick={() => setRegCapital(v)} style={{
+                      flex:1, padding:'8px 4px', borderRadius:6, cursor:'pointer', fontSize:12, fontFamily:'inherit',
+                      border: regCapital===v ? '1px solid #4fc3f7' : '1px solid #1e293b',
+                      background: regCapital===v ? 'rgba(79,195,247,0.15)' : 'transparent',
+                      color: regCapital===v ? '#4fc3f7' : '#9ca3af',
+                    }}>{(v/10000).toFixed(0)}만</button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
             {/* 선택 종목 표시 */}
             <div style={{
@@ -1034,12 +1185,17 @@ export default function PatternDetector() {
                   padding:'10px 20px', borderRadius:8, cursor:'pointer', fontSize:13, fontFamily:'inherit',
                   background:'transparent', border:'1px solid #374151', color:'#9ca3af',
                 }}>취소</button>
-              <button onClick={doRegisterVirtual} disabled={regLoading}
+              <button onClick={doRegisterVirtual}
+                disabled={regLoading || (regMode === 'compound' && !selectedCompound)}
                 style={{
                   padding:'10px 28px', borderRadius:8, cursor:'pointer', fontSize:14, fontWeight:700, fontFamily:'inherit',
-                  background: regLoading ? '#374151' : '#10b981', border:'none',
-                  color: regLoading ? '#6b7280' : 'white',
-                }}>{regLoading ? '⏳ 등록 중...' : '✅ 등록하기'}</button>
+                  background: regLoading ? '#374151' : regMode === 'portfolio' ? '#10b981' : '#ff9800',
+                  border:'none', color: regLoading ? '#6b7280' : 'white',
+                  opacity: (regMode === 'compound' && !selectedCompound) ? 0.5 : 1,
+                }}>{regLoading ? '⏳ 등록 중...' :
+                    regMode === 'new-compound' ? '🔄 복리 그룹 생성 + 등록' :
+                    regMode === 'compound' ? `🔄 ${selectedCompound?.current_round || '?'}회차 등록` :
+                    '✅ 등록하기'}</button>
             </div>
           </div>
         </div>
@@ -1250,7 +1406,7 @@ function SettingsPanel(p) {
   </div>);
 }
 
-function ScanResultView({ scanResult, scanSortKey, setScanSortKey, scanFilterLevel, setScanFilterLevel, selectedScanStocks, toggleScanStock, selectAllVisible, setSelectedScanStocks, sendToAnalyzer, getFilteredScanResults, scanDate, scanSource, onReload, scanChartCode, setScanChartCode, scanChartCandles, scanChartLoading, fetchScanChart, scanChartStock }) {
+function ScanResultView({ scanResult, scanSortKey, setScanSortKey, scanFilterLevel, setScanFilterLevel, selectedScanStocks, toggleScanStock, selectAllVisible, setSelectedScanStocks, sendToAnalyzer, getFilteredScanResults, scanDate, scanSource, onReload }) {
   const stats = scanResult.stats || {};
   const filtered = getFilteredScanResults();
   const fmtDate = (iso) => { if (!iso) return ''; try { const d = new Date(iso); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; } catch { return iso; } };
