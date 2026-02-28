@@ -328,7 +328,9 @@ export default function VirtualInvestTab({ recommendations = [], backtestRecomme
   })();
 
   // ── ★ 백테스트용 종목 (과거 signal_date + buy_price 사용) ──
-  // 버그수정: recommendations의 signal_date=오늘 → backtest 데이터와 매핑하여 역사적 날짜 사용
+  // 핵심: 가상투자 비교는 "과거 급상승이 있었던 종목"을 대상으로 시뮬레이션해야 함
+  // recommendations(현재 유사 종목)은 signal_date=오늘 → 미래 데이터 없어 백테스트 불가
+  // 따라서 backtestRecommendations을 최우선으로 사용
   const backtestStocks = (() => {
     // backtestRecommendations 코드별 룩업
     const btMap = {};
@@ -336,30 +338,19 @@ export default function VirtualInvestTab({ recommendations = [], backtestRecomme
       if (bt.code) btMap[bt.code] = bt;
     });
 
-    // Case 1: 사용자가 매수추천에서 종목 선택한 경우 → 선택된 종목에 과거 데이터 매핑
-    if (selectedRecStocks && selectedRecStocks.size > 0 && stocks.length > 0) {
-      return stocks.map(s => {
-        const code = s.code || s.stock_code || "";
-        const bt = btMap[code];
-        if (bt && bt.signal_date) {
-          // 1순위: backtestRecommendations에서 정확한 과거 데이터 가져오기
-          return { ...s, signal_date: bt.signal_date, buy_price: bt.buy_price || s.current_price || 0 };
-        }
-        if (s.backtest_signal_date) {
-          // 2순위: 백엔드에서 보강된 backtest_signal_date 사용
-          return { ...s, signal_date: s.backtest_signal_date, buy_price: s.backtest_buy_price || s.current_price || 0 };
-        }
-        // 3순위: 원본 유지 (signal_date=오늘 — 비이상적이지만 fallback)
-        return s;
-      });
-    }
-
-    // Case 2: 선택 없음 + backtestRecommendations 있음 → 과거 급상승 종목 직접 사용
+    // 1순위: backtestRecommendations 직접 사용 (항상 올바른 역사적 날짜 보유)
     if (backtestRecommendations && backtestRecommendations.length > 0) {
+      // 사용자 선택이 있으면 선택된 코드 중 backtest 데이터가 있는 것만 필터
+      if (selectedRecStocks && selectedRecStocks.size > 0) {
+        const filtered = backtestRecommendations.filter(bt => selectedRecStocks.has(bt.code));
+        // 선택된 종목 중 backtest 데이터가 있는 종목이 있으면 그것만 사용
+        if (filtered.length > 0) return filtered.slice(0, 10);
+      }
+      // 선택 없거나 매칭 없으면 전체 backtest 종목 사용
       return backtestRecommendations.slice(0, 10);
     }
 
-    // Case 3: 둘 다 없음 → recommendations에서 backtest_signal_date 보강 시도
+    // 2순위: recommendations에서 backtest 데이터 보강 시도
     return stocks.map(s => {
       const code = s.code || s.stock_code || "";
       const bt = btMap[code];
@@ -385,14 +376,26 @@ export default function VirtualInvestTab({ recommendations = [], backtestRecomme
     setError(null);
 
     try {
-      // ★ backtestStocks 사용 (과거 signal_date + buy_price)
+      // ★ 최종 안전장치: body 구성 시 backtestRecommendations에서 한번 더 확인
+      const btLookup = {};
+      (backtestRecommendations || []).forEach(bt => {
+        if (bt.code && bt.signal_date) btLookup[bt.code] = bt;
+      });
+
       const body = {
-        stocks: backtestStocks.map(s => ({
-          code: s.code || s.stock_code || "",
-          name: s.name || s.stock_name || "",
-          buy_price: s.buy_price || s.current_price || 0,
-          signal_date: s.signal_date || s.date || "",
-        })),
+        stocks: backtestStocks.map(s => {
+          const code = s.code || s.stock_code || "";
+          const bt = btLookup[code];
+          // 우선순위: backtestRec > backtest_signal_date > signal_date
+          const finalSignalDate = bt?.signal_date || s.backtest_signal_date || s.signal_date || s.date || "";
+          const finalBuyPrice = bt?.buy_price || s.backtest_buy_price || s.buy_price || s.current_price || 0;
+          return {
+            code,
+            name: s.name || s.stock_name || "",
+            buy_price: finalBuyPrice,
+            signal_date: finalSignalDate,
+          };
+        }),
         capital: 1000000,
         custom_params: {
           take_profit_pct: presetParams.custom.tp,
@@ -400,6 +403,11 @@ export default function VirtualInvestTab({ recommendations = [], backtestRecomme
           max_hold_days: presetParams.custom.days,
         },
       };
+
+      // ★ 디버깅: signal_date 확인
+      console.log("[가상투자 비교] 전송 데이터:", body.stocks.map(s =>
+        `${s.name}(${s.code}): signal=${s.signal_date}, price=${s.buy_price}`
+      ));
 
       const res = await fetch(`${API_BASE}/api/virtual-invest/compare`, {
         method: "POST",
@@ -585,7 +593,7 @@ export default function VirtualInvestTab({ recommendations = [], backtestRecomme
       <div style={S.card}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: "8px" }}>
           <div style={{ fontSize: "13px", fontWeight: 600 }}>
-            📋 투자 대상 종목 ({stocks.length}개)
+            📋 투자 대상 종목 ({backtestStocks.length}개)
             {selectedRecStocks && selectedRecStocks.size > 0 && (
               <span style={{ fontSize:11, color:'#10b981', marginLeft:8, fontWeight:400 }}>
                 ✅ 매수추천에서 선택됨
@@ -605,27 +613,30 @@ export default function VirtualInvestTab({ recommendations = [], backtestRecomme
             }}>선택 초기화</button>
           )}
         </div>
-        {stocks.length === 0 ? (
+        {backtestStocks.length === 0 ? (
           <div style={{ ...S.dimText, padding: "12px 0" }}>
             🎯 매수추천 탭에서 종목을 선택한 후 "💰 가상투자 등록" 버튼을 클릭하세요.
           </div>
         ) : (
           <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
-            {stocks.map((s, i) => {
+            {backtestStocks.map((s, i) => {
               const code = s.code || s.stock_code;
-              const bt = backtestRecommendations.find(b => b.code === code);
-              // ★ 수정: 3단계 fallback으로 signal_date 탐색
-              const sigDate = bt?.signal_date || s.backtest_signal_date || "";
+              const sigDate = s.signal_date || "";
               const fmtSigDate = sigDate.length >= 8 ? `${sigDate.slice(0,4)}.${sigDate.slice(4,6)}.${sigDate.slice(6,8)}` : "";
+              const isToday = sigDate && sigDate.replace(/[-./]/g, "").slice(0,8) >= new Date().toISOString().slice(0,10).replace(/-/g, "");
               return (
                 <span key={i} style={S.stockTag}>
                   {s.name || s.stock_name || code}
                   {s.similarity && <span style={{ color: "#ffd54f", marginLeft: 4, fontSize: 11 }}>
                     {s.similarity}%
                   </span>}
-                  {fmtSigDate && <span style={{ color: "#ce93d8", marginLeft: 4, fontSize: 10 }}>
-                    {fmtSigDate}
-                  </span>}
+                  {fmtSigDate ? (
+                    <span style={{ color: isToday ? "#ff6666" : "#ce93d8", marginLeft: 4, fontSize: 10 }}>
+                      {fmtSigDate}{isToday ? " ⚠️오늘" : ""}
+                    </span>
+                  ) : (
+                    <span style={{ color: "#ff6666", marginLeft: 4, fontSize: 10 }}>날짜없음</span>
+                  )}
                 </span>
               );
             })}
