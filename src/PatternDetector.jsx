@@ -85,6 +85,12 @@ export default function PatternDetector() {
   const [scanSource, setScanSource] = useState('');
   const [loadingPrev, setLoadingPrev] = useState(false);
 
+  // ━━━ 스캔 종목 차트 상태 ━━━
+  const [scanChartCode, setScanChartCode] = useState(null);
+  const [scanChartCandles, setScanChartCandles] = useState([]);
+  const [scanChartLoading, setScanChartLoading] = useState(false);
+  const [scanChartStock, setScanChartStock] = useState(null);
+
   // ━━━ [v3.1] 폴링 인터벌 ref — 언마운트 시 정리용 ━━━
   const scanIntervalRef = useRef(null);
 
@@ -348,6 +354,28 @@ export default function PatternDetector() {
     });
     applyPreset('manipulation');
     setPageMode('analyzer');
+  };
+
+  // ━━━ 스캔 종목 차트 로드 ━━━
+  const fetchScanChart = async (stock) => {
+    if (scanChartCode === stock.code) {
+      // 토글: 같은 종목 클릭 시 닫기
+      setScanChartCode(null); setScanChartCandles([]); setScanChartStock(null);
+      return;
+    }
+    setScanChartCode(stock.code);
+    setScanChartStock(stock);
+    setScanChartLoading(true);
+    setScanChartCandles([]);
+    try {
+      const res = await fetch(`${API_BASE}/api/virtual-invest/candles/${stock.code}?count=120`);
+      const data = await res.json();
+      setScanChartCandles(data.candles || []);
+    } catch (e) {
+      console.error('차트 로드 실패:', e);
+    } finally {
+      setScanChartLoading(false);
+    }
   };
 
   const getFilteredScanResults = () => {
@@ -1263,13 +1291,15 @@ function ScanResultView({ scanResult, scanSortKey, setScanSortKey, scanFilterLev
       </div>
     </div>
     <div style={{ background:COLORS.card, border:`1px solid ${COLORS.cardBorder}`, borderRadius:12, overflow:'hidden' }}>
-      <div style={{ display:'grid', gridTemplateColumns:'40px 1fr 80px 80px 60px 70px 80px 80px', padding:'10px 14px', fontSize:11, color:COLORS.textDim, fontWeight:600, borderBottom:`1px solid ${COLORS.cardBorder}`, background:'#0d1321' }}>
-        <span></span><span>종목</span><span style={{textAlign:'right'}}>현재가</span><span style={{textAlign:'center'}}>최대상승</span><span style={{textAlign:'center'}}>횟수</span><span style={{textAlign:'center'}}>고점대비</span><span style={{textAlign:'center'}}>세력점수</span><span style={{textAlign:'center'}}>판정</span>
+      <div style={{ display:'grid', gridTemplateColumns:'40px 1fr 80px 80px 60px 70px 80px 80px 40px', padding:'10px 14px', fontSize:11, color:COLORS.textDim, fontWeight:600, borderBottom:`1px solid ${COLORS.cardBorder}`, background:'#0d1321' }}>
+        <span></span><span>종목</span><span style={{textAlign:'right'}}>현재가</span><span style={{textAlign:'center'}}>최대상승</span><span style={{textAlign:'center'}}>횟수</span><span style={{textAlign:'center'}}>고점대비</span><span style={{textAlign:'center'}}>세력점수</span><span style={{textAlign:'center'}}>판정</span><span style={{textAlign:'center'}}>차트</span>
       </div>
       {filtered.length===0 ? (<div style={{ textAlign:'center', padding:30, color:COLORS.textDim, fontSize:13 }}>조건에 해당하는 급상승 종목이 없습니다.</div>) : filtered.map((stock, i) => {
         const sel = selectedScanStocks.has(stock.code);
         const mc = stock.top_manip_level==='high'?COLORS.red:stock.top_manip_level==='medium'?COLORS.yellow:COLORS.green;
-        return (<div key={stock.code} onClick={() => toggleScanStock(stock.code)} style={{ display:'grid', gridTemplateColumns:'40px 1fr 80px 80px 60px 70px 80px 80px', padding:'10px 14px', alignItems:'center', borderBottom:`1px solid ${COLORS.cardBorder}`, background:sel?'rgba(59,130,246,0.08)':i%2===0?'transparent':'rgba(255,255,255,0.015)', cursor:'pointer' }}>
+        const isChartOpen = scanChartCode === stock.code;
+        return (<React.Fragment key={stock.code}>
+          <div onClick={() => toggleScanStock(stock.code)} style={{ display:'grid', gridTemplateColumns:'40px 1fr 80px 80px 60px 70px 80px 80px 40px', padding:'10px 14px', alignItems:'center', borderBottom: isChartOpen ? 'none' : `1px solid ${COLORS.cardBorder}`, background:sel?'rgba(59,130,246,0.08)':i%2===0?'transparent':'rgba(255,255,255,0.015)', cursor:'pointer' }}>
           <div style={{textAlign:'center'}}><div style={{ width:18, height:18, borderRadius:4, border:`2px solid ${sel?COLORS.accent:COLORS.cardBorder}`, background:sel?COLORS.accent:'transparent', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, color:COLORS.white, fontWeight:700 }}>{sel&&'✓'}</div></div>
           <div><div style={{ fontSize:13, fontWeight:600 }}>{stock.name}<span style={{ fontSize:10, color:COLORS.textDim, marginLeft:6 }}>{stock.code} · {stock.market}</span></div><div style={{ fontSize:10, color:COLORS.textDim }}>최근: {stock.latest_surge_date||'-'}</div></div>
           <div style={{ textAlign:'right', fontSize:12, fontWeight:600 }}>{fmt(stock.current_price)}</div>
@@ -1278,7 +1308,25 @@ function ScanResultView({ scanResult, scanSortKey, setScanSortKey, scanFilterLev
           <div style={{ textAlign:'center', fontSize:11, fontWeight:600, color:stock.latest_from_peak<-30?COLORS.accent:COLORS.textDim }}>{stock.latest_from_peak}%</div>
           <div style={{textAlign:'center'}}><div style={{ display:'flex', alignItems:'center', gap:4, justifyContent:'center' }}><div style={{ width:36, height:6, background:'#1a2234', borderRadius:3, overflow:'hidden' }}><div style={{ width:`${stock.top_manip_score}%`, height:'100%', background:mc, borderRadius:3 }} /></div><span style={{ fontSize:11, fontWeight:700, color:mc }}>{stock.top_manip_score}</span></div></div>
           <div style={{ textAlign:'center', fontSize:10, fontWeight:600, padding:'3px 4px', borderRadius:6, background:`${mc}20`, color:mc }}>{stock.top_manip_label}</div>
-        </div>);
+          <div style={{ textAlign:'center' }}>
+            <button onClick={(e) => { e.stopPropagation(); fetchScanChart(stock); }}
+              style={{ background: isChartOpen ? 'rgba(79,195,247,0.2)' : 'transparent', border: isChartOpen ? '1px solid rgba(79,195,247,0.4)' : '1px solid rgba(100,140,200,0.15)', borderRadius:6, padding:'3px 6px', cursor:'pointer', fontSize:13, color: isChartOpen ? '#4fc3f7' : COLORS.textDim, transition:'all 0.15s' }}
+              title="일봉 차트 보기">📊</button>
+          </div>
+        </div>
+        {/* ── 차트 확장 영역 ── */}
+        {isChartOpen && (
+          <div style={{ padding:'12px 14px 16px', borderBottom:`1px solid ${COLORS.cardBorder}`, background:'rgba(8,15,30,0.6)' }}>
+            {scanChartLoading ? (
+              <div style={{ textAlign:'center', padding:30, color:COLORS.textDim, fontSize:13 }}>📊 차트 데이터 로딩 중...</div>
+            ) : scanChartCandles.length > 0 ? (
+              <ScanStockChart candles={scanChartCandles} stock={stock} />
+            ) : (
+              <div style={{ textAlign:'center', padding:30, color:COLORS.textDim, fontSize:13 }}>차트 데이터가 없습니다.</div>
+            )}
+          </div>
+        )}
+        </React.Fragment>);
       })}
     </div>
     <div style={{ fontSize:12, color:COLORS.textDim, marginTop:8, textAlign:'right' }}>총 {filtered.length}개 종목</div>
@@ -1508,4 +1556,193 @@ function MiniCandleChart({ candles }) {
   return (<svg width={W} height={H} style={{display:'block'}}>
     {candles.map((c,i) => { const x=5+i*cw, isUp=c.close>=c.open, color=isUp?COLORS.red:COLORS.accent; const bT=toY(Math.max(c.open,c.close)), bB=toY(Math.min(c.open,c.close)), bH=Math.max(bB-bT,1); return (<g key={i}><line x1={x+cw/2} y1={toY(c.high)} x2={x+cw/2} y2={toY(c.low)} stroke={color} strokeWidth={0.8}/><rect x={x+1} y={bT} width={Math.max(cw-2,2)} height={bH} fill={color} rx={0.5}/></g>); })}
   </svg>);
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 스캔 종목 표준 차트 (TradeCandleChart 동일 스펙)
+// 영웅문 색상, MA5/MA20, 거래량, 급상승마커, 현재가선, clipPath
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function ScanStockChart({ candles, stock }) {
+  if (!candles || candles.length === 0) return null;
+
+  const norm = (d) => d ? d.replace(/-/g, "").replace(/'/g, "").trim() : "";
+  const fDate = (d) => { const s = norm(d); return s.length >= 8 ? `${s.slice(4,6)}/${s.slice(6,8)}` : d || "-"; };
+
+  const vis = candles.slice(-90);
+  if (vis.length < 5) return null;
+
+  // 급상승일 인덱스
+  const surgeDateN = norm(stock.latest_surge_date);
+  let surgeIdx = -1;
+  if (surgeDateN) surgeIdx = vis.findIndex(c => norm(c.date) === surgeDateN);
+
+  const W = 740, H_CHART = 220, H_VOL = 50, GAP = 16;
+  const PAD = { t: 20, b: 32, l: 68, r: 20 };
+  const TOTAL_H = PAD.t + H_CHART + GAP + H_VOL + PAD.b;
+  const plotW = W - PAD.l - PAD.r;
+  const cw = plotW / vis.length;
+
+  const allP = vis.flatMap(c => [c.high, c.low]).filter(p => p > 0);
+  const pMin = Math.min(...allP), pMax = Math.max(...allP);
+  const pPad = (pMax - pMin) * 0.08 || 100;
+  const pLow = pMin - pPad, pHigh = pMax + pPad, pRange = pHigh - pLow || 1;
+  const maxVol = Math.max(...vis.map(c => c.volume || 0), 1);
+
+  const toX = (i) => PAD.l + i * cw;
+  const toY = (p) => PAD.t + (1 - (p - pLow) / pRange) * H_CHART;
+  const volBase = PAD.t + H_CHART + GAP + H_VOL;
+
+  // MA (원본 candles에서 계산)
+  const calcMA = (period) => {
+    const full = candles.slice(-(90 + period));
+    const offset = full.length - vis.length;
+    return vis.map((_, i) => {
+      const gi = offset + i;
+      if (gi < period - 1) return null;
+      let sum = 0;
+      for (let j = 0; j < period; j++) sum += full[gi - j].close;
+      return sum / period;
+    });
+  };
+  const ma5 = calcMA(5);
+  const ma20 = calcMA(20);
+
+  const elems = [];
+
+  // 배경
+  elems.push(<rect key="bg" x={0} y={0} width={W} height={TOTAL_H} fill="rgba(8,15,30,0.95)" rx={8} />);
+
+  // 클리핑
+  elems.push(
+    <defs key="clip-defs">
+      <clipPath id={`scan-clip-${stock.code}`}>
+        <rect x={PAD.l} y={PAD.t} width={plotW} height={H_CHART} />
+      </clipPath>
+    </defs>
+  );
+
+  // 급상승일 하이라이트
+  if (surgeIdx >= 0) {
+    const sx = toX(surgeIdx);
+    elems.push(<rect key="surge-bg" x={sx} y={PAD.t} width={cw} height={H_CHART}
+      fill="rgba(239,68,68,0.08)" stroke="rgba(239,68,68,0.25)" strokeDasharray="4,3" rx={2} />);
+  }
+
+  // 가격 눈금
+  for (let i = 0; i <= 5; i++) {
+    const p = pLow + pRange * (i / 5);
+    const y = toY(p);
+    elems.push(<line key={`pg-${i}`} x1={PAD.l} y1={y} x2={W - PAD.r} y2={y} stroke="rgba(50,70,100,0.25)" strokeDasharray="3,3" />);
+    elems.push(<text key={`pl-${i}`} x={PAD.l - 8} y={y + 4} fill="#d0d8e8" fontSize={11}
+      fontFamily="monospace" textAnchor="end" fontWeight={500}>{Math.round(p).toLocaleString()}</text>);
+  }
+
+  // X축 날짜
+  const dateStep = Math.max(1, Math.floor(vis.length / 12));
+  vis.forEach((c, i) => {
+    const isSurge = i === surgeIdx;
+    if (i % dateStep === 0 || isSurge) {
+      const x = toX(i) + cw / 2;
+      elems.push(<text key={`dt-${i}`} x={x} y={TOTAL_H - 6}
+        fill={isSurge ? "#FF4444" : "#c0c8d8"} fontSize={isSurge ? 11 : 10}
+        fontFamily="monospace" textAnchor="middle" fontWeight={isSurge ? 700 : 400}>{fDate(c.date)}</text>);
+    }
+  });
+
+  // 거래량 구분
+  elems.push(<line key="vol-sep" x1={PAD.l} y1={PAD.t + H_CHART + GAP / 2} x2={W - PAD.r} y2={PAD.t + H_CHART + GAP / 2}
+    stroke="rgba(50,70,100,0.3)" />);
+  elems.push(<text key="vol-lbl" x={PAD.l - 8} y={volBase - H_VOL + 12} fill="#8899aa" fontSize={9} fontFamily="monospace" textAnchor="end">VOL</text>);
+
+  // 거래량 바
+  vis.forEach((c, i) => {
+    const x = toX(i);
+    const isUp = c.close >= c.open;
+    const color = isUp ? "#FF0000" : "#0050FF";
+    const barH = Math.max(((c.volume || 0) / maxVol) * H_VOL, 1);
+    elems.push(<rect key={`vol-${i}`} x={x + 1} y={volBase - barH}
+      width={Math.max(cw - 2, 2)} height={barH} fill={color} opacity={0.75} rx={1} />);
+  });
+
+  // 캔들 (영웅문)
+  const candleEls = [];
+  vis.forEach((c, i) => {
+    const x = toX(i);
+    const isUp = c.close >= c.open;
+    const color = isUp ? "#FF0000" : "#0050FF";
+    const bodyTop = toY(Math.max(c.open, c.close));
+    const bodyBot = toY(Math.min(c.open, c.close));
+    const bodyH = Math.max(bodyBot - bodyTop, 1.5);
+    const cx = x + cw / 2;
+    candleEls.push(
+      <g key={`c-${i}`}>
+        <line x1={cx} y1={toY(c.high)} x2={cx} y2={toY(c.low)} stroke={color} strokeWidth={1} />
+        <rect x={x + 2} y={bodyTop} width={Math.max(cw - 4, 3)} height={bodyH} fill={color} rx={1} />
+      </g>
+    );
+  });
+
+  // MA5 노랑
+  let ma5d = "";
+  ma5.forEach((v, i) => { if (v !== null) ma5d += (ma5d ? "L" : "M") + `${toX(i) + cw / 2},${toY(v)} `; });
+  if (ma5d) candleEls.push(<path key="ma5" d={ma5d} fill="none" stroke="#ffcc00" strokeWidth={1.5} opacity={0.8} />);
+
+  // MA20 핑크
+  let ma20d = "";
+  ma20.forEach((v, i) => { if (v !== null) ma20d += (ma20d ? "L" : "M") + `${toX(i) + cw / 2},${toY(v)} `; });
+  if (ma20d) candleEls.push(<path key="ma20" d={ma20d} fill="none" stroke="#ff6699" strokeWidth={1.5} opacity={0.7} />);
+
+  // 클리핑 그룹
+  elems.push(<g key="clipped-chart" clipPath={`url(#scan-clip-${stock.code})`}>{candleEls}</g>);
+
+  // 현재가 수평선
+  const lastPrice = vis[vis.length - 1].close;
+  const lastY = toY(lastPrice);
+  elems.push(<line key="cur-line" x1={PAD.l} y1={lastY} x2={W - PAD.r} y2={lastY}
+    stroke="#ffd54f" strokeWidth={1} strokeDasharray="5,3" opacity={0.5} />);
+  elems.push(<rect key="cur-bg" x={W - PAD.r - 72} y={lastY - 10} width={70} height={20}
+    fill="rgba(255,213,79,0.2)" rx={3} />);
+  elems.push(<text key="cur-txt" x={W - PAD.r - 37} y={lastY + 4} fill="#ffd54f" fontSize={11}
+    fontFamily="monospace" textAnchor="middle" fontWeight={600}>{Math.round(lastPrice).toLocaleString()}</text>);
+
+  // 급상승 마커
+  if (surgeIdx >= 0 && surgeIdx < vis.length) {
+    const sx = toX(surgeIdx) + cw / 2;
+    const sy = toY(vis[surgeIdx].high) - 8;
+    elems.push(
+      <g key="surge-m">
+        <line x1={sx} y1={PAD.t} x2={sx} y2={PAD.t + H_CHART} stroke="#FF4444" strokeWidth={1.5} strokeDasharray="4,3" opacity={0.5} />
+        <polygon points={`${sx},${sy - 14} ${sx - 7},${sy} ${sx + 7},${sy}`} fill="#FF4444" />
+        <rect x={sx - 40} y={sy - 28} width={80} height={16} fill="rgba(239,68,68,0.15)" rx={4} />
+        <text x={sx} y={sy - 16} fill="#FF4444" fontSize={10} fontFamily="sans-serif" textAnchor="middle" fontWeight={700}>
+          급상승 +{stock.latest_rise_pct}%
+        </text>
+      </g>
+    );
+  }
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 6 }}>
+        <div style={{ fontSize: 13, fontWeight: 700 }}>
+          🕯️ {stock.name}
+          <span style={{ color: "#778899", fontSize: 11, marginLeft: 6 }}>({stock.code})</span>
+          <span style={{ color: "#ffd54f", fontSize: 11, marginLeft: 10 }}>현재가 {Math.round(lastPrice).toLocaleString()}원</span>
+          {stock.latest_from_peak != null && (
+            <span style={{ color: stock.latest_from_peak < -30 ? "#4fc3f7" : "#8899aa", fontSize: 11, marginLeft: 8 }}>
+              고점대비 {stock.latest_from_peak}%
+            </span>
+          )}
+        </div>
+        <div style={{ display: "flex", gap: 12, fontSize: 11, flexWrap: "wrap" }}>
+          <span><span style={{ color: "#FF0000" }}>■</span> 양봉</span>
+          <span><span style={{ color: "#0050FF" }}>■</span> 음봉</span>
+          <span style={{ color: "#ffcc00" }}>── MA5</span>
+          <span style={{ color: "#ff6699" }}>── MA20</span>
+          <span><span style={{ color: "#FF4444" }}>▲</span> 급상승</span>
+        </div>
+      </div>
+      <svg width={W} height={TOTAL_H} style={{ display: "block", maxWidth: "100%" }}>{elems}</svg>
+    </div>
+  );
 }
