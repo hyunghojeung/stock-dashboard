@@ -259,7 +259,7 @@ function EquityCurveChart({ strategies }) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 메인 컴포넌트 / Main Component
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-export default function VirtualInvestTab({ recommendations = [], selectedRecStocks, setSelectedRecStocks, newRtSessionId, setNewRtSessionId }) {
+export default function VirtualInvestTab({ recommendations = [], backtestRecommendations = [], selectedRecStocks, setSelectedRecStocks, newRtSessionId, setNewRtSessionId }) {
   // 서브탭: backtest | realtime
   const [subTab, setSubTab] = useState(newRtSessionId ? "realtime" : "backtest");
 
@@ -327,12 +327,54 @@ export default function VirtualInvestTab({ recommendations = [], selectedRecStoc
     return recommendations.length > 0 ? recommendations.slice(0, 10) : [];
   })();
 
+  // ── ★ 백테스트용 종목 (과거 signal_date + buy_price 사용) ──
+  // 버그수정: recommendations의 signal_date=오늘 → backtest 데이터와 매핑하여 역사적 날짜 사용
+  const backtestStocks = (() => {
+    // backtestRecommendations 코드별 룩업
+    const btMap = {};
+    (backtestRecommendations || []).forEach(bt => {
+      if (bt.code) btMap[bt.code] = bt;
+    });
+
+    // Case 1: 사용자가 매수추천에서 종목 선택한 경우 → 선택된 종목에 과거 데이터 매핑
+    if (selectedRecStocks && selectedRecStocks.size > 0 && stocks.length > 0) {
+      return stocks.map(s => {
+        const code = s.code || s.stock_code || "";
+        const bt = btMap[code];
+        if (bt && bt.signal_date) {
+          // 1순위: backtestRecommendations에서 정확한 과거 데이터 가져오기
+          return { ...s, signal_date: bt.signal_date, buy_price: bt.buy_price || s.current_price || 0 };
+        }
+        if (s.backtest_signal_date) {
+          // 2순위: 백엔드에서 보강된 backtest_signal_date 사용
+          return { ...s, signal_date: s.backtest_signal_date, buy_price: s.backtest_buy_price || s.current_price || 0 };
+        }
+        // 3순위: 원본 유지 (signal_date=오늘 — 비이상적이지만 fallback)
+        return s;
+      });
+    }
+
+    // Case 2: 선택 없음 + backtestRecommendations 있음 → 과거 급상승 종목 직접 사용
+    if (backtestRecommendations && backtestRecommendations.length > 0) {
+      return backtestRecommendations.slice(0, 10);
+    }
+
+    // Case 3: 둘 다 없음 → recommendations에서 backtest_signal_date 보강 시도
+    return stocks.map(s => {
+      const code = s.code || s.stock_code || "";
+      const bt = btMap[code];
+      if (bt && bt.signal_date) return { ...s, signal_date: bt.signal_date, buy_price: bt.buy_price || s.current_price || 0 };
+      if (s.backtest_signal_date) return { ...s, signal_date: s.backtest_signal_date, buy_price: s.backtest_buy_price || s.current_price || 0 };
+      return s;
+    });
+  })();
+
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // 백테스트 비교 실행
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const runCompare = async () => {
-    if (stocks.length === 0) {
-      setError("매수추천 종목이 없습니다. 먼저 🎯매수추천 탭에서 분석을 실행해주세요.");
+    if (backtestStocks.length === 0) {
+      setError("백테스트할 종목이 없습니다. 먼저 🎯매수추천 탭에서 분석을 실행해주세요.");
       return;
     }
 
@@ -343,8 +385,9 @@ export default function VirtualInvestTab({ recommendations = [], selectedRecStoc
     setError(null);
 
     try {
+      // ★ backtestStocks 사용 (과거 signal_date + buy_price)
       const body = {
-        stocks: stocks.map(s => ({
+        stocks: backtestStocks.map(s => ({
           code: s.code || s.stock_code || "",
           name: s.name || s.stock_name || "",
           buy_price: s.buy_price || s.current_price || 0,
@@ -548,6 +591,11 @@ export default function VirtualInvestTab({ recommendations = [], selectedRecStoc
                 ✅ 매수추천에서 선택됨
               </span>
             )}
+            {backtestRecommendations.length > 0 && (
+              <span style={{ fontSize:10, color:'#ce93d8', marginLeft:8, fontWeight:400 }}>
+                🔬 백테스트: 과거 급상승 시점 기준
+              </span>
+            )}
           </div>
           {selectedRecStocks && selectedRecStocks.size > 0 && setSelectedRecStocks && (
             <button onClick={() => setSelectedRecStocks(new Set())} style={{
@@ -563,14 +611,24 @@ export default function VirtualInvestTab({ recommendations = [], selectedRecStoc
           </div>
         ) : (
           <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
-            {stocks.map((s, i) => (
-              <span key={i} style={S.stockTag}>
-                {s.name || s.stock_name || s.code}
-                {s.similarity && <span style={{ color: "#ffd54f", marginLeft: 4, fontSize: 11 }}>
-                  {s.similarity}%
-                </span>}
-              </span>
-            ))}
+            {stocks.map((s, i) => {
+              const code = s.code || s.stock_code;
+              const bt = backtestRecommendations.find(b => b.code === code);
+              // ★ 수정: 3단계 fallback으로 signal_date 탐색
+              const sigDate = bt?.signal_date || s.backtest_signal_date || "";
+              const fmtSigDate = sigDate.length >= 8 ? `${sigDate.slice(0,4)}.${sigDate.slice(4,6)}.${sigDate.slice(6,8)}` : "";
+              return (
+                <span key={i} style={S.stockTag}>
+                  {s.name || s.stock_name || code}
+                  {s.similarity && <span style={{ color: "#ffd54f", marginLeft: 4, fontSize: 11 }}>
+                    {s.similarity}%
+                  </span>}
+                  {fmtSigDate && <span style={{ color: "#ce93d8", marginLeft: 4, fontSize: 10 }}>
+                    {fmtSigDate}
+                  </span>}
+                </span>
+              );
+            })}
           </div>
         )}
       </div>
