@@ -183,6 +183,7 @@ export default function PatternDetector() {
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState(0);
+  const [selectedRecStocks, setSelectedRecStocks] = useState(new Set());  // 매수추천 선택 종목
 
   // ━━━ 이전 분석 결과 상태 ━━━
   const [prevSessions, setPrevSessions] = useState([]);
@@ -832,8 +833,8 @@ export default function PatternDetector() {
           </div>
           {activeTab===0 && <TabSummary result={result} />}
           {activeTab===1 && <TabChart result={result} />}
-          {activeTab===2 && <TabRecommend result={result} />}
-          {activeTab===3 && <VirtualInvestTab recommendations={result.recommendations || []} />}
+          {activeTab===2 && <TabRecommend result={result} selectedRecStocks={selectedRecStocks} setSelectedRecStocks={setSelectedRecStocks} setActiveTab={setActiveTab} />}
+          {activeTab===3 && <VirtualInvestTab recommendations={result.recommendations || []} selectedRecStocks={selectedRecStocks} setSelectedRecStocks={setSelectedRecStocks} />}
         </>)}
 
         {!result && !analyzing && (
@@ -1179,25 +1180,106 @@ function TabChart({ result }) {
   </div>);
 }
 
-function TabRecommend({ result }) {
+function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, setActiveTab }) {
   const recs = result.recommendations||[];
   const scannedCount = result.scanned_candidates || recs.length;
   const analyzedCodes = result.analyzed_codes || [];
+
+  const toggleRec = (code) => {
+    setSelectedRecStocks(prev => {
+      const next = new Set(prev);
+      if (next.has(code)) next.delete(code); else next.add(code);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (selectedRecStocks.size === recs.length) {
+      setSelectedRecStocks(new Set());
+    } else {
+      setSelectedRecStocks(new Set(recs.map(r => r.code)));
+    }
+  };
+
+  const handleRegisterVirtual = () => {
+    // 가상투자 탭으로 이동 (VirtualInvestTab이 recommendations에서 selectedRecStocks를 참조)
+    setActiveTab(3);
+  };
+
   return (<div>
     {/* 스캔 정보 헤더 */}
     <div style={{ marginBottom:12, padding:'10px 14px', borderRadius:8, background:'rgba(79,195,247,0.08)', border:'1px solid rgba(79,195,247,0.2)', fontSize:12, color:COLORS.accent, lineHeight:1.6 }}>
       🔍 전종목 DB에서 <span style={{fontWeight:700,color:'#4fc3f7'}}>{scannedCount}개</span> 종목을 스캔하여,
       분석 대상({analyzedCodes.length}개)을 <span style={{fontWeight:700,color:'#ff6b6b'}}>제외</span>한 유사 패턴 종목입니다.
     </div>
+
+    {/* 선택된 종목 액션 바 */}
+    {recs.length > 0 && (
+      <div style={{
+        display:'flex', alignItems:'center', justifyContent:'space-between',
+        marginBottom:12, padding:'10px 16px', borderRadius:10,
+        background: selectedRecStocks.size > 0 ? 'rgba(16,185,129,0.08)' : COLORS.card,
+        border: `1px solid ${selectedRecStocks.size > 0 ? 'rgba(16,185,129,0.3)' : COLORS.cardBorder}`,
+      }}>
+        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+          <button onClick={toggleAll} style={{
+            width:22, height:22, borderRadius:4, cursor:'pointer',
+            border:`2px solid ${selectedRecStocks.size === recs.length ? COLORS.green : COLORS.cardBorder}`,
+            background: selectedRecStocks.size === recs.length ? COLORS.green : 'transparent',
+            display:'flex', alignItems:'center', justifyContent:'center', color:'white', fontSize:12,
+          }}>{selectedRecStocks.size === recs.length ? '✓' : ''}</button>
+          <span style={{ fontSize:13, color: selectedRecStocks.size > 0 ? COLORS.green : COLORS.textDim }}>
+            {selectedRecStocks.size > 0
+              ? `${selectedRecStocks.size}개 종목 선택됨`
+              : '종목을 선택하여 가상투자에 등록하세요'}
+          </span>
+        </div>
+        <button
+          onClick={handleRegisterVirtual}
+          disabled={selectedRecStocks.size === 0}
+          style={{
+            padding:'8px 20px', fontSize:13, fontWeight:600, borderRadius:8,
+            border:'none', cursor: selectedRecStocks.size > 0 ? 'pointer' : 'default',
+            background: selectedRecStocks.size > 0 ? COLORS.green : '#374151',
+            color: selectedRecStocks.size > 0 ? COLORS.white : COLORS.textDim,
+            transition:'all 0.2s',
+          }}
+        >💰 가상투자 등록 ({selectedRecStocks.size})</button>
+      </div>
+    )}
+
     {recs.length===0 ? <div style={{textAlign:'center',padding:40,color:COLORS.textDim}}>유사 패턴 종목이 발견되지 않았습니다.<br/><span style={{fontSize:11}}>클러스터가 없거나 DB에 종목이 부족합니다.</span></div> : (
       <div style={{ background:COLORS.card, border:`1px solid ${COLORS.cardBorder}`, borderRadius:12, overflow:'hidden' }}>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 90px 100px 80px', padding:'12px 18px', fontSize:11, color:COLORS.textDim, fontWeight:600, borderBottom:`1px solid ${COLORS.cardBorder}`, background:'#0d1321' }}>
-          <span>종목</span><span style={{textAlign:'right'}}>현재가</span><span style={{textAlign:'center'}}>유사도</span><span style={{textAlign:'center'}}>시그널</span>
+        <div style={{ display:'grid', gridTemplateColumns:'40px 1fr 90px 100px 80px', padding:'12px 18px', fontSize:11, color:COLORS.textDim, fontWeight:600, borderBottom:`1px solid ${COLORS.cardBorder}`, background:'#0d1321' }}>
+          <span></span><span>종목</span><span style={{textAlign:'right'}}>현재가</span><span style={{textAlign:'center'}}>유사도</span><span style={{textAlign:'center'}}>시그널</span>
         </div>
         {recs.map((rec,i) => {
+          const isSelected = selectedRecStocks.has(rec.code);
           const sc = rec.similarity>=65?COLORS.green:rec.similarity>=50?COLORS.yellow:rec.similarity>=40?COLORS.grayLight:COLORS.gray;
           const sb = rec.signal_code==='strong_buy'?COLORS.greenDim:rec.signal_code==='watch'?COLORS.yellowDim:'transparent';
-          return (<div key={i} style={{ display:'grid', gridTemplateColumns:'1fr 90px 100px 80px', padding:'12px 18px', alignItems:'center', borderBottom:`1px solid ${COLORS.cardBorder}`, background:i%2===0?'transparent':'rgba(255,255,255,0.02)' }}>
+          return (<div key={i}
+            onClick={() => toggleRec(rec.code)}
+            style={{
+              display:'grid', gridTemplateColumns:'40px 1fr 90px 100px 80px', padding:'12px 18px', alignItems:'center',
+              borderBottom:`1px solid ${COLORS.cardBorder}`,
+              background: isSelected ? 'rgba(16,185,129,0.08)' : i%2===0?'transparent':'rgba(255,255,255,0.02)',
+              cursor:'pointer', transition:'background 0.15s',
+            }}
+            onMouseEnter={e => { if(!isSelected) e.currentTarget.style.background='rgba(59,130,246,0.06)'; }}
+            onMouseLeave={e => { if(!isSelected) e.currentTarget.style.background=i%2===0?'transparent':'rgba(255,255,255,0.02)'; }}
+          >
+            {/* 체크박스 */}
+            <div style={{ textAlign:'center' }}>
+              <div style={{
+                width:20, height:20, borderRadius:4, margin:'0 auto',
+                border:`2px solid ${isSelected ? COLORS.green : COLORS.cardBorder}`,
+                background: isSelected ? COLORS.green : 'transparent',
+                display:'flex', alignItems:'center', justifyContent:'center',
+                transition:'all 0.15s',
+              }}>
+                {isSelected && <span style={{ color:'white', fontSize:12, fontWeight:700 }}>✓</span>}
+              </div>
+            </div>
             <div><div style={{fontSize:13,fontWeight:600}}>{rec.name}</div><div style={{fontSize:11,color:COLORS.textDim}}>{rec.code}</div></div>
             <div style={{textAlign:'right',fontSize:13,fontWeight:600}}>{fmt(rec.current_price)}</div>
             <div style={{textAlign:'center'}}><div style={{display:'flex',alignItems:'center',gap:6,justifyContent:'center'}}><div style={{width:50,height:6,background:'#1a2234',borderRadius:3,overflow:'hidden'}}><div style={{width:`${Math.min(rec.similarity,100)}%`,height:'100%',background:sc,borderRadius:3}} /></div><span style={{fontSize:12,fontWeight:700,color:sc}}>{rec.similarity}%</span></div></div>
@@ -1206,6 +1288,25 @@ function TabRecommend({ result }) {
         })}
       </div>
     )}
+
+    {/* 선택 후 하단 고정 등록 버튼 */}
+    {selectedRecStocks.size > 0 && (
+      <div style={{
+        marginTop:16, padding:14, borderRadius:10,
+        background:'rgba(16,185,129,0.1)', border:'1px solid rgba(16,185,129,0.3)',
+        display:'flex', alignItems:'center', justifyContent:'space-between',
+      }}>
+        <div style={{ fontSize:13, color:COLORS.green }}>
+          ✅ <b>{selectedRecStocks.size}개</b> 종목 선택 — 
+          {recs.filter(r => selectedRecStocks.has(r.code)).map(r => r.name).join(', ')}
+        </div>
+        <button onClick={handleRegisterVirtual} style={{
+          padding:'10px 24px', fontSize:14, fontWeight:700, borderRadius:8,
+          border:'none', cursor:'pointer', background:COLORS.green, color:COLORS.white,
+        }}>💰 가상투자 등록 →</button>
+      </div>
+    )}
+
     <div style={{ marginTop:16, padding:12, borderRadius:8, background:'rgba(245,158,11,0.08)', border:'1px solid rgba(245,158,11,0.2)', fontSize:11, color:COLORS.yellow, lineHeight:1.6 }}>⚠️ 패턴 유사도는 과거 데이터 기반 통계이며, 미래 수익을 보장하지 않습니다.</div>
   </div>);
 }
