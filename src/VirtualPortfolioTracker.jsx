@@ -165,6 +165,24 @@ export default function VirtualPortfolioTracker() {
     }
   };
 
+  // ★ 포트폴리오 제목 수정
+  const handleRenamePortfolio = async (id, newName) => {
+    if (!newName || !newName.trim()) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/virtual-portfolio/rename/${id}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newName.trim() }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        await loadList();
+        if (detail && detail.portfolio?.id === id) {
+          setDetail({ ...detail, portfolio: { ...detail.portfolio, name: newName.trim() } });
+        }
+      }
+    } catch (e) { console.error('제목 변경 실패:', e); }
+  };
+
   useEffect(() => { loadList(); loadCompoundGroups(); }, [loadList]);
 
   // ★ v2: 복리 그룹 목록 로드
@@ -222,6 +240,42 @@ export default function VirtualPortfolioTracker() {
       await loadCompoundGroups();
       if (compoundDetail?.group?.id === id) loadCompoundDetail(id);
     } catch (e) { console.error('중단 실패:', e); }
+  };
+
+  // ★ v2: 복리 그룹 수정
+  const [editingCompound, setEditingCompound] = useState(null); // {id, name, goal_amount, seed_money, strategy}
+  const handleEditCompound = async () => {
+    if (!editingCompound) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/virtual-portfolio/compound/${editingCompound.id}/edit`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: editingCompound.name,
+          goal_amount: editingCompound.goal_amount,
+          seed_money: editingCompound.seed_money,
+          strategy: editingCompound.strategy,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setEditingCompound(null);
+        await loadCompoundGroups();
+        if (compoundDetail?.group?.id === editingCompound.id) loadCompoundDetail(editingCompound.id);
+      } else { alert(data.message || '수정 실패'); }
+    } catch (e) { console.error('수정 실패:', e); alert('수정 실패: ' + e.message); }
+  };
+
+  // ★ v2: 복리 그룹 삭제
+  const handleDeleteCompound = async (id, name) => {
+    if (!window.confirm(`복리 그룹 "${name}"을(를) 영구 삭제하시겠습니까?\n\n연결된 포트폴리오는 보존되지만 그룹 연결이 해제됩니다.`)) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/virtual-portfolio/compound/${id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.success) {
+        await loadCompoundGroups();
+        if (compoundDetail?.group?.id === id) { setCompoundDetail(null); setView('compound'); }
+      } else { alert(data.message || '삭제 실패'); }
+    } catch (e) { console.error('삭제 실패:', e); alert('삭제 실패: ' + e.message); }
   };
 
   // ── 장중 20분마다 자동 가격 갱신 (Auto-refresh every 20min during market hours) ──
@@ -290,7 +344,7 @@ export default function VirtualPortfolioTracker() {
         </div>
       )}
 
-      {view === 'list' && <PortfolioList portfolios={portfolios} loading={loading} onSelect={loadDetail} onRefresh={loadList} />}
+      {view === 'list' && <PortfolioList portfolios={portfolios} loading={loading} onSelect={loadDetail} onRefresh={loadList} onRename={handleRenamePortfolio} />}
       {view === 'detail' && detail && (
         <PortfolioDetail
           detail={detail}
@@ -298,6 +352,7 @@ export default function VirtualPortfolioTracker() {
           onUpdate={() => handleUpdatePrices(selectedId)}
           onClose={() => handleClose(selectedId)}
           onDelete={() => handleDelete(selectedId)}
+          onRename={(newName) => handleRenamePortfolio(selectedId, newName)}
           onBack={() => setView('list')}
         />
       )}
@@ -310,6 +365,10 @@ export default function VirtualPortfolioTracker() {
           onSelect={loadCompoundDetail}
           onRefresh={loadCompoundGroups}
           onStop={handleStopCompound}
+          onDelete={handleDeleteCompound}
+          editingCompound={editingCompound}
+          setEditingCompound={setEditingCompound}
+          onSaveEdit={handleEditCompound}
           showCreate={showCreateForm}
           setShowCreate={setShowCreateForm}
           createForm={createForm}
@@ -322,6 +381,9 @@ export default function VirtualPortfolioTracker() {
           data={compoundDetail}
           onBack={() => setView('compound')}
           onSelectPortfolio={loadDetail}
+          onStop={handleStopCompound}
+          onDelete={handleDeleteCompound}
+          setEditingCompound={setEditingCompound}
         />
       )}
     </div>
@@ -333,7 +395,9 @@ export default function VirtualPortfolioTracker() {
 // 포트폴리오 목록
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-function PortfolioList({ portfolios, loading, onSelect, onRefresh }) {
+function PortfolioList({ portfolios, loading, onSelect, onRefresh, onRename }) {
+  const [renamingId, setRenamingId] = useState(null);
+  const [renameText, setRenameText] = useState('');
   if (loading) {
     return <div style={{ textAlign: 'center', padding: 60, color: COLORS.textDim }}>로딩 중...</div>;
   }
@@ -412,7 +476,22 @@ function PortfolioList({ portfolios, loading, onSelect, onRefresh }) {
                 }}>{datePart}</div>
 
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: COLORS.white }}>{pf.name}</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: COLORS.white, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {renamingId === pf.id ? (
+                      <input value={renameText} onChange={e => setRenameText(e.target.value)}
+                        onClick={e => e.stopPropagation()}
+                        onBlur={() => { if (renameText.trim() && renameText !== pf.name) onRename(pf.id, renameText); setRenamingId(null); }}
+                        onKeyDown={e => { e.stopPropagation(); if (e.key === 'Enter') { if (renameText.trim() && renameText !== pf.name) onRename(pf.id, renameText); setRenamingId(null); } if (e.key === 'Escape') setRenamingId(null); }}
+                        autoFocus
+                        style={{ fontSize: 14, fontWeight: 700, color: COLORS.white, background: '#0d1321', border: `1px solid ${COLORS.accent}`, borderRadius: 4, padding: '1px 6px', outline: 'none', fontFamily: 'inherit', width: 200 }} />
+                    ) : (
+                      <>{pf.name}
+                        <button onClick={e => { e.stopPropagation(); setRenamingId(pf.id); setRenameText(pf.name); }}
+                          style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 12, color: COLORS.textDim, padding: '1px 3px', opacity: 0.6 }}
+                          title="제목 수정">✏️</button>
+                      </>
+                    )}
+                  </div>
                   <div style={{ fontSize: 11, color: COLORS.textDim, marginTop: 2 }}>
                     {pf.stock_count}종목 · 투자금 {fmt(pf.capital)}원 · {STRATEGY_LABELS[pf.strategy] || pf.strategy}
                   </div>
@@ -461,11 +540,13 @@ function PortfolioList({ portfolios, loading, onSelect, onRefresh }) {
 // 포트폴리오 상세
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-function PortfolioDetail({ detail, updating, onUpdate, onClose, onDelete, onBack }) {
+function PortfolioDetail({ detail, updating, onUpdate, onClose, onDelete, onRename, onBack }) {
   const { portfolio: pf, positions } = detail;
   const [selectedCode, setSelectedCode] = useState(null);
   const [chartData, setChartData] = useState(null);
   const [chartLoading, setChartLoading] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [tempName, setTempName] = useState('');
   if (!pf) return null;
 
   const isActive = pf.status === 'active';
@@ -500,7 +581,21 @@ function PortfolioDetail({ detail, updating, onUpdate, onClose, onDelete, onBack
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
           <div>
-            <h2 style={{ fontSize: 18, fontWeight: 800, color: COLORS.white, margin: 0 }}>{pf.name}</h2>
+            <h2 style={{ fontSize: 18, fontWeight: 800, color: COLORS.white, margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+              {editingName ? (
+                <input value={tempName} onChange={e => setTempName(e.target.value)}
+                  onBlur={() => { if (tempName.trim() && tempName !== pf.name) onRename(tempName); setEditingName(false); }}
+                  onKeyDown={e => { if (e.key === 'Enter') { if (tempName.trim() && tempName !== pf.name) onRename(tempName); setEditingName(false); } if (e.key === 'Escape') setEditingName(false); }}
+                  autoFocus
+                  style={{ fontSize: 18, fontWeight: 800, color: COLORS.white, background: '#0d1321', border: `1px solid ${COLORS.accent}`, borderRadius: 6, padding: '2px 8px', outline: 'none', fontFamily: 'inherit', width: 260 }} />
+              ) : (
+                <>{pf.name}
+                  <button onClick={() => { setTempName(pf.name); setEditingName(true); }}
+                    style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 14, color: COLORS.textDim, padding: '2px 4px' }}
+                    title="제목 수정">✏️</button>
+                </>
+              )}
+            </h2>
             <div style={{ fontSize: 12, color: COLORS.textDim, marginTop: 4, fontFamily: 'JetBrains Mono, monospace' }}>
               등록: {pf.created_at?.slice(0, 16).replace('T', ' ')} · D+{daysSince}일 · {STRATEGY_LABELS[pf.strategy] || pf.strategy}
               {!isActive && ` · 종료: ${pf.closed_at?.slice(0, 10) || ''}`}
@@ -1178,7 +1273,7 @@ function StockCandleChart({ candles, pos, buyDate, buyPrice, sellDate, sellPrice
 // ★ v2: 복리 그룹 목록
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-function CompoundGroupList({ groups, loading, onSelect, onRefresh, onStop, showCreate, setShowCreate, createForm, setCreateForm, onCreate }) {
+function CompoundGroupList({ groups, loading, onSelect, onRefresh, onStop, onDelete, editingCompound, setEditingCompound, onSaveEdit, showCreate, setShowCreate, createForm, setCreateForm, onCreate }) {
   if (loading) return <div style={{ textAlign: 'center', padding: 60, color: COLORS.textDim }}>로딩 중...</div>;
 
   const statusMap = {
@@ -1320,15 +1415,82 @@ function CompoundGroupList({ groups, loading, onSelect, onRefresh, onStop, showC
                   목표 진행률 {progress.toFixed(1)}% · {g.growth_multiple || 1}배 성장
                 </div>
 
-                {/* 하단 통계 */}
-                <div style={{ display: 'flex', gap: 16, marginTop: 8, fontSize: 11, color: COLORS.textDim }}>
-                  <span>승률 {g.total_rounds > 0 ? Math.round(g.win_rounds / g.total_rounds * 100) : 0}% ({g.win_rounds}승 {g.loss_rounds}패)</span>
-                  {g.best_round_pct > 0 && <span style={{ color: COLORS.green }}>최고 +{g.best_round_pct}%</span>}
-                  {g.worst_round_pct < 0 && <span style={{ color: COLORS.red }}>최저 {g.worst_round_pct}%</span>}
+                {/* 하단 통계 + 액션 버튼 */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+                  <div style={{ display: 'flex', gap: 16, fontSize: 11, color: COLORS.textDim }}>
+                    <span>승률 {g.total_rounds > 0 ? Math.round(g.win_rounds / g.total_rounds * 100) : 0}% ({g.win_rounds}승 {g.loss_rounds}패)</span>
+                    {g.best_round_pct > 0 && <span style={{ color: COLORS.green }}>최고 +{g.best_round_pct}%</span>}
+                    {g.worst_round_pct < 0 && <span style={{ color: COLORS.red }}>최저 {g.worst_round_pct}%</span>}
+                  </div>
+                  <div style={{ display: 'flex', gap: 4 }} onClick={e => e.stopPropagation()}>
+                    <button onClick={() => setEditingCompound({ id: g.id, name: g.name, goal_amount: g.goal_amount, seed_money: g.seed_money, strategy: g.strategy || 'smart' })}
+                      style={{ padding: '3px 8px', fontSize: 10, borderRadius: 4, border: `1px solid ${COLORS.cardBorder}`, background: 'transparent', color: COLORS.textDim, cursor: 'pointer' }}
+                      title="수정">✏️</button>
+                    {g.status === 'active' && <button onClick={() => onStop(g.id)}
+                      style={{ padding: '3px 8px', fontSize: 10, borderRadius: 4, border: `1px solid ${COLORS.orange}40`, background: 'transparent', color: COLORS.orange, cursor: 'pointer' }}
+                      title="중단">⏸</button>}
+                    <button onClick={() => onDelete(g.id, g.name)}
+                      style={{ padding: '3px 8px', fontSize: 10, borderRadius: 4, border: `1px solid ${COLORS.red}40`, background: 'transparent', color: COLORS.red, cursor: 'pointer' }}
+                      title="삭제">🗑</button>
+                  </div>
                 </div>
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* ★ 수정 모달 */}
+      {editingCompound && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={() => setEditingCompound(null)}>
+          <div style={{ background: '#1a2234', border: '1px solid rgba(100,140,200,0.3)', borderRadius: 16, padding: 24, width: 420, maxWidth: '90vw' }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: '#e5e7eb', marginBottom: 16 }}>✏️ 복리 그룹 수정</div>
+
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 4 }}>그룹명</div>
+              <input value={editingCompound.name} onChange={e => setEditingCompound({ ...editingCompound, name: e.target.value })}
+                style={{ width: '100%', padding: '8px 12px', fontSize: 13, background: '#0d1321', border: '1px solid #1e293b', borderRadius: 6, color: '#e5e7eb', outline: 'none', fontFamily: 'inherit' }} />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+              <div>
+                <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 4 }}>시드머니</div>
+                <input type="number" value={editingCompound.seed_money}
+                  onChange={e => setEditingCompound({ ...editingCompound, seed_money: Number(e.target.value) })}
+                  style={{ width: '100%', padding: '8px 12px', fontSize: 13, background: '#0d1321', border: '1px solid #1e293b', borderRadius: 6, color: '#e5e7eb', outline: 'none', fontFamily: 'inherit' }} />
+                <div style={{ fontSize: 9, color: '#6b7280', marginTop: 2 }}>※ 회차 시작 전만 수정 가능</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 4 }}>목표금액</div>
+                <input type="number" value={editingCompound.goal_amount}
+                  onChange={e => setEditingCompound({ ...editingCompound, goal_amount: Number(e.target.value) })}
+                  style={{ width: '100%', padding: '8px 12px', fontSize: 13, background: '#0d1321', border: '1px solid #1e293b', borderRadius: 6, color: '#e5e7eb', outline: 'none', fontFamily: 'inherit' }} />
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 4 }}>전략</div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {['smart', 'aggressive', 'standard', 'conservative', 'longterm'].map(s => (
+                  <button key={s} onClick={() => setEditingCompound({ ...editingCompound, strategy: s })}
+                    style={{ flex: 1, padding: '6px 4px', fontSize: 10, borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit',
+                      border: editingCompound.strategy === s ? '1px solid #4fc3f7' : '1px solid #1e293b',
+                      background: editingCompound.strategy === s ? 'rgba(79,195,247,0.15)' : 'transparent',
+                      color: editingCompound.strategy === s ? '#4fc3f7' : '#9ca3af',
+                    }}>{s}</button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button onClick={() => setEditingCompound(null)}
+                style={{ padding: '8px 16px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontFamily: 'inherit', background: 'transparent', border: '1px solid #374151', color: '#9ca3af' }}>취소</button>
+              <button onClick={onSaveEdit}
+                style={{ padding: '8px 24px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit', background: '#4fc3f7', border: 'none', color: '#000' }}>저장</button>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -1340,7 +1502,7 @@ function CompoundGroupList({ groups, loading, onSelect, onRefresh, onStop, showC
 // ★ v2: 복리 그룹 상세
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-function CompoundGroupDetailView({ data, onBack, onSelectPortfolio }) {
+function CompoundGroupDetailView({ data, onBack, onSelectPortfolio, onStop, onDelete, setEditingCompound }) {
   const { group, rounds } = data;
   if (!group) return null;
 
@@ -1373,6 +1535,22 @@ function CompoundGroupDetailView({ data, onBack, onSelectPortfolio }) {
           <span style={{ fontSize: 12, color: COLORS.textDim }}>
             {group.current_round}회차 · {group.total_rounds}회 완료
           </span>
+        </div>
+
+        {/* ★ 액션 버튼 행 */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+          <button onClick={() => setEditingCompound({ id: group.id, name: group.name, goal_amount: group.goal_amount, seed_money: group.seed_money, strategy: group.strategy || 'smart' })}
+            style={{ padding: '6px 14px', fontSize: 11, borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit',
+              border: `1px solid ${COLORS.accent}40`, background: COLORS.accentDim, color: COLORS.accent, fontWeight: 600 }}>
+            ✏️ 수정</button>
+          {group.status === 'active' && <button onClick={() => onStop(group.id)}
+            style={{ padding: '6px 14px', fontSize: 11, borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit',
+              border: `1px solid ${COLORS.orange}40`, background: 'transparent', color: COLORS.orange, fontWeight: 600 }}>
+            ⏸ 중단</button>}
+          <button onClick={() => onDelete(group.id, group.name)}
+            style={{ padding: '6px 14px', fontSize: 11, borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit',
+              border: `1px solid ${COLORS.red}40`, background: 'transparent', color: COLORS.red, fontWeight: 600 }}>
+            🗑 삭제</button>
         </div>
 
         {/* 3열 금액 표시 */}
