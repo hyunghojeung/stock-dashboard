@@ -616,6 +616,10 @@ function PortfolioDetail({ detail, updating, onUpdate, onClose, onDelete, onRena
                 }}>전체 청산</button>
               </>
             )}
+            <button onClick={() => { setTempName(pf.name); setEditingName(true); }} style={{
+              padding: '7px 16px', borderRadius: 8, border: `1px solid ${COLORS.accent}40`,
+              background: 'transparent', color: COLORS.accent, cursor: 'pointer', fontSize: 12, fontWeight: 600,
+            }}>✏️ 수정</button>
             <button onClick={onDelete} style={{
               padding: '7px 16px', borderRadius: 8, border: `1px solid ${COLORS.cardBorder}`,
               background: 'transparent', color: COLORS.textDim, cursor: 'pointer', fontSize: 12, fontWeight: 600,
