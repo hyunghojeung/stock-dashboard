@@ -11,7 +11,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 
 const API = "https://web-production-139e9.up.railway.app";
-
 const C = {
   bg: '#0a0e1a', card: '#111827', cardBorder: '#1e293b',
   accent: '#3b82f6', accentDim: 'rgba(59,130,246,0.15)',
