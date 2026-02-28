@@ -658,7 +658,10 @@ export default function PatternDetector() {
           toggleScanStock={toggleScanStock} selectAllVisible={selectAllVisible}
           setSelectedScanStocks={setSelectedScanStocks} sendToAnalyzer={sendToAnalyzer}
           getFilteredScanResults={getFilteredScanResults}
-          scanDate={scanDate} scanSource={scanSource} onReload={reloadScanFromDB} />}
+          scanDate={scanDate} scanSource={scanSource} onReload={reloadScanFromDB}
+          scanChartCode={scanChartCode} setScanChartCode={setScanChartCode}
+          scanChartCandles={scanChartCandles} scanChartLoading={scanChartLoading}
+          fetchScanChart={fetchScanChart} scanChartStock={scanChartStock} />}
 
         {!scanResult && !scanning && !loadingPrev && (
           <div style={{ background:COLORS.card, border:`1px solid ${COLORS.cardBorder}`,
@@ -1247,7 +1250,7 @@ function SettingsPanel(p) {
   </div>);
 }
 
-function ScanResultView({ scanResult, scanSortKey, setScanSortKey, scanFilterLevel, setScanFilterLevel, selectedScanStocks, toggleScanStock, selectAllVisible, setSelectedScanStocks, sendToAnalyzer, getFilteredScanResults, scanDate, scanSource, onReload }) {
+function ScanResultView({ scanResult, scanSortKey, setScanSortKey, scanFilterLevel, setScanFilterLevel, selectedScanStocks, toggleScanStock, selectAllVisible, setSelectedScanStocks, sendToAnalyzer, getFilteredScanResults, scanDate, scanSource, onReload, scanChartCode, setScanChartCode, scanChartCandles, scanChartLoading, fetchScanChart, scanChartStock }) {
   const stats = scanResult.stats || {};
   const filtered = getFilteredScanResults();
   const fmtDate = (iso) => { if (!iso) return ''; try { const d = new Date(iso); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; } catch { return iso; } };
