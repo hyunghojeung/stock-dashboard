@@ -6,7 +6,7 @@
  * PatternDetector.jsx의 4번째 탭으로 통합.
  * 매수추천 종목을 5가지 전략으로 동시 비교 백테스트 + 실시간 모의투자.
  */
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 
 const API_BASE = "https://web-production-139e9.up.railway.app";
 
@@ -354,6 +354,16 @@ export default function VirtualInvestTab({ recommendations = [], backtestRecomme
     });
     return sorted;
   };
+
+  // ★ 메모이제이션: 렌더링마다 정렬/그룹핑 재계산 방지
+  const sortedRankings = useMemo(() => {
+    return sortRankings(result?.rankings || []);
+  }, [result?.rankings, stratSortKey, stratSortDir]);
+
+  const sortedGroupedTrades = useMemo(() => {
+    if (!expandedStrategy || !result?.strategies?.[expandedStrategy]?.trades) return [];
+    return sortGrouped(groupTrades(result.strategies[expandedStrategy].trades || []));
+  }, [result?.strategies, expandedStrategy, tradeSortKey, tradeSortDir]);
 
   // 종목 봉차트
   const [chartTrade, setChartTrade] = useState(null);  // 선택된 종목 매매 정보
@@ -832,7 +842,7 @@ export default function VirtualInvestTab({ recommendations = [], backtestRecomme
                   </tr>
                 </thead>
                 <tbody>
-                  {sortRankings(result.rankings || []).map((r, i) => (
+                  {sortedRankings.map((r, i) => (
                     <tr key={r.strategy} style={{
                       background: i === 0 ? "rgba(79,195,247,0.05)" : "transparent",
                       cursor: "pointer",
@@ -946,7 +956,7 @@ export default function VirtualInvestTab({ recommendations = [], backtestRecomme
                   </tr>
                 </thead>
                 <tbody>
-                  {sortGrouped(groupTrades(result.strategies[expandedStrategy].trades || [])).map((g, i) => {
+                  {sortedGroupedTrades.map((g, i) => {
                     const lt = g.last_trade;
                     const rowKey = g.stock_code;
                     const isOpen = chartTrade?._rowKey === rowKey;

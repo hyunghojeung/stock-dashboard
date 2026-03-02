@@ -130,8 +130,8 @@ export default function VirtualPortfolioTracker() {
       const res = await fetch(`${API_BASE}/api/virtual-portfolio/update-prices/${id}`, { method: 'POST' });
       const data = await res.json();
       if (data.success) {
-        await loadDetail(id);
-        await loadList();
+        // ★ 병렬 호출 — detail과 list를 동시에 로드
+        await Promise.all([loadDetail(id), loadList()]);
       }
     } catch (e) {
       console.error('갱신 실패:', e);
@@ -145,8 +145,7 @@ export default function VirtualPortfolioTracker() {
     if (!window.confirm('이 포트폴리오를 청산하시겠습니까?\n보유 중인 모든 종목이 현재가에 매도됩니다.')) return;
     try {
       await fetch(`${API_BASE}/api/virtual-portfolio/close/${id}`, { method: 'POST' });
-      await loadDetail(id);
-      await loadList();
+      await Promise.all([loadDetail(id), loadList()]);
     } catch (e) {
       console.error('청산 실패:', e);
     }
