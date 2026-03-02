@@ -434,10 +434,12 @@ export default function PatternDetector() {
     let list = [...scanResult.stocks];
     if (scanFilterLevel === 'high') list = list.filter(s => s.top_manip_level === 'high');
     else if (scanFilterLevel === 'medium') list = list.filter(s => s.top_manip_level === 'medium' || s.top_manip_level === 'high');
+    else if (scanFilterLevel === 'entry') list = list.filter(s => s.entry_signals && s.entry_signals.should_buy);
     if (scanSortKey === 'manip_score') list.sort((a, b) => b.top_manip_score - a.top_manip_score);
     else if (scanSortKey === 'rise_pct') list.sort((a, b) => b.latest_rise_pct - a.latest_rise_pct);
     else if (scanSortKey === 'date') list.sort((a, b) => (b.latest_surge_date||'').localeCompare(a.latest_surge_date||''));
     else if (scanSortKey === 'from_peak') list.sort((a, b) => a.latest_from_peak - b.latest_from_peak);
+    else if (scanSortKey === 'entry_score') list.sort((a, b) => (b.entry_signals?.entry_score||0) - (a.entry_signals?.entry_score||0));
     return list;
   };
 
@@ -1430,6 +1432,7 @@ function ScanResultView({ scanResult, scanSortKey, setScanSortKey, scanFilterLev
         { label:'급상승 건수', value:stats.total_surges, unit:'건', color:COLORS.yellow },
         { label:'🔴 세력 의심', value:stats.high_manip_count, unit:'종목', color:COLORS.red },
         { label:'🟡 주의 필요', value:stats.medium_manip_count, unit:'종목', color:COLORS.yellow },
+        { label:'🟢 진입시그널', value:stats.entry_signal_count, unit:'종목', color:'#00E676' },
       ].map((item,i) => (<div key={i} style={{ background:COLORS.card, border:`1px solid ${COLORS.cardBorder}`, borderRadius:10, padding:14, textAlign:'center' }}>
         <div style={{ fontSize:11, color:COLORS.textDim, marginBottom:4 }}>{item.label}</div>
         <div style={{ fontSize:22, fontWeight:700, color:item.color }}>{item.value?.toLocaleString()??'-'}</div>
@@ -1439,11 +1442,11 @@ function ScanResultView({ scanResult, scanSortKey, setScanSortKey, scanFilterLev
     <div style={{ background:COLORS.card, border:`1px solid ${COLORS.cardBorder}`, borderRadius:12, padding:14, marginBottom:12, display:'flex', flexWrap:'wrap', gap:12, alignItems:'center' }}>
       <div style={{ display:'flex', gap:4 }}>
         <span style={{ fontSize:12, color:COLORS.textDim, alignSelf:'center', marginRight:4 }}>필터:</span>
-        {[{v:'all',l:'전체',c:COLORS.accent},{v:'high',l:'🔴 세력의심',c:COLORS.red},{v:'medium',l:'🟡 주의이상',c:COLORS.yellow}].map(f => (<button key={f.v} onClick={() => setScanFilterLevel(f.v)} style={{ padding:'5px 12px', fontSize:11, borderRadius:6, cursor:'pointer', border:`1px solid ${scanFilterLevel===f.v?f.c:COLORS.cardBorder}`, background:scanFilterLevel===f.v?`${f.c}20`:'transparent', color:scanFilterLevel===f.v?f.c:COLORS.textDim }}>{f.l}</button>))}
+        {[{v:'all',l:'전체',c:COLORS.accent},{v:'high',l:'🔴 세력의심',c:COLORS.red},{v:'medium',l:'🟡 주의이상',c:COLORS.yellow},{v:'entry',l:'🟢 진입시그널',c:'#00E676'}].map(f => (<button key={f.v} onClick={() => setScanFilterLevel(f.v)} style={{ padding:'5px 12px', fontSize:11, borderRadius:6, cursor:'pointer', border:`1px solid ${scanFilterLevel===f.v?f.c:COLORS.cardBorder}`, background:scanFilterLevel===f.v?`${f.c}20`:'transparent', color:scanFilterLevel===f.v?f.c:COLORS.textDim }}>{f.l}</button>))}
       </div>
       <div style={{ display:'flex', gap:4 }}>
         <span style={{ fontSize:12, color:COLORS.textDim, alignSelf:'center', marginRight:4 }}>정렬:</span>
-        {[{v:'manip_score',l:'세력점수↓'},{v:'rise_pct',l:'상승률↓'},{v:'date',l:'최근순'},{v:'from_peak',l:'고점대비↓'}].map(s => (<button key={s.v} onClick={() => setScanSortKey(s.v)} style={{ padding:'5px 10px', fontSize:11, borderRadius:6, cursor:'pointer', border:`1px solid ${scanSortKey===s.v?COLORS.accent:COLORS.cardBorder}`, background:scanSortKey===s.v?COLORS.accentDim:'transparent', color:scanSortKey===s.v?COLORS.accent:COLORS.textDim }}>{s.l}</button>))}
+        {[{v:'manip_score',l:'세력점수↓'},{v:'rise_pct',l:'상승률↓'},{v:'date',l:'최근순'},{v:'from_peak',l:'고점대비↓'},{v:'entry_score',l:'진입점수↓'}].map(s => (<button key={s.v} onClick={() => setScanSortKey(s.v)} style={{ padding:'5px 10px', fontSize:11, borderRadius:6, cursor:'pointer', border:`1px solid ${scanSortKey===s.v?COLORS.accent:COLORS.cardBorder}`, background:scanSortKey===s.v?COLORS.accentDim:'transparent', color:scanSortKey===s.v?COLORS.accent:COLORS.textDim }}>{s.l}</button>))}
       </div>
       <div style={{ marginLeft:'auto', display:'flex', gap:8 }}>
         <button onClick={selectAllVisible} style={{ padding:'5px 12px', fontSize:11, borderRadius:6, cursor:'pointer', border:`1px solid ${COLORS.cardBorder}`, background:'transparent', color:COLORS.textDim }}>전체선택</button>
@@ -1462,7 +1465,7 @@ function ScanResultView({ scanResult, scanSortKey, setScanSortKey, scanFilterLev
         return (<React.Fragment key={stock.code}>
           <div onClick={() => toggleScanStock(stock.code)} style={{ display:'grid', gridTemplateColumns:'40px 1fr 80px 80px 60px 70px 80px 80px 40px', padding:'10px 14px', alignItems:'center', borderBottom: isChartOpen ? 'none' : `1px solid ${COLORS.cardBorder}`, background:sel?'rgba(59,130,246,0.08)':i%2===0?'transparent':'rgba(255,255,255,0.015)', cursor:'pointer' }}>
           <div style={{textAlign:'center'}}><div style={{ width:18, height:18, borderRadius:4, border:`2px solid ${sel?COLORS.accent:COLORS.cardBorder}`, background:sel?COLORS.accent:'transparent', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, color:COLORS.white, fontWeight:700 }}>{sel&&'✓'}</div></div>
-          <div><div style={{ fontSize:13, fontWeight:600 }}>{stock.name}<span style={{ fontSize:10, color:COLORS.textDim, marginLeft:6 }}>{stock.code} · {stock.market}</span></div><div style={{ fontSize:10, color:COLORS.textDim }}>최근: {stock.latest_surge_date||'-'}</div></div>
+          <div><div style={{ fontSize:13, fontWeight:600 }}>{stock.name}<span style={{ fontSize:10, color:COLORS.textDim, marginLeft:6 }}>{stock.code} · {stock.market}</span></div><div style={{ fontSize:10, color:COLORS.textDim, display:'flex', alignItems:'center', gap:6 }}>최근: {stock.latest_surge_date||'-'}{stock.entry_signals && stock.entry_signals.should_buy && (<span style={{ display:'inline-flex', alignItems:'center', gap:3, padding:'1px 6px', borderRadius:4, background:'rgba(0,230,118,0.12)', border:'1px solid rgba(0,230,118,0.3)', fontSize:9, fontWeight:700, color:'#00E676' }}>{stock.entry_signals.signals?.obv?.signal?'OBV':''}{ stock.entry_signals.signals?.obv?.signal && stock.entry_signals.signals?.vcp?.signal ? '+' : ''}{stock.entry_signals.signals?.vcp?.signal?'VCP':''}{(stock.entry_signals.signals?.obv?.signal||stock.entry_signals.signals?.vcp?.signal) && stock.entry_signals.signals?.partial_dtw?.signal?'+':''}{stock.entry_signals.signals?.partial_dtw?.signal?`DTW${stock.entry_signals.signals.partial_dtw.similarity?.toFixed(0)||''}%`:''} {stock.entry_signals.entry_score?.toFixed(0)}점</span>)}{stock.entry_signals && !stock.entry_signals.should_buy && stock.entry_signals.active_signals > 0 && (<span style={{ display:'inline-flex', alignItems:'center', gap:3, padding:'1px 6px', borderRadius:4, background:'rgba(255,214,0,0.08)', border:'1px solid rgba(255,214,0,0.2)', fontSize:9, color:'#FFD600' }}>{stock.entry_signals.active_signals}/3 시그널</span>)}</div></div>
           <div style={{ textAlign:'right', fontSize:12, fontWeight:600 }}>{fmt(stock.current_price)}</div>
           <div style={{ textAlign:'center', fontSize:12, fontWeight:700, color:COLORS.red }}>+{stock.latest_rise_pct}%</div>
           <div style={{ textAlign:'center', fontSize:12, fontWeight:600 }}>{stock.surge_count}회</div>
