@@ -206,6 +206,116 @@ export default function PatternDetector() {
   const [newCompoundGoal, setNewCompoundGoal] = useState(1000000000);
   const [regMode, setRegMode] = useState('portfolio'); // 'portfolio' | 'compound' | 'new-compound'
 
+  // ━━━ ★ 패턴 라이브러리 상태 ━━━
+  const [savingPattern, setSavingPattern] = useState(null); // 저장 중 클러스터 인덱스
+  const [savedPatterns, setSavedPatterns] = useState([]);
+  const [savedPatternsLoading, setSavedPatternsLoading] = useState(false);
+  const [editingPatternId, setEditingPatternId] = useState(null);
+  const [editingPatternName, setEditingPatternName] = useState('');
+  // ━━━ ★ 패턴 스캔 상태 ━━━
+  const [showPatternScan, setShowPatternScan] = useState(false);
+  const [selectedPatternIds, setSelectedPatternIds] = useState(new Set());
+  const [patternScanResult, setPatternScanResult] = useState(null);
+  const [patternScanning, setPatternScanning] = useState(false);
+  const [patternMinSimilarity, setPatternMinSimilarity] = useState(60);
+
+  // ━━━ ★ 패턴 라이브러리 함수 ━━━
+  const fetchSavedPatterns = useCallback(async () => {
+    setSavedPatternsLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/pattern/library/list`);
+      const data = await res.json();
+      if (data.success) setSavedPatterns(data.patterns || []);
+    } catch (e) { console.error('패턴 목록 로드 실패:', e); }
+    setSavedPatternsLoading(false);
+  }, []);
+
+  const saveClusterPattern = async (cluster, clusterIndex) => {
+    setSavingPattern(clusterIndex);
+    try {
+      const body = {
+        name: `패턴 #${clusterIndex + 1} — ${(cluster.description || '').slice(0, 30) || '무제'}`,
+        description: cluster.description || '',
+        session_id: null,
+        cluster_id: cluster.cluster_id ?? clusterIndex,
+        avg_return_flow: cluster.avg_return_flow || [],
+        avg_volume_flow: cluster.avg_volume_flow || [],
+        avg_rsi_flow: cluster.avg_rsi_flow || [],
+        avg_ma_dist_flow: cluster.avg_ma_dist_flow || [],
+        avg_similarity: cluster.avg_similarity || 0,
+        avg_rise_pct: cluster.avg_rise_pct || 0,
+        avg_rise_days: cluster.avg_rise_days || 0,
+        member_count: cluster.pattern_count || cluster.members?.length || 0,
+        members: cluster.members || [],
+        confidence: cluster.confidence || 0,
+        tags: [],
+      };
+      const res = await fetch(`${API_BASE}/api/pattern/library/save`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert('✅ 패턴이 라이브러리에 저장되었습니다!');
+        fetchSavedPatterns();
+      } else {
+        alert('저장 실패: ' + (data.message || ''));
+      }
+    } catch (e) { alert('저장 실패: ' + e.message); }
+    setSavingPattern(null);
+  };
+
+  const deletePattern = async (id) => {
+    if (!confirm('이 패턴을 삭제하시겠습니까?')) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/pattern/library/${id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.success) fetchSavedPatterns();
+    } catch (e) { console.error('패턴 삭제 실패:', e); }
+  };
+
+  const togglePatternActive = async (id, currentActive) => {
+    try {
+      await fetch(`${API_BASE}/api/pattern/library/${id}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active: !currentActive }),
+      });
+      fetchSavedPatterns();
+    } catch (e) { console.error('패턴 토글 실패:', e); }
+  };
+
+  const savePatternName = async (id) => {
+    try {
+      await fetch(`${API_BASE}/api/pattern/library/${id}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: editingPatternName }),
+      });
+      setEditingPatternId(null);
+      fetchSavedPatterns();
+    } catch (e) { console.error('이름 수정 실패:', e); }
+  };
+
+  const runPatternScan = async () => {
+    const ids = [...selectedPatternIds];
+    if (ids.length === 0) { alert('스캔할 패턴을 선택하세요'); return; }
+    setPatternScanning(true);
+    setPatternScanResult(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/pattern/library/scan`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pattern_ids: ids, min_similarity: patternMinSimilarity, market: scanMarket, limit: 50 }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setPatternScanResult(data);
+        fetchSavedPatterns(); // use_count 갱신
+      } else {
+        alert('스캔 실패: ' + (data.message || ''));
+      }
+    } catch (e) { alert('스캔 실패: ' + e.message); }
+    setPatternScanning(false);
+  };
+
   const openRegModal = async () => {
     if (selectedRecStocks.size === 0) return;
     const today = new Date();
@@ -238,6 +348,8 @@ export default function PatternDetector() {
         code: s.code || '', name: s.name || '',
         buy_price: s.current_price || 0, current_price: s.current_price || 0,
         similarity: s.similarity || 0, signal: s.signal || '',
+        pattern_id: s.matched_pattern_id || null,
+        pattern_name: s.matched_pattern_name || null,
       }));
 
       let data;
@@ -707,6 +819,108 @@ export default function PatternDetector() {
         {scanning && <ProgressBar progress={scanProgress} msg={scanMsg} color={COLORS.red} />}
         {scanError && <ErrorBox msg={scanError} onClose={() => setScanError('')} />}
 
+        {/* ★ 저장 패턴으로 매칭 스캔 섹션 */}
+        <div style={{ background:COLORS.card, border:`1px solid ${showPatternScan ? 'rgba(139,92,246,0.4)' : COLORS.cardBorder}`,
+          borderRadius:12, marginBottom:16, overflow:'hidden', transition:'all 0.2s' }}>
+          <div onClick={() => { setShowPatternScan(!showPatternScan); if (!showPatternScan && savedPatterns.length === 0) fetchSavedPatterns(); }}
+            style={{ padding:'14px 20px', cursor:'pointer', display:'flex', justifyContent:'space-between', alignItems:'center',
+              background: showPatternScan ? 'rgba(139,92,246,0.08)' : 'transparent' }}>
+            <span style={{ fontSize:14, fontWeight:700, color:'#8b5cf6' }}>📚 저장 패턴으로 매칭 스캔</span>
+            <span style={{ fontSize:12, color:COLORS.textDim }}>{showPatternScan ? '▲ 접기' : '▼ 펼치기'}</span>
+          </div>
+          {showPatternScan && (
+            <div style={{ padding:'0 20px 16px' }}>
+              {savedPatternsLoading ? (
+                <div style={{ textAlign:'center', padding:20, color:COLORS.textDim, fontSize:12 }}>⏳ 패턴 목록 로드 중...</div>
+              ) : savedPatterns.length === 0 ? (
+                <div style={{ textAlign:'center', padding:20, color:COLORS.textDim, fontSize:12 }}>저장된 패턴이 없습니다. 분석기에서 패턴을 먼저 저장하세요.</div>
+              ) : (<>
+                <div style={{ fontSize:11, color:COLORS.textDim, marginBottom:8 }}>매칭할 패턴 선택 (복수 선택 가능)</div>
+                <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:12 }}>
+                  {savedPatterns.filter(p => p.is_active).map(p => {
+                    const sel = selectedPatternIds.has(p.id);
+                    return (
+                      <button key={p.id} onClick={() => {
+                        setSelectedPatternIds(prev => {
+                          const next = new Set(prev);
+                          if (next.has(p.id)) next.delete(p.id); else next.add(p.id);
+                          return next;
+                        });
+                      }}
+                      style={{ padding:'6px 12px', fontSize:11, fontWeight:600, borderRadius:8, cursor:'pointer',
+                        border: sel ? '2px solid #8b5cf6' : '1px solid rgba(139,92,246,0.3)',
+                        background: sel ? 'rgba(139,92,246,0.2)' : 'transparent',
+                        color: sel ? '#8b5cf6' : COLORS.textDim }}>
+                        {sel ? '✓ ' : ''}{p.name}
+                        <span style={{ marginLeft:6, opacity:0.6 }}>+{p.avg_rise_pct?.toFixed(0)}%</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div style={{ display:'flex', alignItems:'center', gap:16, marginBottom:12, flexWrap:'wrap' }}>
+                  <div style={{ fontSize:11, color:COLORS.textDim }}>
+                    최소 유사도: <b style={{ color:'#8b5cf6' }}>{patternMinSimilarity}%</b>
+                  </div>
+                  <input type="range" min={40} max={90} step={5} value={patternMinSimilarity}
+                    onChange={e => setPatternMinSimilarity(Number(e.target.value))}
+                    style={{ flex:1, maxWidth:200, accentColor:'#8b5cf6' }} />
+                  <button onClick={runPatternScan} disabled={patternScanning || selectedPatternIds.size === 0}
+                    style={{ padding:'8px 20px', fontSize:13, fontWeight:700, borderRadius:8, cursor:'pointer',
+                      border:'none', background: patternScanning ? '#555' : 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
+                      color:'#fff', opacity: selectedPatternIds.size === 0 ? 0.4 : 1 }}>
+                    {patternScanning ? '⏳ 스캔 중...' : '🔍 패턴 매칭 시작'}
+                  </button>
+                </div>
+                {/* 패턴 스캔 결과 */}
+                {patternScanResult && (
+                  <div style={{ marginTop:8 }}>
+                    <div style={{ fontSize:12, fontWeight:600, color:'#8b5cf6', marginBottom:8 }}>
+                      📊 매칭 결과: {patternScanResult.total_scanned?.toLocaleString()}개 스캔 → {patternScanResult.matches?.length || 0}개 발견
+                    </div>
+                    {patternScanResult.patterns_used?.map((pu, i) => (
+                      <span key={i} style={{ fontSize:10, padding:'2px 8px', borderRadius:10, marginRight:6,
+                        background:'rgba(139,92,246,0.12)', border:'1px solid rgba(139,92,246,0.25)', color:'#8b5cf6' }}>
+                        {pu.name}: {pu.match_count}개
+                      </span>
+                    ))}
+                    {(patternScanResult.matches || []).length > 0 && (
+                      <div style={{ marginTop:10, maxHeight:400, overflowY:'auto' }}>
+                        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:11 }}>
+                          <thead>
+                            <tr style={{ borderBottom:'1px solid rgba(139,92,246,0.2)' }}>
+                              {['종목','시장','현재가','유사도','매칭 패턴'].map((h,hi) => (
+                                <th key={hi} style={{ padding:'6px 8px', textAlign: hi>=2 ? 'right' : 'left',
+                                  color:'#8b5cf6', fontWeight:600 }}>{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {patternScanResult.matches.map((m, mi) => (
+                              <tr key={mi} style={{ borderBottom:`1px solid ${COLORS.cardBorder}` }}>
+                                <td style={{ padding:'6px 8px', fontWeight:600 }}>{m.name} <span style={{color:COLORS.textDim}}>({m.code})</span></td>
+                                <td style={{ padding:'6px 8px', color:COLORS.textDim }}>{m.market}</td>
+                                <td style={{ padding:'6px 8px', textAlign:'right' }}>{m.current_price?.toLocaleString()}</td>
+                                <td style={{ padding:'6px 8px', textAlign:'right', fontWeight:700,
+                                  color: m.similarity >= 75 ? COLORS.green : m.similarity >= 60 ? COLORS.yellow : COLORS.textDim }}>
+                                  {m.similarity}%
+                                </td>
+                                <td style={{ padding:'6px 8px' }}>
+                                  <span style={{ fontSize:10, padding:'2px 6px', borderRadius:6,
+                                    background:'rgba(139,92,246,0.1)', color:'#8b5cf6' }}>{m.matched_pattern_name}</span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>)}
+            </div>
+          )}
+        </div>
+
         {loadingPrev && !scanning && !scanResult && (
           <div style={{ background:COLORS.card, border:`1px solid ${COLORS.cardBorder}`,
             borderRadius:12, padding:20, marginBottom:16, textAlign:'center' }}>
@@ -954,16 +1168,17 @@ export default function PatternDetector() {
               </div>
             ))}
           </div>
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap:10, marginBottom:20 }}>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(5, 1fr)', gap:10, marginBottom:20 }}>
             {[
               {label:'공통 패턴', icon:'📊', color:'#4fc3f7'},
               {label:'차트 오버레이', icon:'📈', color:'#ffd54f'},
               {label:'매수 추천', icon:'🎯', color:'#4cff8b'},
               {label:'가상투자', icon:'💰', color:'#ff9800'},
+              {label:'패턴 라이브러리', icon:'📚', color:'#8b5cf6'},
             ].map((tab, i) => (
-              <button key={i} onClick={() => setActiveTab(i)} style={{
-                padding:'22px 10px', cursor:'pointer', transition:'all 0.2s',
-                borderRadius:14, textAlign:'center', display:'flex', flexDirection:'column', alignItems:'center', gap:6,
+              <button key={i} onClick={() => { setActiveTab(i); if (i===4) fetchSavedPatterns(); }} style={{
+                padding:'18px 8px', cursor:'pointer', transition:'all 0.2s',
+                borderRadius:14, textAlign:'center', display:'flex', flexDirection:'column', alignItems:'center', gap:5,
                 border: activeTab===i ? `3px solid ${tab.color}` : `2px solid ${tab.color}55`,
                 background: activeTab===i ? `${tab.color}25` : `${tab.color}08`,
                 color: activeTab===i ? tab.color : `${tab.color}aa`,
@@ -972,16 +1187,17 @@ export default function PatternDetector() {
               onMouseEnter={e => { if(activeTab!==i) { e.currentTarget.style.background=`${tab.color}18`; e.currentTarget.style.borderColor=`${tab.color}99`; e.currentTarget.style.boxShadow=`0 0 12px ${tab.color}25`; }}}
               onMouseLeave={e => { if(activeTab!==i) { e.currentTarget.style.background=`${tab.color}08`; e.currentTarget.style.borderColor=`${tab.color}55`; e.currentTarget.style.boxShadow='none'; }}}
               >
-                <span style={{ fontSize:28 }}>{tab.icon}</span>
-                <span style={{ fontSize:16, fontWeight:800, letterSpacing:'0.5px' }}>{tab.label}</span>
+                <span style={{ fontSize:26 }}>{tab.icon}</span>
+                <span style={{ fontSize:14, fontWeight:800, letterSpacing:'0.5px' }}>{tab.label}</span>
                 {activeTab===i && <span style={{ fontSize:10, opacity:0.7, marginTop:2 }}>● 선택됨</span>}
               </button>
             ))}
           </div>
-          {activeTab===0 && <TabSummary result={result} />}
+          {activeTab===0 && <TabSummary result={result} saveClusterPattern={saveClusterPattern} savingPattern={savingPattern} />}
           {activeTab===1 && <TabChart result={result} />}
           {activeTab===2 && <TabRecommend result={result} selectedRecStocks={selectedRecStocks} setSelectedRecStocks={setSelectedRecStocks} onRegister={openRegModal} />}
           {activeTab===3 && <VirtualInvestTab recommendations={result.recommendations || []} backtestRecommendations={result.backtest_recommendations || []} selectedRecStocks={selectedRecStocks} setSelectedRecStocks={setSelectedRecStocks} newRtSessionId={newRtSessionId} setNewRtSessionId={setNewRtSessionId} />}
+          {activeTab===4 && <TabPatternLibrary patterns={savedPatterns} loading={savedPatternsLoading} onRefresh={fetchSavedPatterns} onDelete={deletePattern} onToggleActive={togglePatternActive} editingId={editingPatternId} editingName={editingPatternName} setEditingId={setEditingPatternId} setEditingName={setEditingPatternName} onSaveName={savePatternName} onScanWithPattern={(id) => { setSelectedPatternIds(new Set([id])); setShowPatternScan(true); setPageMode('scanner'); }} />}
         </>)}
 
         {!result && !analyzing && (
@@ -1517,7 +1733,7 @@ function ScanResultView({ scanResult, scanSortKey, setScanSortKey, scanSortDir, 
   </div>);
 }
 
-function TabSummary({ result }) {
+function TabSummary({ result, saveClusterPattern, savingPattern }) {
   const clusters = result.clusters||[], summary = result.summary||{};
   return (<div>
     {summary.common_features?.length>0 && (<div style={{ background:COLORS.accentDim, border:'1px solid rgba(59,130,246,0.3)', borderRadius:10, padding:16, marginBottom:16 }}>
@@ -1538,8 +1754,19 @@ function TabSummary({ result }) {
             {c.members?.map((m,mi) => (<span key={mi} style={{ fontSize:11, padding:'3px 10px', borderRadius:12, background:'#1a2234', border:`1px solid ${COLORS.cardBorder}` }}>{m.name}<span style={{color:COLORS.green,marginLeft:4}}>+{m.rise_pct}%</span><span style={{color:COLORS.textDim,marginLeft:4}}>{m.surge_date}</span></span>))}
           </div>
         </div>
-        <div style={{ display:'flex', gap:20, marginTop:12, paddingTop:12, borderTop:`1px solid ${COLORS.cardBorder}`, fontSize:12 }}>
-          <span>평균 상승: <b style={{color:COLORS.red}}>+{c.avg_rise_pct}%</b></span><span>평균 기간: <b>{c.avg_rise_days}일</b></span>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:20, marginTop:12, paddingTop:12, borderTop:`1px solid ${COLORS.cardBorder}`, fontSize:12 }}>
+          <div style={{ display:'flex', gap:20 }}>
+            <span>평균 상승: <b style={{color:COLORS.red}}>+{c.avg_rise_pct}%</b></span><span>평균 기간: <b>{c.avg_rise_days}일</b></span>
+          </div>
+          {saveClusterPattern && (
+            <button onClick={(e) => { e.stopPropagation(); saveClusterPattern(c, ci); }}
+              disabled={savingPattern === ci}
+              style={{ padding:'5px 14px', fontSize:11, fontWeight:700, borderRadius:8, cursor:'pointer',
+                border:'1px solid #8b5cf6', background:'rgba(139,92,246,0.12)', color:'#8b5cf6',
+                opacity: savingPattern === ci ? 0.5 : 1 }}>
+              {savingPattern === ci ? '⏳ 저장 중...' : '💾 패턴 저장'}
+            </button>
+          )}
         </div>
       </div>))}
   </div>);
@@ -1928,4 +2155,124 @@ function ScanStockChart({ candles, stock }) {
       <svg width={W} height={TOTAL_H} style={{ display: "block", maxWidth: "100%" }}>{elems}</svg>
     </div>
   );
+}
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ★ 패턴 라이브러리 탭
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+function TabPatternLibrary({ patterns, loading, onRefresh, onDelete, onToggleActive, editingId, editingName, setEditingId, setEditingName, onSaveName, onScanWithPattern }) {
+  if (loading) return <div style={{ textAlign:'center', padding:40, color:COLORS.textDim }}>⏳ 패턴 목록 로드 중...</div>;
+
+  return (<div>
+    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
+      <div style={{ fontSize:15, fontWeight:700, color:'#8b5cf6' }}>📚 저장된 패턴 라이브러리</div>
+      <button onClick={onRefresh} style={{ padding:'6px 14px', fontSize:11, fontWeight:600, borderRadius:8,
+        border:'1px solid #8b5cf6', background:'rgba(139,92,246,0.12)', color:'#8b5cf6', cursor:'pointer' }}>
+        🔄 새로고침
+      </button>
+    </div>
+
+    {patterns.length === 0 ? (
+      <div style={{ textAlign:'center', padding:50, color:COLORS.textDim }}>
+        <div style={{ fontSize:48, marginBottom:16 }}>📚</div>
+        <div style={{ fontSize:14, fontWeight:600, marginBottom:8 }}>저장된 패턴이 없습니다</div>
+        <div style={{ fontSize:12 }}>공통 패턴 탭에서 클러스터를 분석한 후 "💾 패턴 저장" 버튼으로 저장하세요</div>
+      </div>
+    ) : (
+      <div style={{ display:'grid', gap:12 }}>
+        {patterns.map((p) => {
+          const winRate = p.total_trades > 0 ? ((p.win_trades / p.total_trades) * 100).toFixed(0) : '-';
+          const avgProfit = p.total_trades > 0 ? (p.total_profit_pct / p.total_trades).toFixed(1) : '-';
+          const isEditing = editingId === p.id;
+
+          return (
+            <div key={p.id} style={{ background:COLORS.card, border:`1px solid ${p.is_active ? 'rgba(139,92,246,0.3)' : COLORS.cardBorder}`,
+              borderRadius:12, padding:16, opacity: p.is_active ? 1 : 0.55, transition:'all 0.2s' }}>
+
+              {/* 헤더: 이름 + 버튼 */}
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10, gap:10 }}>
+                <div style={{ flex:1, minWidth:0 }}>
+                  {isEditing ? (
+                    <div style={{ display:'flex', gap:6 }}>
+                      <input value={editingName} onChange={e => setEditingName(e.target.value)}
+                        style={{ flex:1, padding:'4px 8px', fontSize:13, fontWeight:600, background:'#1a2234',
+                          border:'1px solid #8b5cf6', borderRadius:6, color:COLORS.text, outline:'none' }}
+                        onKeyDown={e => { if (e.key === 'Enter') onSaveName(p.id); if (e.key === 'Escape') setEditingId(null); }} />
+                      <button onClick={() => onSaveName(p.id)} style={{ padding:'4px 10px', fontSize:11, borderRadius:6,
+                        border:'1px solid #10b981', background:'rgba(16,185,129,0.12)', color:'#10b981', cursor:'pointer' }}>✓</button>
+                    </div>
+                  ) : (
+                    <div style={{ fontSize:14, fontWeight:700, color:COLORS.text, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', cursor:'pointer' }}
+                      onClick={() => { setEditingId(p.id); setEditingName(p.name); }}>
+                      {p.name}
+                    </div>
+                  )}
+                </div>
+                <div style={{ display:'flex', gap:6, flexShrink:0 }}>
+                  <button onClick={() => onToggleActive(p.id, p.is_active)} title={p.is_active ? '비활성화' : '활성화'}
+                    style={{ padding:'4px 10px', fontSize:11, borderRadius:6, cursor:'pointer',
+                      border:`1px solid ${p.is_active ? '#10b981' : '#6b7280'}`,
+                      background: p.is_active ? 'rgba(16,185,129,0.12)' : 'rgba(107,114,128,0.12)',
+                      color: p.is_active ? '#10b981' : '#6b7280' }}>
+                    {p.is_active ? '✅ 활성' : '⬜ 비활성'}
+                  </button>
+                  <button onClick={() => onScanWithPattern(p.id)} title="이 패턴으로 스캔"
+                    style={{ padding:'4px 10px', fontSize:11, borderRadius:6, cursor:'pointer',
+                      border:'1px solid #3b82f6', background:'rgba(59,130,246,0.12)', color:'#3b82f6' }}>
+                    🔍 스캔
+                  </button>
+                  <button onClick={() => onDelete(p.id)} title="삭제"
+                    style={{ padding:'4px 10px', fontSize:11, borderRadius:6, cursor:'pointer',
+                      border:'1px solid #ef4444', background:'rgba(239,68,68,0.08)', color:'#ef4444' }}>
+                    🗑
+                  </button>
+                </div>
+              </div>
+
+              {/* 설명 */}
+              {p.description && (
+                <div style={{ fontSize:12, color:COLORS.textDim, marginBottom:10, padding:8, background:'#0d1321',
+                  borderRadius:6, lineHeight:1.5, maxHeight:60, overflow:'hidden' }}>{p.description}</div>
+              )}
+
+              {/* 미니 차트 */}
+              {p.avg_return_flow?.length > 0 && <MiniReturnChart returns={p.avg_return_flow} label="등락률 흐름" />}
+
+              {/* 통계 그리드 */}
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(80px, 1fr))', gap:8, marginTop:10 }}>
+                {[
+                  { label:'평균 상승', value: p.avg_rise_pct ? `+${p.avg_rise_pct.toFixed(1)}%` : '-', color:COLORS.red },
+                  { label:'평균 기간', value: p.avg_rise_days ? `${p.avg_rise_days.toFixed(0)}일` : '-', color:COLORS.text },
+                  { label:'소속 종목', value: `${p.member_count || 0}개`, color:COLORS.accent },
+                  { label:'유사도', value: p.avg_similarity ? `${p.avg_similarity.toFixed(0)}%` : '-', color:'#4fc3f7' },
+                  { label:'사용 횟수', value: `${p.use_count || 0}회`, color:COLORS.textDim },
+                  { label:'매매 수', value: `${p.total_trades || 0}건`, color:'#8b5cf6' },
+                  { label:'승률', value: winRate !== '-' ? `${winRate}%` : '-', color: parseFloat(winRate) >= 50 ? COLORS.green : COLORS.red },
+                  { label:'평균 수익', value: avgProfit !== '-' ? `${avgProfit}%` : '-', color: parseFloat(avgProfit) >= 0 ? COLORS.green : COLORS.red },
+                ].map((s, si) => (
+                  <div key={si} style={{ textAlign:'center', padding:'6px 4px', background:'rgba(255,255,255,0.02)', borderRadius:6 }}>
+                    <div style={{ fontSize:10, color:COLORS.textDim, marginBottom:2 }}>{s.label}</div>
+                    <div style={{ fontSize:13, fontWeight:700, color:s.color }}>{s.value}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* 태그 + 날짜 */}
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:10, fontSize:10, color:COLORS.textDim }}>
+                <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
+                  {(p.tags || []).map((t, ti) => (
+                    <span key={ti} style={{ padding:'2px 8px', borderRadius:10, background:'rgba(139,92,246,0.12)',
+                      border:'1px solid rgba(139,92,246,0.25)', color:'#8b5cf6' }}>{t}</span>
+                  ))}
+                </div>
+                <span>{p.created_at ? new Date(p.created_at).toLocaleDateString('ko') : ''}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    )}
+  </div>);
 }

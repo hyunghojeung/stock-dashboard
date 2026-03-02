@@ -860,6 +860,12 @@ function PortfolioDetail({ detail, updating, onUpdate, onClose, onDelete, onRena
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.white }}>
                     {isSelected ? '▼ ' : '▶ '}{pos.name}
+                    {pos.pattern_name && (
+                      <span style={{ fontSize:9, padding:'2px 6px', borderRadius:4, marginLeft:6,
+                        background:'rgba(139,92,246,0.15)', border:'1px solid rgba(139,92,246,0.25)', color:'#8b5cf6' }}>
+                        📚 {pos.pattern_name}
+                      </span>
+                    )}
                   </div>
                   <div style={{ fontSize: 10, color: COLORS.textDim, fontFamily: 'JetBrains Mono, monospace' }}>{pos.code}</div>
                 </div>
