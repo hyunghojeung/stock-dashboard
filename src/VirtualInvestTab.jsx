@@ -261,7 +261,7 @@ function EquityCurveChart({ strategies }) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 export default function VirtualInvestTab({ recommendations = [], backtestRecommendations = [], selectedRecStocks, setSelectedRecStocks, newRtSessionId, setNewRtSessionId }) {
   // 서브탭: backtest | realtime
-  const [subTab, setSubTab] = useState(newRtSessionId ? "realtime" : "backtest");
+  const [subTab, setSubTab] = useState("backtest");
 
   // 매매 파라미터 (5개 프리셋 각각 독립)
   const [presetParams, setPresetParams] = useState({
@@ -706,9 +706,6 @@ export default function VirtualInvestTab({ recommendations = [], backtestRecomme
         <div style={S.subTabBar}>
           <button style={S.subTab(subTab === "backtest")} onClick={() => setSubTab("backtest")}>
             📊 백테스트 검증
-          </button>
-          <button style={S.subTab(subTab === "realtime")} onClick={() => setSubTab("realtime")}>
-            🔴 실시간 모의투자
           </button>
         </div>
         <button
