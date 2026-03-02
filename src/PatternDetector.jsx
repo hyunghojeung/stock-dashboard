@@ -220,6 +220,8 @@ export default function PatternDetector() {
   const [patternMinSimilarity, setPatternMinSimilarity] = useState(60);
   const [selectedPatternStocks, setSelectedPatternStocks] = useState(new Set()); // 패턴 스캔 결과 선택 종목
   const [regSource, setRegSource] = useState('recommend'); // 'recommend' | 'patternScan'
+  const [patternSortKey, setPatternSortKey] = useState('similarity'); // 정렬 키
+  const [patternSortDir, setPatternSortDir] = useState('desc'); // 'asc' | 'desc'
 
   // ━━━ ★ 패턴 라이브러리 함수 ━━━
   const fetchSavedPatterns = useCallback(async () => {
@@ -898,8 +900,26 @@ export default function PatternDetector() {
                       </span>
                     ))}
                     {(patternScanResult.matches || []).length > 0 && (() => {
-                      const matches = patternScanResult.matches;
-                      const allSelected = selectedPatternStocks.size === matches.length && matches.length > 0;
+                      const rawMatches = patternScanResult.matches;
+                      // ★ 정렬 로직
+                      const sortedMatches = [...rawMatches].sort((a, b) => {
+                        let va, vb;
+                        switch (patternSortKey) {
+                          case 'name': va = (a.name || ''); vb = (b.name || ''); break;
+                          case 'market': va = (a.market || ''); vb = (b.market || ''); break;
+                          case 'current_price': va = (a.current_price || 0); vb = (b.current_price || 0); break;
+                          case 'similarity': va = (a.similarity || 0); vb = (b.similarity || 0); break;
+                          case 'matched_pattern_name': va = (a.matched_pattern_name || ''); vb = (b.matched_pattern_name || ''); break;
+                          default: va = 0; vb = 0;
+                        }
+                        if (typeof va === 'string') {
+                          const cmp = va.localeCompare(vb, 'ko');
+                          return patternSortDir === 'asc' ? cmp : -cmp;
+                        }
+                        return patternSortDir === 'asc' ? va - vb : vb - va;
+                      });
+                      const matches = sortedMatches;
+                      const allSelected = selectedPatternStocks.size === rawMatches.length && rawMatches.length > 0;
                       const togglePatternStock = (code) => {
                         setSelectedPatternStocks(prev => {
                           const next = new Set(prev);
@@ -909,8 +929,27 @@ export default function PatternDetector() {
                       };
                       const toggleAllPatternStocks = () => {
                         if (allSelected) setSelectedPatternStocks(new Set());
-                        else setSelectedPatternStocks(new Set(matches.map(m => m.code)));
+                        else setSelectedPatternStocks(new Set(rawMatches.map(m => m.code)));
                       };
+                      const handleSort = (key) => {
+                        if (patternSortKey === key) {
+                          setPatternSortDir(prev => prev === 'asc' ? 'desc' : 'asc');
+                        } else {
+                          setPatternSortKey(key);
+                          setPatternSortDir(key === 'name' || key === 'market' || key === 'matched_pattern_name' ? 'asc' : 'desc');
+                        }
+                      };
+                      const sortIcon = (key) => {
+                        if (patternSortKey !== key) return <span style={{ opacity:0.3, marginLeft:3 }}>↕</span>;
+                        return <span style={{ marginLeft:3, color:'#c4b5fd' }}>{patternSortDir === 'asc' ? '▲' : '▼'}</span>;
+                      };
+                      const columns = [
+                        { key:'name', label:'종목', align:'left' },
+                        { key:'market', label:'시장', align:'left' },
+                        { key:'current_price', label:'현재가', align:'right' },
+                        { key:'similarity', label:'유사도', align:'right' },
+                        { key:'matched_pattern_name', label:'매칭 패턴', align:'left' },
+                      ];
                       return (
                       <div style={{ marginTop:10 }}>
                         {/* 선택 컨트롤 바 */}
@@ -951,9 +990,17 @@ export default function PatternDetector() {
                           <thead>
                             <tr style={{ borderBottom:'1px solid rgba(139,92,246,0.2)' }}>
                               <th style={{ padding:'6px 8px', width:32 }}></th>
-                              {['종목','시장','현재가','유사도','매칭 패턴'].map((h,hi) => (
-                                <th key={hi} style={{ padding:'6px 8px', textAlign: hi>=2 ? 'right' : 'left',
-                                  color:'#8b5cf6', fontWeight:600 }}>{h}</th>
+                              {columns.map((col) => (
+                                <th key={col.key}
+                                  onClick={() => handleSort(col.key)}
+                                  style={{
+                                    padding:'6px 8px', textAlign: col.align,
+                                    color:'#8b5cf6', fontWeight:600, cursor:'pointer', userSelect:'none',
+                                    whiteSpace:'nowrap', transition:'color 0.15s',
+                                  }}
+                                  onMouseEnter={e => e.currentTarget.style.color='#c4b5fd'}
+                                  onMouseLeave={e => e.currentTarget.style.color='#8b5cf6'}
+                                >{col.label}{sortIcon(col.key)}</th>
                               ))}
                             </tr>
                           </thead>
