@@ -311,36 +311,45 @@ export default function VirtualInvestTab({ recommendations = [], backtestRecomme
     });
     return sorted;
   };
-  // 종목별 매매횟수 계산 + 같은 종목 trades 묶기
-  const getTradeCountMap = (trades) => {
-    if (!trades) return {};
+  // 같은 종목 그룹핑: 1종목 1행, 수익률/수익금 합산, 마지막 거래 날짜/가격 표시
+  const groupTrades = (trades) => {
+    if (!trades) return [];
     const map = {};
     for (const t of trades) {
       const key = t.stock_code || t.stock_name;
-      if (!map[key]) map[key] = [];
-      map[key].push(t);
+      if (!map[key]) {
+        map[key] = {
+          stock_code: t.stock_code, stock_name: t.stock_name,
+          trades: [], total_profit_pct: 0, total_profit_won: 0, total_hold_days: 0,
+          trade_count: 0, last_trade: t,
+        };
+      }
+      const g = map[key];
+      g.trades.push(t);
+      g.total_profit_pct += (t.profit_pct || 0);
+      g.total_profit_won += (t.profit_won || 0);
+      g.total_hold_days += (t.hold_days || 0);
+      g.trade_count += 1;
+      // 마지막 거래 (매수일 기준 최신)
+      if ((t.buy_date || '') >= (g.last_trade.buy_date || '')) g.last_trade = t;
     }
-    return map;
+    return Object.values(map);
   };
-  const sortTrades = (trades) => {
-    if (!trades) return trades;
-    const sorted = [...trades];
-    if (!tradeSortKey) return sorted;
+  const sortGrouped = (grouped) => {
+    if (!grouped || !tradeSortKey) return grouped;
+    const sorted = [...grouped];
     const dir = tradeSortDir === 'asc' ? 1 : -1;
     sorted.sort((a, b) => {
       if (tradeSortKey === 'name') return dir * (a.stock_name||'').localeCompare(b.stock_name||'');
-      if (tradeSortKey === 'trade_count') {
-        // 매매횟수 정렬은 외부에서 countMap 참조 필요 → stock_code 기준
-        return 0; // 별도 처리
-      }
-      if (tradeSortKey === 'buy_date') return dir * (a.buy_date||'').localeCompare(b.buy_date||'');
-      if (tradeSortKey === 'buy_price') return dir * ((a.buy_price||0) - (b.buy_price||0));
-      if (tradeSortKey === 'sell_date') return dir * (a.sell_date||'').localeCompare(b.sell_date||'');
-      if (tradeSortKey === 'sell_price') return dir * ((a.sell_price||0) - (b.sell_price||0));
-      if (tradeSortKey === 'profit_pct') return dir * ((a.profit_pct||0) - (b.profit_pct||0));
-      if (tradeSortKey === 'profit_won') return dir * ((a.profit_won||0) - (b.profit_won||0));
-      if (tradeSortKey === 'hold_days') return dir * ((a.hold_days||0) - (b.hold_days||0));
-      if (tradeSortKey === 'result') return dir * (a.result||'').localeCompare(b.result||'');
+      if (tradeSortKey === 'trade_count') return dir * (a.trade_count - b.trade_count);
+      if (tradeSortKey === 'buy_date') return dir * (a.last_trade.buy_date||'').localeCompare(b.last_trade.buy_date||'');
+      if (tradeSortKey === 'buy_price') return dir * ((a.last_trade.buy_price||0) - (b.last_trade.buy_price||0));
+      if (tradeSortKey === 'sell_date') return dir * (a.last_trade.sell_date||'').localeCompare(b.last_trade.sell_date||'');
+      if (tradeSortKey === 'sell_price') return dir * ((a.last_trade.sell_price||0) - (b.last_trade.sell_price||0));
+      if (tradeSortKey === 'profit_pct') return dir * (a.total_profit_pct - b.total_profit_pct);
+      if (tradeSortKey === 'profit_won') return dir * (a.total_profit_won - b.total_profit_won);
+      if (tradeSortKey === 'hold_days') return dir * (a.total_hold_days - b.total_hold_days);
+      if (tradeSortKey === 'result') return dir * (a.last_trade.result||'').localeCompare(b.last_trade.result||'');
       return 0;
     });
     return sorted;
@@ -926,11 +935,6 @@ export default function VirtualInvestTab({ recommendations = [], backtestRecomme
 
               {/* 종목별 테이블 */}
               <div style={{ fontSize: 11, color: "#8899aa", marginBottom: 6 }}>* 종목을 클릭하면 봉차트를 확인할 수 있습니다</div>
-              {(() => {
-                const rawTrades = result.strategies[expandedStrategy].trades || [];
-                const countMap = getTradeCountMap(rawTrades);
-                const sorted = sortTrades(rawTrades);
-                return (
               <table style={S.table}>
                 <thead>
                   <tr>
@@ -942,35 +946,33 @@ export default function VirtualInvestTab({ recommendations = [], backtestRecomme
                   </tr>
                 </thead>
                 <tbody>
-                  {sorted.map((t, i) => {
-                    const stockKey = t.stock_code || t.stock_name;
-                    const stockTrades = countMap[stockKey] || [t];
-                    const tradeCount = stockTrades.length;
-                    const rowKey = `${stockKey}-${i}`;
+                  {sortGrouped(groupTrades(result.strategies[expandedStrategy].trades || [])).map((g, i) => {
+                    const lt = g.last_trade;
+                    const rowKey = g.stock_code;
                     const isOpen = chartTrade?._rowKey === rowKey;
                     return (
-                    <React.Fragment key={i}>
-                      <tr onClick={() => openChart(t, rowKey)}
+                    <React.Fragment key={g.stock_code}>
+                      <tr onClick={() => openChart(lt, rowKey)}
                         style={{ cursor: "pointer", background: isOpen ? "rgba(79,195,247,0.1)" : "transparent" }}
                         onMouseEnter={e => e.currentTarget.style.background = "rgba(79,195,247,0.07)"}
                         onMouseLeave={e => e.currentTarget.style.background = isOpen ? "rgba(79,195,247,0.1)" : "transparent"}>
                         <td style={{ ...S.td, textAlign: "left", color: "#4fc3f7" }}>
-                          📈 {t.stock_name}
-                          <span style={{ fontSize: 10, color: "#667788", marginLeft: 4 }}>{t.stock_code}</span>
+                          📈 {g.stock_name}
+                          <span style={{ fontSize: 10, color: "#667788", marginLeft: 4 }}>{g.stock_code}</span>
                         </td>
-                        <td style={{ ...S.td, color: tradeCount > 1 ? "#ffd54f" : "#8899aa" }}>{tradeCount}회</td>
-                        <td style={{ ...S.td, fontSize: 11 }}>{fmtDate(t.buy_date)}</td>
-                        <td style={S.td}>{fmt(t.buy_price)}</td>
-                        <td style={{ ...S.td, fontSize: 11 }}>{fmtDate(t.sell_date)}</td>
-                        <td style={S.td}>{fmt(t.sell_price)}</td>
-                        <td style={{ ...S.td, color: pctColor(t.profit_pct), fontWeight: 600 }}>
-                          {fmtPct(t.profit_pct)}
+                        <td style={{ ...S.td, color: g.trade_count > 1 ? "#ffd54f" : "#8899aa" }}>{g.trade_count}회</td>
+                        <td style={{ ...S.td, fontSize: 11 }}>{fmtDate(lt.buy_date)}</td>
+                        <td style={S.td}>{fmt(lt.buy_price)}</td>
+                        <td style={{ ...S.td, fontSize: 11 }}>{fmtDate(lt.sell_date)}</td>
+                        <td style={S.td}>{fmt(lt.sell_price)}</td>
+                        <td style={{ ...S.td, color: pctColor(g.total_profit_pct), fontWeight: 600 }}>
+                          {fmtPct(g.total_profit_pct)}
                         </td>
-                        <td style={{ ...S.td, color: pctColor(t.profit_won), fontWeight: 600 }}>
-                          {fmtWon(t.profit_won)}
+                        <td style={{ ...S.td, color: pctColor(g.total_profit_won), fontWeight: 600 }}>
+                          {fmtWon(g.total_profit_won)}
                         </td>
-                        <td style={S.td}>{t.hold_days}일</td>
-                        <td style={S.td}>{t.result}</td>
+                        <td style={S.td}>{g.total_hold_days}일</td>
+                        <td style={S.td}>{lt.result}{g.trade_count > 1 ? ` (${g.trade_count}차)` : ''}</td>
                       </tr>
                       {isOpen && (
                         <tr><td colSpan={10} style={{ padding: 0, border: "none" }}>
@@ -980,7 +982,7 @@ export default function VirtualInvestTab({ recommendations = [], backtestRecomme
                             ) : chartCandles.length === 0 ? (
                               <div style={{ textAlign: "center", padding: 20, color: "#8899aa" }}>일봉 데이터를 불러올 수 없습니다.</div>
                             ) : (
-                              <TradeCandleChart candles={chartCandles} trades={stockTrades} />
+                              <TradeCandleChart candles={chartCandles} trades={g.trades} />
                             )}
                           </div>
                         </td></tr>
@@ -990,8 +992,6 @@ export default function VirtualInvestTab({ recommendations = [], backtestRecomme
                   })}
                 </tbody>
               </table>
-                );
-              })()}
             </div>
           )}
         </>
