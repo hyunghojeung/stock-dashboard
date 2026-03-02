@@ -1092,7 +1092,7 @@ function StockCandleChart({ candles, pos, buyDate, buyPrice, sellDate, sellPrice
 
   // ── 수익률/상태 ──
   const profitPct = pos?.profit_pct || 0;
-  const profitColor = profitPct >= 0 ? '#ff5252' : '#4488ff';
+  const profitColor = profitPct >= 0 ? '#FF0000' : '#0050FF';
   const statusLabel = pos.status === 'profit' ? '익절' : pos.status === 'trailing' ? '추적' : pos.status === 'loss' ? '손절' : pos.status === 'timeout' ? '만기' : '';
 
   const svg = [];
@@ -1109,11 +1109,11 @@ function StockCandleChart({ candles, pos, buyDate, buyPrice, sellDate, sellPrice
     // 보라색 배경
     svg.push(<rect key="dtw-bg" x={dx1} y={PAD.t} width={dx2 - dx1} height={H_CHART}
       fill="rgba(206,147,216,0.04)" />);
-    // 좌우 수직 점선 (녹색)
+    // 좌우 수직 점선 (초록)
     svg.push(<line key="dtw-vl" x1={dx1} y1={PAD.t} x2={dx1} y2={PAD.t + H_CHART}
-      stroke="rgba(76,255,139,0.3)" strokeWidth={1} strokeDasharray="5,4" />);
+      stroke="rgba(0,230,118,0.3)" strokeWidth={1} strokeDasharray="5,4" />);
     svg.push(<line key="dtw-vr" x1={dx2} y1={PAD.t} x2={dx2} y2={PAD.t + H_CHART}
-      stroke="rgba(76,255,139,0.3)" strokeWidth={1} strokeDasharray="5,4" />);
+      stroke="rgba(0,230,118,0.3)" strokeWidth={1} strokeDasharray="5,4" />);
     // 하단 보라색 바
     svg.push(<rect key="dtw-bar" x={dx1} y={PAD.t + H_CHART - 6} width={dx2 - dx1} height={6}
       fill="rgba(206,147,216,0.45)" rx={2} />);
@@ -1149,7 +1149,7 @@ function StockCandleChart({ candles, pos, buyDate, buyPrice, sellDate, sellPrice
     if (i % dateStep === 0 || isBuy || isSell) {
       const x = toX(i) + cw / 2;
       svg.push(<text key={`dt-${i}`} x={x} y={TOTAL_H - 6}
-        fill={isBuy ? '#4cff8b' : isSell ? '#ffd54f' : '#8899aa'} fontSize={isBuy || isSell ? 11 : 9}
+        fill={isBuy ? '#00E676' : isSell ? '#FFD600' : '#c0c8d8'} fontSize={isBuy || isSell ? 11 : 9}
         fontFamily="JetBrains Mono, monospace" textAnchor="middle" fontWeight={isBuy || isSell ? 700 : 400}>{fDate(c.date)}</text>);
     }
   });
@@ -1159,23 +1159,22 @@ function StockCandleChart({ candles, pos, buyDate, buyPrice, sellDate, sellPrice
     stroke="rgba(50,70,100,0.3)" />);
   svg.push(<text key="vol-lbl" x={PAD.l - 8} y={volBase - H_VOL + 12} fill="#556677" fontSize={9} fontFamily="monospace" textAnchor="end">VOL</text>);
 
-  // ── 거래량 바 ──
+  // ── 거래량 바 (영웅문 색상) ──
   vis.forEach((c, i) => {
     const x = toX(i);
     const isUp = c.close >= c.open;
-    const color = isUp ? '#ff4444' : '#4488ff';
+    const color = isUp ? '#FF0000' : '#0050FF';
     const vol = c.volume || 0;
-    // ★ 거래량 0이어도 종가 존재 시 최소 2px 바 표시
     const barH = vol > 0 ? Math.max((vol / maxVol) * H_VOL, 2) : (c.close > 0 ? 2 : 0);
     svg.push(<rect key={`vol-${i}`} x={x + 1} y={volBase - barH}
-      width={Math.max(cw - 2, 2)} height={barH} fill={color} opacity={vol > 0 ? 0.3 : 0.12} rx={1} />);
+      width={Math.max(cw - 2, 2)} height={barH} fill={color} opacity={0.75} rx={1} />);
   });
 
-  // ── 캔들 ──
+  // ── 캔들 (영웅문 색상: 양봉 빨강 / 음봉 파랑) ──
   vis.forEach((c, i) => {
     const x = toX(i);
     const isUp = c.close >= c.open;
-    const color = isUp ? '#ff4444' : '#4488ff';
+    const color = isUp ? '#FF0000' : '#0050FF';
     const bodyTop = toY(Math.max(c.open, c.close));
     const bodyBot = toY(Math.min(c.open, c.close));
     // ★ 최소 바디 높이 3px (평탄 종목도 캔들 보이도록)
@@ -1199,15 +1198,15 @@ function StockCandleChart({ candles, pos, buyDate, buyPrice, sellDate, sellPrice
   ma20.forEach((v, i) => { if (v !== null) ma20d += (ma20d ? 'L' : 'M') + `${toX(i) + cw / 2},${toY(v)} `; });
   if (ma20d) svg.push(<path key="ma20" d={ma20d} fill="none" stroke="#ff6699" strokeWidth={1.5} opacity={0.7} />);
 
-  // ── 매수가 수평선 + 우측 가격태그 (녹색) ──
+  // ── 매수가 수평선 + 우측 가격태그 (초록) ──
   if (buyPrice > 0 && buyPrice >= pLow && buyPrice <= pHigh) {
     const bpY = toY(buyPrice);
     svg.push(<line key="bp-line" x1={PAD.l} y1={bpY} x2={W - PAD.r} y2={bpY}
-      stroke="#4cff8b" strokeWidth={1} strokeDasharray="8,4" opacity={0.3} />);
-    // 우측 녹색 가격 태그
+      stroke="#00E676" strokeWidth={1} strokeDasharray="8,4" opacity={0.3} />);
+    // 우측 초록 가격 태그
     svg.push(<rect key="bp-tag-bg" x={W - PAD.r + 2} y={bpY - 10} width={PAD.r - 6} height={20}
-      fill="rgba(76,255,139,0.2)" stroke="rgba(76,255,139,0.4)" strokeWidth={0.5} rx={3} />);
-    svg.push(<text key="bp-tag" x={W - PAD.r / 2 + 1} y={bpY + 4} fill="#4cff8b" fontSize={10}
+      fill="rgba(0,230,118,0.2)" stroke="rgba(0,230,118,0.4)" strokeWidth={0.5} rx={3} />);
+    svg.push(<text key="bp-tag" x={W - PAD.r / 2 + 1} y={bpY + 4} fill="#00E676" fontSize={10}
       fontFamily="JetBrains Mono, monospace" textAnchor="middle" fontWeight={600}>{Math.round(buyPrice).toLocaleString()}</text>);
   }
 
@@ -1216,7 +1215,7 @@ function StockCandleChart({ candles, pos, buyDate, buyPrice, sellDate, sellPrice
     ? (pos.sell_price || sellPrice)
     : vis[vis.length - 1].close;
   const endY = toY(endPrice);
-  const endColor = profitPct >= 0 ? '#ff4444' : '#4488ff';
+  const endColor = profitPct >= 0 ? '#FF0000' : '#0050FF';
   svg.push(<line key="cur-line" x1={PAD.l} y1={endY} x2={W - PAD.r} y2={endY}
     stroke={endColor} strokeWidth={1} strokeDasharray="5,3" opacity={0.5} />);
   // 우측 가격 태그
@@ -1240,33 +1239,32 @@ function StockCandleChart({ candles, pos, buyDate, buyPrice, sellDate, sellPrice
     }
   }
 
-  // ── 매수 마커 (▲ 녹색 + 가격 + 수직선) ──
+  // ── 매수 마커 (▲ 밝은 초록 + 가격 + 수직선) ──
   if (buyIdx >= 0 && buyIdx < vis.length) {
     const bx = toX(buyIdx) + cw / 2;
     const by = toY(vis[buyIdx].low) + 18;
     svg.push(
       <g key="buy-m">
-        <line x1={bx} y1={PAD.t} x2={bx} y2={PAD.t + H_CHART} stroke="#4cff8b" strokeWidth={1.5} strokeDasharray="4,3" opacity={0.5} />
-        <polygon points={`${bx},${by - 14} ${bx - 8},${by} ${bx + 8},${by}`} fill="#4cff8b" />
-        <rect x={bx - 44} y={by + 4} width={88} height={18} fill="rgba(76,255,139,0.15)" stroke="rgba(76,255,139,0.3)" strokeWidth={0.5} rx={4} />
-        <text x={bx} y={by + 16} fill="#4cff8b" fontSize={11} fontFamily="sans-serif" textAnchor="middle" fontWeight={700}>
+        <line x1={bx} y1={PAD.t} x2={bx} y2={PAD.t + H_CHART} stroke="#00E676" strokeWidth={1.5} strokeDasharray="4,3" opacity={0.5} />
+        <polygon points={`${bx},${by - 14} ${bx - 8},${by} ${bx + 8},${by}`} fill="#00E676" />
+        <rect x={bx - 44} y={by + 4} width={88} height={18} fill="rgba(0,230,118,0.15)" stroke="rgba(0,230,118,0.3)" strokeWidth={0.5} rx={4} />
+        <text x={bx} y={by + 16} fill="#00E676" fontSize={11} fontFamily="sans-serif" textAnchor="middle" fontWeight={700}>
           매수 {Math.round(buyPrice).toLocaleString()}
         </text>
       </g>
     );
   }
 
-  // ── 매도 마커 (▼ + 익절/손절/추적/만기 + 가격 + 수직선) ──
+  // ── 매도 마커 (▼ 금색 + 익절/손절/추적/만기 + 가격 + 수직선) ──
   if (sellIdx >= 0 && sellIdx < vis.length) {
     const sx = toX(sellIdx) + cw / 2;
     const sy = toY(vis[sellIdx].high) - 8;
-    const sellColor = profitPct >= 0 ? '#ffd54f' : '#4488ff';
-    const sellBgColor = profitPct >= 0 ? 'rgba(255,213,79,0.2)' : 'rgba(68,136,255,0.2)';
+    const sellColor = "#FFD600";
     svg.push(
       <g key="sell-m">
         <line x1={sx} y1={PAD.t} x2={sx} y2={PAD.t + H_CHART} stroke={sellColor} strokeWidth={1.5} strokeDasharray="4,3" opacity={0.5} />
         <polygon points={`${sx},${sy + 14} ${sx - 8},${sy} ${sx + 8},${sy}`} fill={sellColor} />
-        <rect x={sx - 44} y={sy - 22} width={88} height={18} fill={sellBgColor} stroke={`${sellColor}50`} strokeWidth={0.5} rx={4} />
+        <rect x={sx - 44} y={sy - 22} width={88} height={18} fill="rgba(255,214,0,0.15)" stroke={`${sellColor}50`} strokeWidth={0.5} rx={4} />
         <text x={sx} y={sy - 9} fill={sellColor} fontSize={11} fontFamily="sans-serif" textAnchor="middle" fontWeight={700}>
           {statusLabel} {Math.round(sellPrice || pos.sell_price || pos.current_price).toLocaleString()}
         </text>
@@ -1286,7 +1284,7 @@ function StockCandleChart({ candles, pos, buyDate, buyPrice, sellDate, sellPrice
         <div style={{ fontSize: 14, fontWeight: 700 }}>
           <span style={{ color: '#e0e6f0' }}>📊 {pos.name}</span>
           <span style={{ color: '#6688aa', fontSize: 11, marginLeft: 8 }}>({pos.code})</span>
-          <span style={{ color: '#4cff8b', fontSize: 11, marginLeft: 12, padding: '2px 6px', background: 'rgba(76,255,139,0.1)', borderRadius: 4 }}>
+          <span style={{ color: '#00E676', fontSize: 11, marginLeft: 12, padding: '2px 6px', background: 'rgba(0,230,118,0.1)', borderRadius: 4 }}>
             매수 {headerBuyDate}
           </span>
           <span style={{ color: '#8899aa', fontSize: 11, marginLeft: 6 }}>→</span>
@@ -1298,12 +1296,12 @@ function StockCandleChart({ candles, pos, buyDate, buyPrice, sellDate, sellPrice
           </span>
         </div>
         <div style={{ display: 'flex', gap: 12, fontSize: 11, flexWrap: 'wrap' }}>
-          <span><span style={{ color: '#ff4444' }}>■</span> 양봉</span>
-          <span><span style={{ color: '#4488ff' }}>■</span> 음봉</span>
+          <span><span style={{ color: '#FF0000' }}>■</span> 양봉</span>
+          <span><span style={{ color: '#0050FF' }}>■</span> 음봉</span>
           <span style={{ color: '#ffcc00' }}>── MA5</span>
           <span style={{ color: '#ff6699' }}>── MA20</span>
-          <span><span style={{ color: '#4cff8b' }}>▲</span> 매수</span>
-          <span><span style={{ color: '#ffd54f' }}>▼</span> 매도</span>
+          <span><span style={{ color: '#00E676' }}>▲</span> 매수</span>
+          <span><span style={{ color: '#FFD600' }}>▼</span> 매도</span>
           <span style={{ color: '#ce93d8' }}>■ DTW</span>
         </div>
       </div>
@@ -1318,9 +1316,9 @@ function StockCandleChart({ candles, pos, buyDate, buyPrice, sellDate, sellPrice
         background: 'rgba(15,22,42,0.6)', borderRadius: 8, fontSize: 11,
         fontFamily: 'JetBrains Mono, monospace', border: '1px solid rgba(50,70,100,0.2)',
       }}>
-        <span><span style={{ color: '#556677' }}>매수가 </span><span style={{ color: '#4cff8b' }}>{fmt(pos.buy_price)}</span></span>
+        <span><span style={{ color: '#556677' }}>매수가 </span><span style={{ color: '#00E676' }}>{fmt(pos.buy_price)}</span></span>
         <span><span style={{ color: '#556677' }}>현재가 </span><span style={{ color: profitColor }}>{fmt(pos.current_price)}</span></span>
-        <span><span style={{ color: '#556677' }}>최고가 </span><span style={{ color: '#ffd54f' }}>{fmt(pos.peak_price)}</span></span>
+        <span><span style={{ color: '#556677' }}>최고가 </span><span style={{ color: '#FFD600' }}>{fmt(pos.peak_price)}</span></span>
         <span><span style={{ color: '#556677' }}>수익률 </span><span style={{ color: profitColor }}>{profitPct >= 0 ? '+' : ''}{profitPct}%</span></span>
         <span><span style={{ color: '#556677' }}>보유일 </span><span style={{ color: COLORS.text }}>{pos.hold_days || 0}일</span></span>
         <span><span style={{ color: '#556677' }}>유사도 </span><span style={{ color: '#4fc3f7' }}>{pos.similarity || 0}%</span></span>
