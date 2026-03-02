@@ -165,6 +165,24 @@ export default function VirtualPortfolioTracker() {
     }
   };
 
+  // ── 일괄 삭제 ──
+  const handleBatchDelete = async (ids) => {
+    if (!ids || ids.length === 0) return;
+    if (!window.confirm(`선택한 ${ids.length}개 포트폴리오를 영구 삭제하시겠습니까?\n삭제 후 복구할 수 없습니다.`)) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/virtual-portfolio/batch-delete`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        await loadList();
+      }
+    } catch (e) {
+      console.error('일괄 삭제 실패:', e);
+    }
+  };
+
   // ★ 포트폴리오 제목 수정
   const handleRenamePortfolio = async (id, newName) => {
     if (!newName || !newName.trim()) return;
@@ -344,7 +362,7 @@ export default function VirtualPortfolioTracker() {
         </div>
       )}
 
-      {view === 'list' && <PortfolioList portfolios={portfolios} loading={loading} onSelect={loadDetail} onRefresh={loadList} onRename={handleRenamePortfolio} />}
+      {view === 'list' && <PortfolioList portfolios={portfolios} loading={loading} onSelect={loadDetail} onRefresh={loadList} onRename={handleRenamePortfolio} onBatchDelete={handleBatchDelete} />}
       {view === 'detail' && detail && (
         <PortfolioDetail
           detail={detail}
@@ -449,9 +467,11 @@ export default function VirtualPortfolioTracker() {
 // 포트폴리오 목록
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-function PortfolioList({ portfolios, loading, onSelect, onRefresh, onRename }) {
+function PortfolioList({ portfolios, loading, onSelect, onRefresh, onRename, onBatchDelete }) {
   const [renamingId, setRenamingId] = useState(null);
   const [renameText, setRenameText] = useState('');
+  const [editMode, setEditMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(new Set());
   if (loading) {
     return <div style={{ textAlign: 'center', padding: 60, color: COLORS.textDim }}>로딩 중...</div>;
   }
@@ -502,6 +522,49 @@ function PortfolioList({ portfolios, loading, onSelect, onRefresh, onRename }) {
         ))}
       </div>
 
+      {/* 편집 모드 컨트롤 */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {editMode && (
+            <>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, color: COLORS.textDim }}>
+                <input type="checkbox"
+                  checked={selectedIds.size === portfolios.length && portfolios.length > 0}
+                  onChange={() => {
+                    if (selectedIds.size === portfolios.length) setSelectedIds(new Set());
+                    else setSelectedIds(new Set(portfolios.map(p => p.id)));
+                  }}
+                  style={{ accentColor: COLORS.accent, width: 16, height: 16, cursor: 'pointer' }} />
+                전체 선택
+              </label>
+              {selectedIds.size > 0 && (
+                <span style={{ fontSize: 12, color: COLORS.accent, fontWeight: 600 }}>{selectedIds.size}개 선택됨</span>
+              )}
+            </>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {editMode && selectedIds.size > 0 && (
+            <button onClick={() => {
+              onBatchDelete([...selectedIds]);
+              setSelectedIds(new Set());
+              setEditMode(false);
+            }}
+              style={{
+                background: COLORS.redDim, color: COLORS.red, border: `1px solid ${COLORS.red}40`,
+                borderRadius: 8, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+              }}>🗑 선택 삭제 ({selectedIds.size})</button>
+          )}
+          <button onClick={() => { setEditMode(!editMode); setSelectedIds(new Set()); }}
+            style={{
+              background: editMode ? COLORS.accentDim : COLORS.card,
+              color: editMode ? COLORS.accent : COLORS.textDim,
+              border: `1px solid ${editMode ? COLORS.accent + '40' : COLORS.cardBorder}`,
+              borderRadius: 8, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+            }}>{editMode ? '완료' : '편집'}</button>
+        </div>
+      </div>
+
       {/* 포트폴리오 리스트 */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {portfolios.map(pf => {
@@ -511,16 +574,33 @@ function PortfolioList({ portfolios, loading, onSelect, onRefresh, onRename }) {
           const datePart = pf.created_at ? pf.created_at.slice(5, 10).replace('-', '/') : '';
           const stocks = pf.positions_summary || [];
 
+          const isSelected = selectedIds.has(pf.id);
           return (
-            <div key={pf.id} onClick={() => onSelect(pf.id)} style={{
-              background: COLORS.card, border: `1px solid ${COLORS.cardBorder}`,
+            <div key={pf.id} onClick={() => {
+              if (editMode) {
+                setSelectedIds(prev => {
+                  const next = new Set(prev);
+                  if (next.has(pf.id)) next.delete(pf.id); else next.add(pf.id);
+                  return next;
+                });
+              } else {
+                onSelect(pf.id);
+              }
+            }} style={{
+              background: isSelected ? COLORS.accentDim : COLORS.card,
+              border: `1px solid ${isSelected ? COLORS.accent + '60' : COLORS.cardBorder}`,
               borderRadius: 12, padding: '16px 20px', cursor: 'pointer', transition: 'all 0.2s',
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = COLORS.accent + '60'; e.currentTarget.style.background = COLORS.accent + '08'; }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = COLORS.cardBorder; e.currentTarget.style.background = COLORS.card; }}
+              onMouseEnter={e => { if (!isSelected) { e.currentTarget.style.borderColor = COLORS.accent + '60'; e.currentTarget.style.background = COLORS.accent + '08'; } }}
+              onMouseLeave={e => { if (!isSelected) { e.currentTarget.style.borderColor = COLORS.cardBorder; e.currentTarget.style.background = COLORS.card; } }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 14, flex: 1 }}>
+                {/* 체크박스 (편집 모드) */}
+                {editMode && (
+                  <input type="checkbox" checked={isSelected} readOnly
+                    style={{ accentColor: COLORS.accent, width: 18, height: 18, cursor: 'pointer', flexShrink: 0 }} />
+                )}
                 {/* 날짜 뱃지 */}
                 <div style={{
                   background: isProfit ? COLORS.greenDim : COLORS.redDim,
