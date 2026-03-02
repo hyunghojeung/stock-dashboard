@@ -1744,7 +1744,18 @@ function TabSummary({ result, saveClusterPattern, savingPattern }) {
       clusters.map((c,ci) => (<div key={ci} style={{ background:COLORS.card, border:`1px solid ${COLORS.cardBorder}`, borderRadius:12, padding:18, marginBottom:12 }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
           <div><span style={{ fontSize:11, background:COLORS.accentDim, color:COLORS.accent, padding:'2px 10px', borderRadius:12, fontWeight:600 }}>패턴 #{ci+1}</span><span style={{ fontSize:13, fontWeight:600, marginLeft:10 }}>{c.pattern_count}건 발견</span></div>
-          <div style={{ fontSize:12, color:COLORS.textDim }}>유사도 {c.avg_similarity?.toFixed(1)}%</div>
+          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+            <span style={{ fontSize:12, color:COLORS.textDim }}>유사도 {c.avg_similarity?.toFixed(1)}%</span>
+            {saveClusterPattern && (
+              <button onClick={(e) => { e.stopPropagation(); saveClusterPattern(c, ci); }}
+                disabled={savingPattern === ci}
+                style={{ padding:'5px 14px', fontSize:11, fontWeight:700, borderRadius:8, cursor:'pointer',
+                  border:'1px solid #8b5cf6', background:'rgba(139,92,246,0.12)', color:'#8b5cf6',
+                  opacity: savingPattern === ci ? 0.5 : 1 }}>
+                {savingPattern === ci ? '⏳ 저장 중...' : '💾 패턴 저장'}
+              </button>
+            )}
+          </div>
         </div>
         <div style={{ fontSize:13, color:COLORS.text, marginBottom:14, padding:10, background:'#0d1321', borderRadius:6, lineHeight:1.6 }}>{c.description||'패턴 분석 중'}</div>
         {c.avg_return_flow?.length>0 && <MiniReturnChart returns={c.avg_return_flow} label="평균 등락률 흐름" />}
@@ -1754,19 +1765,8 @@ function TabSummary({ result, saveClusterPattern, savingPattern }) {
             {c.members?.map((m,mi) => (<span key={mi} style={{ fontSize:11, padding:'3px 10px', borderRadius:12, background:'#1a2234', border:`1px solid ${COLORS.cardBorder}` }}>{m.name}<span style={{color:COLORS.green,marginLeft:4}}>+{m.rise_pct}%</span><span style={{color:COLORS.textDim,marginLeft:4}}>{m.surge_date}</span></span>))}
           </div>
         </div>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:20, marginTop:12, paddingTop:12, borderTop:`1px solid ${COLORS.cardBorder}`, fontSize:12 }}>
-          <div style={{ display:'flex', gap:20 }}>
-            <span>평균 상승: <b style={{color:COLORS.red}}>+{c.avg_rise_pct}%</b></span><span>평균 기간: <b>{c.avg_rise_days}일</b></span>
-          </div>
-          {saveClusterPattern && (
-            <button onClick={(e) => { e.stopPropagation(); saveClusterPattern(c, ci); }}
-              disabled={savingPattern === ci}
-              style={{ padding:'5px 14px', fontSize:11, fontWeight:700, borderRadius:8, cursor:'pointer',
-                border:'1px solid #8b5cf6', background:'rgba(139,92,246,0.12)', color:'#8b5cf6',
-                opacity: savingPattern === ci ? 0.5 : 1 }}>
-              {savingPattern === ci ? '⏳ 저장 중...' : '💾 패턴 저장'}
-            </button>
-          )}
+        <div style={{ display:'flex', gap:20, marginTop:12, paddingTop:12, borderTop:`1px solid ${COLORS.cardBorder}`, fontSize:12 }}>
+          <span>평균 상승: <b style={{color:COLORS.red}}>+{c.avg_rise_pct}%</b></span><span>평균 기간: <b>{c.avg_rise_days}일</b></span>
         </div>
       </div>))}
   </div>);
