@@ -1736,26 +1736,33 @@ function ScanResultView({ scanResult, scanSortKey, setScanSortKey, scanSortDir, 
 function TabSummary({ result, saveClusterPattern, savingPattern }) {
   const clusters = result.clusters||[], summary = result.summary||{};
   return (<div>
-    {summary.common_features?.length>0 && (<div style={{ background:COLORS.accentDim, border:'1px solid rgba(59,130,246,0.3)', borderRadius:10, padding:16, marginBottom:16 }}>
-      <div style={{ fontSize:13, fontWeight:600, marginBottom:8, color:COLORS.accent }}>💡 공통 패턴 특징</div>
-      {summary.common_features.map((f,i) => (<div key={i} style={{ fontSize:13, color:COLORS.text, marginBottom:4, paddingLeft:12 }}>• {f}</div>))}
+    {summary.common_features?.length>0 && (<div style={{ background:COLORS.accentDim, border:'1px solid rgba(59,130,246,0.3)', borderRadius:10, padding:16, marginBottom:16,
+      display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:16 }}>
+      <div style={{ flex:1 }}>
+        <div style={{ fontSize:13, fontWeight:600, marginBottom:8, color:COLORS.accent }}>💡 공통 패턴 특징</div>
+        {summary.common_features.map((f,i) => (<div key={i} style={{ fontSize:13, color:COLORS.text, marginBottom:4, paddingLeft:12 }}>• {f}</div>))}
+      </div>
+      {saveClusterPattern && clusters.length > 0 && (
+        <div style={{ display:'flex', flexDirection:'column', gap:6, flexShrink:0 }}>
+          {clusters.map((c, ci) => (
+            <button key={ci} onClick={(e) => { e.stopPropagation(); saveClusterPattern(c, ci); }}
+              disabled={savingPattern === ci}
+              style={{ padding:'8px 18px', fontSize:12, fontWeight:700, borderRadius:8, cursor:'pointer',
+                border:'1px solid #8b5cf6', background:'rgba(139,92,246,0.18)', color:'#c4b5fd',
+                opacity: savingPattern === ci ? 0.5 : 1, whiteSpace:'nowrap', transition:'all 0.15s' }}
+              onMouseEnter={e => { e.currentTarget.style.background='rgba(139,92,246,0.35)'; e.currentTarget.style.color='#fff'; }}
+              onMouseLeave={e => { e.currentTarget.style.background='rgba(139,92,246,0.18)'; e.currentTarget.style.color='#c4b5fd'; }}>
+              {savingPattern === ci ? '⏳ 저장 중...' : `💾 패턴 ${clusters.length > 1 ? `#${ci+1} ` : ''}저장`}
+            </button>
+          ))}
+        </div>
+      )}
     </div>)}
     {clusters.length===0 ? <div style={{textAlign:'center',padding:40,color:COLORS.textDim}}>유의미한 공통 패턴이 발견되지 않았습니다.</div> :
       clusters.map((c,ci) => (<div key={ci} style={{ background:COLORS.card, border:`1px solid ${COLORS.cardBorder}`, borderRadius:12, padding:18, marginBottom:12 }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
           <div><span style={{ fontSize:11, background:COLORS.accentDim, color:COLORS.accent, padding:'2px 10px', borderRadius:12, fontWeight:600 }}>패턴 #{ci+1}</span><span style={{ fontSize:13, fontWeight:600, marginLeft:10 }}>{c.pattern_count}건 발견</span></div>
-          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-            <span style={{ fontSize:12, color:COLORS.textDim }}>유사도 {c.avg_similarity?.toFixed(1)}%</span>
-            {saveClusterPattern && (
-              <button onClick={(e) => { e.stopPropagation(); saveClusterPattern(c, ci); }}
-                disabled={savingPattern === ci}
-                style={{ padding:'5px 14px', fontSize:11, fontWeight:700, borderRadius:8, cursor:'pointer',
-                  border:'1px solid #8b5cf6', background:'rgba(139,92,246,0.12)', color:'#8b5cf6',
-                  opacity: savingPattern === ci ? 0.5 : 1 }}>
-                {savingPattern === ci ? '⏳ 저장 중...' : '💾 패턴 저장'}
-              </button>
-            )}
-          </div>
+          <div style={{ fontSize:12, color:COLORS.textDim }}>유사도 {c.avg_similarity?.toFixed(1)}%</div>
         </div>
         <div style={{ fontSize:13, color:COLORS.text, marginBottom:14, padding:10, background:'#0d1321', borderRadius:6, lineHeight:1.6 }}>{c.description||'패턴 분석 중'}</div>
         {c.avg_return_flow?.length>0 && <MiniReturnChart returns={c.avg_return_flow} label="평균 등락률 흐름" />}
