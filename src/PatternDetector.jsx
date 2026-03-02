@@ -1826,8 +1826,13 @@ function ScanResultView({ scanResult, scanSortKey, setScanSortKey, scanSortDir, 
     if (scanSortKey === key) { setScanSortDir(prev => prev === 'desc' ? 'asc' : 'desc'); }
     else { setScanSortKey(key); setScanSortDir('desc'); }
   };
+  // ★ v5: 페이지네이션 — 50개씩 표시 (수백 개 DOM 렌더링 방지)
+  const [visibleCount, setVisibleCount] = React.useState(50);
   const stats = scanResult.stats || {};
   const filtered = filteredScanResults;
+  const visibleFiltered = filtered.slice(0, visibleCount);
+  // 필터/정렬 변경 시 페이지네이션 리셋
+  React.useEffect(() => { setVisibleCount(50); }, [scanFilterLevel, scanSortKey, scanSortDir]);
   const fmtDate = (iso) => { if (!iso) return ''; try { const d = new Date(iso); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; } catch { return iso; } };
 
   return (<div>
@@ -1879,7 +1884,7 @@ function ScanResultView({ scanResult, scanSortKey, setScanSortKey, scanSortDir, 
         ))}
         <span style={{textAlign:'center'}}>차트</span>
       </div>
-      {filtered.length===0 ? (<div style={{ textAlign:'center', padding:30, color:COLORS.textDim, fontSize:13 }}>조건에 해당하는 급상승 종목이 없습니다.</div>) : filtered.map((stock, i) => {
+      {filtered.length===0 ? (<div style={{ textAlign:'center', padding:30, color:COLORS.textDim, fontSize:13 }}>조건에 해당하는 급상승 종목이 없습니다.</div>) : visibleFiltered.map((stock, i) => {
         const sel = selectedScanStocks.has(stock.code);
         const mc = stock.top_manip_level==='high'?COLORS.red:stock.top_manip_level==='medium'?COLORS.yellow:COLORS.green;
         const isChartOpen = scanChartCode === stock.code;
@@ -1914,7 +1919,16 @@ function ScanResultView({ scanResult, scanSortKey, setScanSortKey, scanSortDir, 
         </React.Fragment>);
       })}
     </div>
-    <div style={{ fontSize:12, color:COLORS.textDim, marginTop:8, textAlign:'right' }}>총 {filtered.length}개 종목</div>
+    {filtered.length > visibleCount && (
+      <div style={{ textAlign:'center', padding:12 }}>
+        <button onClick={() => setVisibleCount(prev => prev + 50)}
+          style={{ padding:'8px 24px', fontSize:12, borderRadius:8, cursor:'pointer',
+            border:`1px solid ${COLORS.accent}`, background:COLORS.accentDim, color:COLORS.accent, fontWeight:600 }}>
+          더보기 ({visibleCount}/{filtered.length})
+        </button>
+      </div>
+    )}
+    <div style={{ fontSize:12, color:COLORS.textDim, marginTop:8, textAlign:'right' }}>표시 {visibleFiltered.length} / 총 {filtered.length}개 종목</div>
     <div style={{ marginTop:12, padding:12, borderRadius:8, background:'rgba(245,158,11,0.08)', border:'1px solid rgba(245,158,11,0.2)', fontSize:11, color:COLORS.yellow, lineHeight:1.6 }}>⚠️ 세력 의심 점수는 거래량 폭증, 급등 후 급락, 매집 흔적 등을 종합한 통계적 지표이며, 실제 작전 여부를 확정하지 않습니다. 반드시 추가 확인 후 투자 판단하세요.</div>
   </div>);
 }
