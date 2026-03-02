@@ -318,7 +318,8 @@ export default function PatternDetector() {
       const data = await res.json();
       if (data.success) {
         setPatternScanResult(data);
-        fetchSavedPatterns(); // use_count 갱신
+        // use_count 갱신은 결과 렌더링 후 지연 호출 (연속 리렌더링 방지)
+        setTimeout(() => fetchSavedPatterns(), 2000);
       } else {
         alert('스캔 실패: ' + (data.message || ''));
       }
@@ -922,173 +923,15 @@ export default function PatternDetector() {
                         {pu.name}: {pu.match_count}개
                       </span>
                     ))}
-                    {(patternScanResult.matches || []).length > 0 && (() => {
-                      const rawMatches = patternScanResult.matches;
-                      // ★ 정렬 로직
-                      const sortedMatches = [...rawMatches].sort((a, b) => {
-                        let va, vb;
-                        switch (patternSortKey) {
-                          case 'name': va = (a.name || ''); vb = (b.name || ''); break;
-                          case 'market': va = (a.market || ''); vb = (b.market || ''); break;
-                          case 'current_price': va = (a.current_price || 0); vb = (b.current_price || 0); break;
-                          case 'similarity': va = (a.similarity || 0); vb = (b.similarity || 0); break;
-                          case 'matched_pattern_name': va = (a.matched_pattern_name || ''); vb = (b.matched_pattern_name || ''); break;
-                          default: va = 0; vb = 0;
-                        }
-                        if (typeof va === 'string') {
-                          const cmp = va.localeCompare(vb, 'ko');
-                          return patternSortDir === 'asc' ? cmp : -cmp;
-                        }
-                        return patternSortDir === 'asc' ? va - vb : vb - va;
-                      });
-                      const matches = sortedMatches;
-                      const allSelected = selectedPatternStocks.size === rawMatches.length && rawMatches.length > 0;
-                      const togglePatternStock = (code) => {
-                        setSelectedPatternStocks(prev => {
-                          const next = new Set(prev);
-                          if (next.has(code)) next.delete(code); else next.add(code);
-                          return next;
-                        });
-                      };
-                      const toggleAllPatternStocks = () => {
-                        if (allSelected) setSelectedPatternStocks(new Set());
-                        else setSelectedPatternStocks(new Set(rawMatches.map(m => m.code)));
-                      };
-                      const handleSort = (key) => {
-                        if (patternSortKey === key) {
-                          setPatternSortDir(prev => prev === 'asc' ? 'desc' : 'asc');
-                        } else {
-                          setPatternSortKey(key);
-                          setPatternSortDir(key === 'name' || key === 'market' || key === 'matched_pattern_name' ? 'asc' : 'desc');
-                        }
-                      };
-                      const sortIcon = (key) => {
-                        if (patternSortKey !== key) return <span style={{ opacity:0.3, marginLeft:3 }}>↕</span>;
-                        return <span style={{ marginLeft:3, color:'#c4b5fd' }}>{patternSortDir === 'asc' ? '▲' : '▼'}</span>;
-                      };
-                      const columns = [
-                        { key:'name', label:'종목', align:'left' },
-                        { key:'market', label:'시장', align:'left' },
-                        { key:'current_price', label:'현재가', align:'right' },
-                        { key:'similarity', label:'유사도', align:'right' },
-                        { key:'matched_pattern_name', label:'매칭 패턴', align:'left' },
-                      ];
-                      return (
-                      <div style={{ marginTop:10 }}>
-                        {/* 선택 컨트롤 바 */}
-                        <div style={{
-                          display:'flex', alignItems:'center', justifyContent:'space-between',
-                          marginBottom:8, padding:'8px 12px', borderRadius:8,
-                          background: selectedPatternStocks.size > 0 ? 'rgba(139,92,246,0.08)' : COLORS.card,
-                          border: `1px solid ${selectedPatternStocks.size > 0 ? 'rgba(139,92,246,0.3)' : COLORS.cardBorder}`,
-                        }}>
-                          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                            <button onClick={toggleAllPatternStocks} style={{
-                              width:20, height:20, borderRadius:4, cursor:'pointer',
-                              border:`2px solid ${allSelected ? '#8b5cf6' : COLORS.cardBorder}`,
-                              background: allSelected ? '#8b5cf6' : 'transparent',
-                              display:'flex', alignItems:'center', justifyContent:'center', color:'white', fontSize:11, padding:0,
-                            }}>{allSelected ? '✓' : ''}</button>
-                            <span style={{ fontSize:11, color: selectedPatternStocks.size > 0 ? '#8b5cf6' : COLORS.textDim }}>
-                              {selectedPatternStocks.size > 0
-                                ? `${selectedPatternStocks.size}개 종목 선택됨`
-                                : '종목을 선택하여 가상투자에 등록하세요'}
-                            </span>
-                          </div>
-                          <button
-                            onClick={() => openRegModal('patternScan')}
-                            disabled={selectedPatternStocks.size === 0}
-                            style={{
-                              padding:'7px 16px', fontSize:12, fontWeight:700, borderRadius:8,
-                              border:'none', cursor: selectedPatternStocks.size > 0 ? 'pointer' : 'default',
-                              background: selectedPatternStocks.size > 0 ? 'linear-gradient(135deg, #8b5cf6, #7c3aed)' : '#374151',
-                              color: selectedPatternStocks.size > 0 ? '#fff' : COLORS.textDim,
-                              transition:'all 0.2s', fontFamily:'inherit',
-                            }}
-                          >💰 가상투자 등록 ({selectedPatternStocks.size})</button>
-                        </div>
-                        {/* 테이블 */}
-                        <div style={{ maxHeight:400, overflowY:'auto' }}>
-                        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:11 }}>
-                          <thead>
-                            <tr style={{ borderBottom:'1px solid rgba(139,92,246,0.2)' }}>
-                              <th style={{ padding:'6px 8px', width:32 }}></th>
-                              {columns.map((col) => (
-                                <th key={col.key}
-                                  onClick={() => handleSort(col.key)}
-                                  style={{
-                                    padding:'6px 8px', textAlign: col.align,
-                                    color:'#8b5cf6', fontWeight:600, cursor:'pointer', userSelect:'none',
-                                    whiteSpace:'nowrap', transition:'color 0.15s',
-                                  }}
-                                  onMouseEnter={e => e.currentTarget.style.color='#c4b5fd'}
-                                  onMouseLeave={e => e.currentTarget.style.color='#8b5cf6'}
-                                >{col.label}{sortIcon(col.key)}</th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {matches.map((m, mi) => {
-                              const isSelected = selectedPatternStocks.has(m.code);
-                              return (
-                              <tr key={mi}
-                                onClick={() => togglePatternStock(m.code)}
-                                style={{
-                                  borderBottom:`1px solid ${COLORS.cardBorder}`, cursor:'pointer',
-                                  background: isSelected ? 'rgba(139,92,246,0.08)' : mi%2===0 ? 'transparent' : 'rgba(255,255,255,0.02)',
-                                  transition:'background 0.15s',
-                                }}
-                                onMouseEnter={e => { if(!isSelected) e.currentTarget.style.background='rgba(139,92,246,0.05)'; }}
-                                onMouseLeave={e => { if(!isSelected) e.currentTarget.style.background=mi%2===0?'transparent':'rgba(255,255,255,0.02)'; }}
-                              >
-                                <td style={{ padding:'6px 8px', textAlign:'center' }}>
-                                  <div style={{
-                                    width:18, height:18, borderRadius:4, margin:'0 auto',
-                                    border:`2px solid ${isSelected ? '#8b5cf6' : COLORS.cardBorder}`,
-                                    background: isSelected ? '#8b5cf6' : 'transparent',
-                                    display:'flex', alignItems:'center', justifyContent:'center',
-                                    transition:'all 0.15s',
-                                  }}>
-                                    {isSelected && <span style={{ color:'white', fontSize:10, fontWeight:700 }}>✓</span>}
-                                  </div>
-                                </td>
-                                <td style={{ padding:'6px 8px', fontWeight:600 }}>{m.name} <span style={{color:COLORS.textDim}}>({m.code})</span></td>
-                                <td style={{ padding:'6px 8px', color:COLORS.textDim }}>{m.market}</td>
-                                <td style={{ padding:'6px 8px', textAlign:'right' }}>{m.current_price?.toLocaleString()}</td>
-                                <td style={{ padding:'6px 8px', textAlign:'right', fontWeight:700,
-                                  color: m.similarity >= 75 ? COLORS.green : m.similarity >= 60 ? COLORS.yellow : COLORS.textDim }}>
-                                  {m.similarity}%
-                                </td>
-                                <td style={{ padding:'6px 8px' }}>
-                                  <span style={{ fontSize:10, padding:'2px 6px', borderRadius:6,
-                                    background:'rgba(139,92,246,0.1)', color:'#8b5cf6' }}>{m.matched_pattern_name}</span>
-                                </td>
-                              </tr>);
-                            })}
-                          </tbody>
-                        </table>
-                        </div>
-                        {/* 하단 등록 바 */}
-                        {selectedPatternStocks.size > 0 && (
-                          <div style={{
-                            marginTop:10, padding:12, borderRadius:10,
-                            background:'rgba(139,92,246,0.1)', border:'1px solid rgba(139,92,246,0.3)',
-                            display:'flex', alignItems:'center', justifyContent:'space-between',
-                          }}>
-                            <div style={{ fontSize:11, color:'#8b5cf6' }}>
-                              ✅ <b>{selectedPatternStocks.size}개</b> 종목 선택 —
-                              {matches.filter(m => selectedPatternStocks.has(m.code)).map(m => m.name).join(', ')}
-                            </div>
-                            <button onClick={() => openRegModal('patternScan')} style={{
-                              padding:'9px 20px', fontSize:13, fontWeight:700, borderRadius:8,
-                              border:'none', cursor:'pointer', fontFamily:'inherit',
-                              background:'linear-gradient(135deg, #8b5cf6, #7c3aed)', color:'#fff',
-                            }}>💰 가상투자 등록 →</button>
-                          </div>
-                        )}
-                      </div>
-                      );
-                    })()}
+                    {(patternScanResult.matches || []).length > 0 && (
+                      <PatternScanMatchTable
+                        rawMatches={patternScanResult.matches}
+                        patternSortKey={patternSortKey} setPatternSortKey={setPatternSortKey}
+                        patternSortDir={patternSortDir} setPatternSortDir={setPatternSortDir}
+                        selectedPatternStocks={selectedPatternStocks} setSelectedPatternStocks={setSelectedPatternStocks}
+                        openRegModal={openRegModal}
+                      />
+                    )}
                   </div>
                 )}
               </>)}
@@ -1820,6 +1663,193 @@ function SettingsPanel(p) {
     </div>
   </div>);
 }
+
+// ★ 패턴 스캔 매칭 결과 테이블 — 별도 컴포넌트 (IIFE → memo + 페이지네이션)
+const PatternScanMatchTable = React.memo(function PatternScanMatchTable({
+  rawMatches, patternSortKey, setPatternSortKey, patternSortDir, setPatternSortDir,
+  selectedPatternStocks, setSelectedPatternStocks, openRegModal
+}) {
+  const [visibleCount, setVisibleCount] = React.useState(50);
+  // 정렬된 매칭 결과 (useMemo)
+  const sortedMatches = React.useMemo(() => {
+    return [...rawMatches].sort((a, b) => {
+      let va, vb;
+      switch (patternSortKey) {
+        case 'name': va = (a.name || ''); vb = (b.name || ''); break;
+        case 'market': va = (a.market || ''); vb = (b.market || ''); break;
+        case 'current_price': va = (a.current_price || 0); vb = (b.current_price || 0); break;
+        case 'similarity': va = (a.similarity || 0); vb = (b.similarity || 0); break;
+        case 'matched_pattern_name': va = (a.matched_pattern_name || ''); vb = (b.matched_pattern_name || ''); break;
+        default: va = 0; vb = 0;
+      }
+      if (typeof va === 'string') {
+        const cmp = va.localeCompare(vb, 'ko');
+        return patternSortDir === 'asc' ? cmp : -cmp;
+      }
+      return patternSortDir === 'asc' ? va - vb : vb - va;
+    });
+  }, [rawMatches, patternSortKey, patternSortDir]);
+
+  // 정렬 변경 시 페이지네이션 리셋
+  React.useEffect(() => { setVisibleCount(50); }, [patternSortKey, patternSortDir]);
+
+  const visibleMatches = sortedMatches.slice(0, visibleCount);
+  const allSelected = selectedPatternStocks.size === rawMatches.length && rawMatches.length > 0;
+  const togglePatternStock = (code) => {
+    setSelectedPatternStocks(prev => {
+      const next = new Set(prev);
+      if (next.has(code)) next.delete(code); else next.add(code);
+      return next;
+    });
+  };
+  const toggleAllPatternStocks = () => {
+    if (allSelected) setSelectedPatternStocks(new Set());
+    else setSelectedPatternStocks(new Set(rawMatches.map(m => m.code)));
+  };
+  const handleSort = (key) => {
+    if (patternSortKey === key) {
+      setPatternSortDir(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setPatternSortKey(key);
+      setPatternSortDir(key === 'name' || key === 'market' || key === 'matched_pattern_name' ? 'asc' : 'desc');
+    }
+  };
+  const sortIcon = (key) => {
+    if (patternSortKey !== key) return <span style={{ opacity:0.3, marginLeft:3 }}>↕</span>;
+    return <span style={{ marginLeft:3, color:'#c4b5fd' }}>{patternSortDir === 'asc' ? '▲' : '▼'}</span>;
+  };
+  const columns = [
+    { key:'name', label:'종목', align:'left' },
+    { key:'market', label:'시장', align:'left' },
+    { key:'current_price', label:'현재가', align:'right' },
+    { key:'similarity', label:'유사도', align:'right' },
+    { key:'matched_pattern_name', label:'매칭 패턴', align:'left' },
+  ];
+  return (
+  <div style={{ marginTop:10 }}>
+    {/* 선택 컨트롤 바 */}
+    <div style={{
+      display:'flex', alignItems:'center', justifyContent:'space-between',
+      marginBottom:8, padding:'8px 12px', borderRadius:8,
+      background: selectedPatternStocks.size > 0 ? 'rgba(139,92,246,0.08)' : COLORS.card,
+      border: `1px solid ${selectedPatternStocks.size > 0 ? 'rgba(139,92,246,0.3)' : COLORS.cardBorder}`,
+    }}>
+      <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+        <button onClick={toggleAllPatternStocks} style={{
+          width:20, height:20, borderRadius:4, cursor:'pointer',
+          border:`2px solid ${allSelected ? '#8b5cf6' : COLORS.cardBorder}`,
+          background: allSelected ? '#8b5cf6' : 'transparent',
+          display:'flex', alignItems:'center', justifyContent:'center', color:'white', fontSize:11, padding:0,
+        }}>{allSelected ? '✓' : ''}</button>
+        <span style={{ fontSize:11, color: selectedPatternStocks.size > 0 ? '#8b5cf6' : COLORS.textDim }}>
+          {selectedPatternStocks.size > 0
+            ? `${selectedPatternStocks.size}개 종목 선택됨`
+            : '종목을 선택하여 가상투자에 등록하세요'}
+        </span>
+      </div>
+      <button
+        onClick={() => openRegModal('patternScan')}
+        disabled={selectedPatternStocks.size === 0}
+        style={{
+          padding:'7px 16px', fontSize:12, fontWeight:700, borderRadius:8,
+          border:'none', cursor: selectedPatternStocks.size > 0 ? 'pointer' : 'default',
+          background: selectedPatternStocks.size > 0 ? 'linear-gradient(135deg, #8b5cf6, #7c3aed)' : '#374151',
+          color: selectedPatternStocks.size > 0 ? '#fff' : COLORS.textDim,
+          transition:'all 0.2s', fontFamily:'inherit',
+        }}
+      >💰 가상투자 등록 ({selectedPatternStocks.size})</button>
+    </div>
+    {/* 테이블 */}
+    <div style={{ maxHeight:400, overflowY:'auto' }}>
+    <table style={{ width:'100%', borderCollapse:'collapse', fontSize:11 }}>
+      <thead>
+        <tr style={{ borderBottom:'1px solid rgba(139,92,246,0.2)' }}>
+          <th style={{ padding:'6px 8px', width:32 }}></th>
+          {columns.map((col) => (
+            <th key={col.key}
+              onClick={() => handleSort(col.key)}
+              style={{
+                padding:'6px 8px', textAlign: col.align,
+                color:'#8b5cf6', fontWeight:600, cursor:'pointer', userSelect:'none',
+                whiteSpace:'nowrap', transition:'color 0.15s',
+              }}
+              onMouseEnter={e => e.currentTarget.style.color='#c4b5fd'}
+              onMouseLeave={e => e.currentTarget.style.color='#8b5cf6'}
+            >{col.label}{sortIcon(col.key)}</th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {visibleMatches.map((m, mi) => {
+          const isSelected = selectedPatternStocks.has(m.code);
+          return (
+          <tr key={m.code || mi}
+            onClick={() => togglePatternStock(m.code)}
+            style={{
+              borderBottom:`1px solid ${COLORS.cardBorder}`, cursor:'pointer',
+              background: isSelected ? 'rgba(139,92,246,0.08)' : mi%2===0 ? 'transparent' : 'rgba(255,255,255,0.02)',
+              transition:'background 0.15s',
+            }}
+            onMouseEnter={e => { if(!isSelected) e.currentTarget.style.background='rgba(139,92,246,0.05)'; }}
+            onMouseLeave={e => { if(!isSelected) e.currentTarget.style.background=mi%2===0?'transparent':'rgba(255,255,255,0.02)'; }}
+          >
+            <td style={{ padding:'6px 8px', textAlign:'center' }}>
+              <div style={{
+                width:18, height:18, borderRadius:4, margin:'0 auto',
+                border:`2px solid ${isSelected ? '#8b5cf6' : COLORS.cardBorder}`,
+                background: isSelected ? '#8b5cf6' : 'transparent',
+                display:'flex', alignItems:'center', justifyContent:'center',
+                transition:'all 0.15s',
+              }}>
+                {isSelected && <span style={{ color:'white', fontSize:10, fontWeight:700 }}>✓</span>}
+              </div>
+            </td>
+            <td style={{ padding:'6px 8px', fontWeight:600 }}>{m.name} <span style={{color:COLORS.textDim}}>({m.code})</span></td>
+            <td style={{ padding:'6px 8px', color:COLORS.textDim }}>{m.market}</td>
+            <td style={{ padding:'6px 8px', textAlign:'right' }}>{m.current_price?.toLocaleString()}</td>
+            <td style={{ padding:'6px 8px', textAlign:'right', fontWeight:700,
+              color: m.similarity >= 75 ? COLORS.green : m.similarity >= 60 ? COLORS.yellow : COLORS.textDim }}>
+              {m.similarity}%
+            </td>
+            <td style={{ padding:'6px 8px' }}>
+              <span style={{ fontSize:10, padding:'2px 6px', borderRadius:6,
+                background:'rgba(139,92,246,0.1)', color:'#8b5cf6' }}>{m.matched_pattern_name}</span>
+            </td>
+          </tr>);
+        })}
+      </tbody>
+    </table>
+    </div>
+    {sortedMatches.length > visibleCount && (
+      <div style={{ textAlign:'center', padding:8 }}>
+        <button onClick={() => setVisibleCount(prev => prev + 50)}
+          style={{ padding:'6px 20px', fontSize:11, borderRadius:6, cursor:'pointer',
+            border:'1px solid rgba(139,92,246,0.3)', background:'rgba(139,92,246,0.08)', color:'#8b5cf6', fontWeight:600 }}>
+          더보기 ({visibleCount}/{sortedMatches.length})
+        </button>
+      </div>
+    )}
+    {/* 하단 등록 바 */}
+    {selectedPatternStocks.size > 0 && (
+      <div style={{
+        marginTop:10, padding:12, borderRadius:10,
+        background:'rgba(139,92,246,0.1)', border:'1px solid rgba(139,92,246,0.3)',
+        display:'flex', alignItems:'center', justifyContent:'space-between',
+      }}>
+        <div style={{ fontSize:11, color:'#8b5cf6' }}>
+          ✅ <b>{selectedPatternStocks.size}개</b> 종목 선택 —
+          {sortedMatches.filter(m => selectedPatternStocks.has(m.code)).map(m => m.name).join(', ')}
+        </div>
+        <button onClick={() => openRegModal('patternScan')} style={{
+          padding:'9px 20px', fontSize:13, fontWeight:700, borderRadius:8,
+          border:'none', cursor:'pointer', fontFamily:'inherit',
+          background:'linear-gradient(135deg, #8b5cf6, #7c3aed)', color:'#fff',
+        }}>💰 가상투자 등록 →</button>
+      </div>
+    )}
+  </div>
+  );
+});
 
 function ScanResultView({ scanResult, scanSortKey, setScanSortKey, scanSortDir, setScanSortDir, scanFilterLevel, setScanFilterLevel, selectedScanStocks, toggleScanStock, selectAllVisible, setSelectedScanStocks, sendToAnalyzer, filteredScanResults, scanDate, scanSource, onReload, scanChartCode, scanChartCandles, scanChartLoading, fetchScanChart }) {
   const handleSort = (key) => {
