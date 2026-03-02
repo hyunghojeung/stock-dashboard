@@ -1297,11 +1297,14 @@ function StockCandleChart({ candles, pos, buyDate, buyPrice, sellDate, sellPrice
             {profitSign}{profitPct}% ({pos.hold_days || 0}일)
           </span>
         </div>
-        <div style={{ display: 'flex', gap: 14, fontSize: 11, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 12, fontSize: 11, flexWrap: 'wrap' }}>
           <span><span style={{ color: '#ff4444' }}>■</span> 양봉</span>
           <span><span style={{ color: '#4488ff' }}>■</span> 음봉</span>
           <span style={{ color: '#ffcc00' }}>── MA5</span>
           <span style={{ color: '#ff6699' }}>── MA20</span>
+          <span><span style={{ color: '#4cff8b' }}>▲</span> 매수</span>
+          <span><span style={{ color: '#ffd54f' }}>▼</span> 매도</span>
+          <span style={{ color: '#ce93d8' }}>■ DTW</span>
         </div>
       </div>
 
