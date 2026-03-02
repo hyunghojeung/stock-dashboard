@@ -436,12 +436,19 @@ export default function PatternDetector() {
     if (scanFilterLevel === 'high') list = list.filter(s => s.top_manip_level === 'high');
     else if (scanFilterLevel === 'medium') list = list.filter(s => s.top_manip_level === 'medium' || s.top_manip_level === 'high');
     else if (scanFilterLevel === 'entry') list = list.filter(s => s.entry_signals && s.entry_signals.should_buy);
+    else if (scanFilterLevel === 'obv') list = list.filter(s => s.entry_signals?.signals?.obv?.signal);
+    else if (scanFilterLevel === 'vcp') list = list.filter(s => s.entry_signals?.signals?.vcp?.signal);
+    else if (scanFilterLevel === 'dtw') list = list.filter(s => s.entry_signals?.signals?.partial_dtw?.signal);
     const dir = scanSortDir === 'asc' ? 1 : -1;
     if (scanSortKey === 'manip_score') list.sort((a, b) => dir * (b.top_manip_score - a.top_manip_score));
     else if (scanSortKey === 'rise_pct') list.sort((a, b) => dir * (b.latest_rise_pct - a.latest_rise_pct));
     else if (scanSortKey === 'date') list.sort((a, b) => dir * (b.latest_surge_date||'').localeCompare(a.latest_surge_date||''));
     else if (scanSortKey === 'from_peak') list.sort((a, b) => dir * (a.latest_from_peak - b.latest_from_peak));
     else if (scanSortKey === 'entry_score') list.sort((a, b) => dir * ((b.entry_signals?.entry_score||0) - (a.entry_signals?.entry_score||0)));
+    else if (scanSortKey === 'name') list.sort((a, b) => dir * (a.name||'').localeCompare(b.name||''));
+    else if (scanSortKey === 'current_price') list.sort((a, b) => dir * ((b.current_price||0) - (a.current_price||0)));
+    else if (scanSortKey === 'surge_count') list.sort((a, b) => dir * ((b.surge_count||0) - (a.surge_count||0)));
+    else if (scanSortKey === 'manip_label') list.sort((a, b) => dir * (a.top_manip_label||'').localeCompare(b.top_manip_label||''));
     return list;
   };
 
@@ -1448,7 +1455,7 @@ function ScanResultView({ scanResult, scanSortKey, setScanSortKey, scanSortDir, 
     <div style={{ background:COLORS.card, border:`1px solid ${COLORS.cardBorder}`, borderRadius:12, padding:14, marginBottom:12, display:'flex', flexWrap:'wrap', gap:12, alignItems:'center' }}>
       <div style={{ display:'flex', gap:4 }}>
         <span style={{ fontSize:12, color:COLORS.textDim, alignSelf:'center', marginRight:4 }}>필터:</span>
-        {[{v:'all',l:'전체',c:COLORS.accent},{v:'high',l:'🔴 세력의심',c:COLORS.red},{v:'medium',l:'🟡 주의이상',c:COLORS.yellow},{v:'entry',l:'🟢 진입시그널',c:'#00E676'}].map(f => (<button key={f.v} onClick={() => setScanFilterLevel(f.v)} style={{ padding:'5px 12px', fontSize:11, borderRadius:6, cursor:'pointer', border:`1px solid ${scanFilterLevel===f.v?f.c:COLORS.cardBorder}`, background:scanFilterLevel===f.v?`${f.c}20`:'transparent', color:scanFilterLevel===f.v?f.c:COLORS.textDim }}>{f.l}</button>))}
+        {[{v:'all',l:'전체',c:COLORS.accent},{v:'high',l:'🔴 세력의심',c:COLORS.red},{v:'medium',l:'🟡 주의이상',c:COLORS.yellow},{v:'entry',l:'🟢 진입시그널',c:'#00E676'},{v:'obv',l:'OBV',c:'#4FC3F7'},{v:'vcp',l:'VCP',c:'#AB47BC'},{v:'dtw',l:'DTW',c:'#FF7043'}].map(f => (<button key={f.v} onClick={() => setScanFilterLevel(f.v)} style={{ padding:'5px 12px', fontSize:11, borderRadius:6, cursor:'pointer', border:`1px solid ${scanFilterLevel===f.v?f.c:COLORS.cardBorder}`, background:scanFilterLevel===f.v?`${f.c}20`:'transparent', color:scanFilterLevel===f.v?f.c:COLORS.textDim }}>{f.l}</button>))}
       </div>
       <div style={{ display:'flex', gap:4 }}>
         <span style={{ fontSize:12, color:COLORS.textDim, alignSelf:'center', marginRight:4 }}>정렬:</span>
@@ -1462,7 +1469,13 @@ function ScanResultView({ scanResult, scanSortKey, setScanSortKey, scanSortDir, 
     </div>
     <div style={{ background:COLORS.card, border:`1px solid ${COLORS.cardBorder}`, borderRadius:12, overflow:'hidden' }}>
       <div style={{ display:'grid', gridTemplateColumns:'40px 1fr 80px 80px 60px 70px 80px 80px 40px', padding:'10px 14px', fontSize:11, color:COLORS.textDim, fontWeight:600, borderBottom:`1px solid ${COLORS.cardBorder}`, background:'#0d1321' }}>
-        <span></span><span>종목</span><span style={{textAlign:'right'}}>현재가</span><span style={{textAlign:'center'}}>최대상승</span><span style={{textAlign:'center'}}>횟수</span><span style={{textAlign:'center'}}>고점대비</span><span style={{textAlign:'center'}}>세력점수</span><span style={{textAlign:'center'}}>판정</span><span style={{textAlign:'center'}}>차트</span>
+        <span></span>
+        {[{k:'name',l:'종목',align:'left'},{k:'current_price',l:'현재가',align:'right'},{k:'rise_pct',l:'최대상승',align:'center'},{k:'surge_count',l:'횟수',align:'center'},{k:'from_peak',l:'고점대비',align:'center'},{k:'manip_score',l:'세력점수',align:'center'},{k:'manip_label',l:'판정',align:'center'}].map(col => (
+          <span key={col.k} onClick={() => handleSort(col.k)} style={{ textAlign:col.align, cursor:'pointer', userSelect:'none', color: scanSortKey===col.k ? COLORS.accent : COLORS.textDim }}>
+            {col.l}{scanSortKey===col.k ? (scanSortDir==='desc'?' ▼':' ▲') : ''}
+          </span>
+        ))}
+        <span style={{textAlign:'center'}}>차트</span>
       </div>
       {filtered.length===0 ? (<div style={{ textAlign:'center', padding:30, color:COLORS.textDim, fontSize:13 }}>조건에 해당하는 급상승 종목이 없습니다.</div>) : filtered.map((stock, i) => {
         const sel = selectedScanStocks.has(stock.code);
