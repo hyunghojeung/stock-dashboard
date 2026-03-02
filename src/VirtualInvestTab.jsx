@@ -283,6 +283,30 @@ export default function VirtualInvestTab({ recommendations = [], backtestRecomme
 
   // 종목별 상세 열기
   const [expandedStrategy, setExpandedStrategy] = useState(null);
+  const [tradeSortKey, setTradeSortKey] = useState(null);
+  const [tradeSortDir, setTradeSortDir] = useState('desc');
+  const handleTradeSort = (key) => {
+    if (tradeSortKey === key) { setTradeSortDir(prev => prev === 'desc' ? 'asc' : 'desc'); }
+    else { setTradeSortKey(key); setTradeSortDir('desc'); }
+  };
+  const sortTrades = (trades) => {
+    if (!tradeSortKey || !trades) return trades;
+    const sorted = [...trades];
+    const dir = tradeSortDir === 'asc' ? 1 : -1;
+    sorted.sort((a, b) => {
+      if (tradeSortKey === 'name') return dir * (a.stock_name||'').localeCompare(b.stock_name||'');
+      if (tradeSortKey === 'buy_date') return dir * (a.buy_date||'').localeCompare(b.buy_date||'');
+      if (tradeSortKey === 'buy_price') return dir * ((a.buy_price||0) - (b.buy_price||0));
+      if (tradeSortKey === 'sell_date') return dir * (a.sell_date||'').localeCompare(b.sell_date||'');
+      if (tradeSortKey === 'sell_price') return dir * ((a.sell_price||0) - (b.sell_price||0));
+      if (tradeSortKey === 'profit_pct') return dir * ((a.profit_pct||0) - (b.profit_pct||0));
+      if (tradeSortKey === 'profit_won') return dir * ((a.profit_won||0) - (b.profit_won||0));
+      if (tradeSortKey === 'hold_days') return dir * ((a.hold_days||0) - (b.hold_days||0));
+      if (tradeSortKey === 'result') return dir * (a.result||'').localeCompare(b.result||'');
+      return 0;
+    });
+    return sorted;
+  };
 
   // 종목 봉차트
   const [chartTrade, setChartTrade] = useState(null);  // 선택된 종목 매매 정보
@@ -867,19 +891,15 @@ export default function VirtualInvestTab({ recommendations = [], backtestRecomme
               <table style={S.table}>
                 <thead>
                   <tr>
-                    <th style={S.th}>종목</th>
-                    <th style={S.th}>매수일</th>
-                    <th style={S.th}>매수가</th>
-                    <th style={S.th}>매도일</th>
-                    <th style={S.th}>매도가</th>
-                    <th style={S.th}>수익률</th>
-                    <th style={S.th}>수익금</th>
-                    <th style={S.th}>보유일</th>
-                    <th style={S.th}>결과</th>
+                    {[{k:'name',l:'종목'},{k:'buy_date',l:'매수일'},{k:'buy_price',l:'매수가'},{k:'sell_date',l:'매도일'},{k:'sell_price',l:'매도가'},{k:'profit_pct',l:'수익률'},{k:'profit_won',l:'수익금'},{k:'hold_days',l:'보유일'},{k:'result',l:'결과'}].map(col => (
+                      <th key={col.k} style={{ ...S.th, cursor:'pointer', userSelect:'none' }} onClick={() => handleTradeSort(col.k)}>
+                        {col.l}{tradeSortKey===col.k ? (tradeSortDir==='desc'?' ▼':' ▲') : ''}
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {(result.strategies[expandedStrategy].trades || []).map((t, i) => (
+                  {sortTrades(result.strategies[expandedStrategy].trades || []).map((t, i) => (
                     <React.Fragment key={i}>
                       <tr onClick={() => openChart(t)}
                         style={{ cursor: "pointer", background: chartTrade?.stock_code === t.stock_code ? "rgba(79,195,247,0.1)" : "transparent" }}
