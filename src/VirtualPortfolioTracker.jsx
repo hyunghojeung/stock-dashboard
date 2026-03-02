@@ -618,6 +618,20 @@ function PortfolioList({ portfolios, loading, onSelect, onRefresh, onRename, onB
                     ))}
                     {stocks.length > 6 && <span style={{ fontSize: 10, color: COLORS.textDim }}>+{stocks.length - 6}</span>}
                   </div>
+                  {/* 패턴 뱃지 */}
+                  {(() => {
+                    const patternNames = [...new Set(stocks.filter(s => s.pattern_name).map(s => s.pattern_name))];
+                    return patternNames.length > 0 && (
+                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 5 }}>
+                        {patternNames.map((pn, i) => (
+                          <span key={i} style={{
+                            fontSize: 10, padding: '2px 8px', borderRadius: 4,
+                            background: 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.25)', color: '#8b5cf6',
+                          }}>📚 {pn}</span>
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
 
