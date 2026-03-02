@@ -79,6 +79,7 @@ export default function PatternDetector() {
   };
   const [scanError, setScanError] = useState('');
   const [scanSortKey, setScanSortKey] = useState('manip_score');
+  const [scanSortDir, setScanSortDir] = useState('desc');
   const [scanFilterLevel, setScanFilterLevel] = useState('all');
   const [selectedScanStocks, setSelectedScanStocks] = useState(new Set());
   const [scanDate, setScanDate] = useState('');
@@ -435,11 +436,12 @@ export default function PatternDetector() {
     if (scanFilterLevel === 'high') list = list.filter(s => s.top_manip_level === 'high');
     else if (scanFilterLevel === 'medium') list = list.filter(s => s.top_manip_level === 'medium' || s.top_manip_level === 'high');
     else if (scanFilterLevel === 'entry') list = list.filter(s => s.entry_signals && s.entry_signals.should_buy);
-    if (scanSortKey === 'manip_score') list.sort((a, b) => b.top_manip_score - a.top_manip_score);
-    else if (scanSortKey === 'rise_pct') list.sort((a, b) => b.latest_rise_pct - a.latest_rise_pct);
-    else if (scanSortKey === 'date') list.sort((a, b) => (b.latest_surge_date||'').localeCompare(a.latest_surge_date||''));
-    else if (scanSortKey === 'from_peak') list.sort((a, b) => a.latest_from_peak - b.latest_from_peak);
-    else if (scanSortKey === 'entry_score') list.sort((a, b) => (b.entry_signals?.entry_score||0) - (a.entry_signals?.entry_score||0));
+    const dir = scanSortDir === 'asc' ? 1 : -1;
+    if (scanSortKey === 'manip_score') list.sort((a, b) => dir * (b.top_manip_score - a.top_manip_score));
+    else if (scanSortKey === 'rise_pct') list.sort((a, b) => dir * (b.latest_rise_pct - a.latest_rise_pct));
+    else if (scanSortKey === 'date') list.sort((a, b) => dir * (b.latest_surge_date||'').localeCompare(a.latest_surge_date||''));
+    else if (scanSortKey === 'from_peak') list.sort((a, b) => dir * (a.latest_from_peak - b.latest_from_peak));
+    else if (scanSortKey === 'entry_score') list.sort((a, b) => dir * ((b.entry_signals?.entry_score||0) - (a.entry_signals?.entry_score||0)));
     return list;
   };
 
@@ -706,7 +708,7 @@ export default function PatternDetector() {
         )}
 
         {scanResult && <ScanResultView scanResult={scanResult} scanSortKey={scanSortKey}
-          setScanSortKey={setScanSortKey} scanFilterLevel={scanFilterLevel}
+          setScanSortKey={setScanSortKey} scanSortDir={scanSortDir} setScanSortDir={setScanSortDir} scanFilterLevel={scanFilterLevel}
           setScanFilterLevel={setScanFilterLevel} selectedScanStocks={selectedScanStocks}
           toggleScanStock={toggleScanStock} selectAllVisible={selectAllVisible}
           setSelectedScanStocks={setSelectedScanStocks} sendToAnalyzer={sendToAnalyzer}
@@ -1410,7 +1412,11 @@ function SettingsPanel(p) {
   </div>);
 }
 
-function ScanResultView({ scanResult, scanSortKey, setScanSortKey, scanFilterLevel, setScanFilterLevel, selectedScanStocks, toggleScanStock, selectAllVisible, setSelectedScanStocks, sendToAnalyzer, getFilteredScanResults, scanDate, scanSource, onReload, scanChartCode, scanChartCandles, scanChartLoading, fetchScanChart }) {
+function ScanResultView({ scanResult, scanSortKey, setScanSortKey, scanSortDir, setScanSortDir, scanFilterLevel, setScanFilterLevel, selectedScanStocks, toggleScanStock, selectAllVisible, setSelectedScanStocks, sendToAnalyzer, getFilteredScanResults, scanDate, scanSource, onReload, scanChartCode, scanChartCandles, scanChartLoading, fetchScanChart }) {
+  const handleSort = (key) => {
+    if (scanSortKey === key) { setScanSortDir(prev => prev === 'desc' ? 'asc' : 'desc'); }
+    else { setScanSortKey(key); setScanSortDir('desc'); }
+  };
   const stats = scanResult.stats || {};
   const filtered = getFilteredScanResults();
   const fmtDate = (iso) => { if (!iso) return ''; try { const d = new Date(iso); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; } catch { return iso; } };
@@ -1446,7 +1452,7 @@ function ScanResultView({ scanResult, scanSortKey, setScanSortKey, scanFilterLev
       </div>
       <div style={{ display:'flex', gap:4 }}>
         <span style={{ fontSize:12, color:COLORS.textDim, alignSelf:'center', marginRight:4 }}>정렬:</span>
-        {[{v:'manip_score',l:'세력점수↓'},{v:'rise_pct',l:'상승률↓'},{v:'date',l:'최근순'},{v:'from_peak',l:'고점대비↓'},{v:'entry_score',l:'진입점수↓'}].map(s => (<button key={s.v} onClick={() => setScanSortKey(s.v)} style={{ padding:'5px 10px', fontSize:11, borderRadius:6, cursor:'pointer', border:`1px solid ${scanSortKey===s.v?COLORS.accent:COLORS.cardBorder}`, background:scanSortKey===s.v?COLORS.accentDim:'transparent', color:scanSortKey===s.v?COLORS.accent:COLORS.textDim }}>{s.l}</button>))}
+        {[{v:'manip_score',l:'세력점수'},{v:'rise_pct',l:'상승률'},{v:'date',l:'날짜'},{v:'from_peak',l:'고점대비'},{v:'entry_score',l:'진입점수'}].map(s => { const active = scanSortKey===s.v; return (<button key={s.v} onClick={() => handleSort(s.v)} style={{ padding:'5px 10px', fontSize:11, borderRadius:6, cursor:'pointer', border:`1px solid ${active?COLORS.accent:COLORS.cardBorder}`, background:active?COLORS.accentDim:'transparent', color:active?COLORS.accent:COLORS.textDim }}>{s.l}{active ? (scanSortDir==='desc'?' ▼':' ▲') : ''}</button>); })}
       </div>
       <div style={{ marginLeft:'auto', display:'flex', gap:8 }}>
         <button onClick={selectAllVisible} style={{ padding:'5px 12px', fontSize:11, borderRadius:6, cursor:'pointer', border:`1px solid ${COLORS.cardBorder}`, background:'transparent', color:COLORS.textDim }}>전체선택</button>
