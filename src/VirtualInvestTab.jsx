@@ -289,6 +289,28 @@ export default function VirtualInvestTab({ recommendations = [], backtestRecomme
     if (tradeSortKey === key) { setTradeSortDir(prev => prev === 'desc' ? 'asc' : 'desc'); }
     else { setTradeSortKey(key); setTradeSortDir('desc'); }
   };
+  // 전략 비교표 정렬
+  const [stratSortKey, setStratSortKey] = useState(null);
+  const [stratSortDir, setStratSortDir] = useState('desc');
+  const handleStratSort = (key) => {
+    if (stratSortKey === key) { setStratSortDir(prev => prev === 'desc' ? 'asc' : 'desc'); }
+    else { setStratSortKey(key); setStratSortDir('desc'); }
+  };
+  const sortRankings = (rankings) => {
+    if (!rankings || !stratSortKey) return rankings;
+    const sorted = [...rankings];
+    const dir = stratSortDir === 'asc' ? 1 : -1;
+    sorted.sort((a, b) => {
+      if (stratSortKey === 'return_pct') return dir * ((a.total_return_pct||0) - (b.total_return_pct||0));
+      if (stratSortKey === 'return_won') return dir * ((a.total_return_won||0) - (b.total_return_won||0));
+      if (stratSortKey === 'win_rate') return dir * ((a.win_rate||0) - (b.win_rate||0));
+      if (stratSortKey === 'win_loss') return dir * ((a.win_count||0) - (b.win_count||0));
+      if (stratSortKey === 'mdd') return dir * ((a.mdd_pct||0) - (b.mdd_pct||0));
+      if (stratSortKey === 'rr_ratio') return dir * (parseFloat(a.risk_reward_ratio||0) - parseFloat(b.risk_reward_ratio||0));
+      return 0;
+    });
+    return sorted;
+  };
   // 종목별 매매횟수 계산 + 같은 종목 trades 묶기
   const getTradeCountMap = (trades) => {
     if (!trades) return {};
@@ -792,17 +814,16 @@ export default function VirtualInvestTab({ recommendations = [], backtestRecomme
                   <tr>
                     <th style={S.th}>순위</th>
                     <th style={S.th}>전략</th>
-                    <th style={S.th}>수익률</th>
-                    <th style={S.th}>수익금</th>
-                    <th style={S.th}>승률</th>
-                    <th style={S.th}>승/패</th>
-                    <th style={S.th}>MDD</th>
-                    <th style={S.th}>손익비</th>
+                    {[{k:'return_pct',l:'수익률'},{k:'return_won',l:'수익금'},{k:'win_rate',l:'승률'},{k:'win_loss',l:'승/패'},{k:'mdd',l:'MDD'},{k:'rr_ratio',l:'손익비'}].map(col => (
+                      <th key={col.k} style={{ ...S.th, cursor:'pointer', userSelect:'none' }} onClick={() => handleStratSort(col.k)}>
+                        {col.l}{stratSortKey===col.k ? (stratSortDir==='desc'?' ▼':' ▲') : ''}
+                      </th>
+                    ))}
                     <th style={S.th}>설정</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {(result.rankings || []).map((r, i) => (
+                  {sortRankings(result.rankings || []).map((r, i) => (
                     <tr key={r.strategy} style={{
                       background: i === 0 ? "rgba(79,195,247,0.05)" : "transparent",
                       cursor: "pointer",
