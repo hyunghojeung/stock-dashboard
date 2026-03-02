@@ -9,7 +9,7 @@
  * - scanIntervalRef로 인터벌 관리 (메모리 누수 방지)
  */
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import VirtualInvestTab from "./VirtualInvestTab";
 
 const API_BASE = "https://web-production-139e9.up.railway.app";
@@ -61,10 +61,15 @@ export default function PatternDetector() {
   const [scanResult, setScanResult] = useState(null);
 
   // ━━━ localStorage 캐시 헬퍼 (스캔 결과 보존) ━━━
-  const saveScanCache = (data) => {
-    try { localStorage.setItem('scanResultCache', JSON.stringify(data)); }
-    catch (e) { console.log('스캔 캐시 저장 실패:', e); }
-  };
+  // ★ debounce: 빈번한 JSON.stringify 방지 (2초 딜레이)
+  const saveCacheTimerRef = useRef(null);
+  const saveScanCache = useCallback((data) => {
+    if (saveCacheTimerRef.current) clearTimeout(saveCacheTimerRef.current);
+    saveCacheTimerRef.current = setTimeout(() => {
+      try { localStorage.setItem('scanResultCache', JSON.stringify(data)); }
+      catch (e) { console.log('스캔 캐시 저장 실패:', e); }
+    }, 2000);
+  }, []);
   const loadScanCache = () => {
     try {
       const cached = localStorage.getItem('scanResultCache');
@@ -73,10 +78,10 @@ export default function PatternDetector() {
     return null;
   };
   // setScanResult를 래핑하여 자동 캐시
-  const setScanResultWithCache = (data) => {
+  const setScanResultWithCache = useCallback((data) => {
     setScanResult(data);
     if (data && data.stocks) saveScanCache(data);
-  };
+  }, [saveScanCache]);
   const [scanError, setScanError] = useState('');
   const [scanSortKey, setScanSortKey] = useState('manip_score');
   const [scanSortDir, setScanSortDir] = useState('desc');
@@ -94,6 +99,7 @@ export default function PatternDetector() {
 
   // ━━━ [v3.1] 폴링 인터벌 ref — 언마운트 시 정리용 ━━━
   const scanIntervalRef = useRef(null);
+  const analyzerIntervalRef = useRef(null); // ★ 분석기 폴링 ref (메모리 누수 방지)
 
   // ━━━ [v3.1] 페이지 진입 시: 진행 중인 스캔 확인 → 자동 재개 ━━━
   useEffect(() => {
@@ -558,7 +564,8 @@ export default function PatternDetector() {
     }
   };
 
-  const getFilteredScanResults = () => {
+  // ★ useMemo: 필터/정렬을 의존값 변경 시에만 재계산 (매 렌더링 반복 제거)
+  const filteredScanResults = useMemo(() => {
     if (!scanResult?.stocks) return [];
     let list = [...scanResult.stocks];
     if (scanFilterLevel === 'high') list = list.filter(s => s.top_manip_level === 'high');
@@ -578,7 +585,7 @@ export default function PatternDetector() {
     else if (scanSortKey === 'surge_count') list.sort((a, b) => dir * ((b.surge_count||0) - (a.surge_count||0)));
     else if (scanSortKey === 'manip_label') list.sort((a, b) => dir * (a.top_manip_label||'').localeCompare(b.top_manip_label||''));
     return list;
-  };
+  }, [scanResult?.stocks, scanFilterLevel, scanSortKey, scanSortDir]);
 
   const toggleScanStock = (code) => {
     setSelectedScanStocks(prev => {
@@ -589,7 +596,7 @@ export default function PatternDetector() {
   };
 
   const selectAllVisible = () => {
-    setSelectedScanStocks(new Set(getFilteredScanResults().slice(0, 20).map(s => s.code)));
+    setSelectedScanStocks(new Set(filteredScanResults.slice(0, 20).map(s => s.code)));
   };
 
   // ━━━ 분석기 기능 ━━━
@@ -640,12 +647,18 @@ export default function PatternDetector() {
   };
 
   const pollProgress = useCallback(() => {
-    const interval = setInterval(async () => {
+    // ★ 이전 interval 정리 (메모리 누수 방지)
+    if (analyzerIntervalRef.current) {
+      clearInterval(analyzerIntervalRef.current);
+      analyzerIntervalRef.current = null;
+    }
+    analyzerIntervalRef.current = setInterval(async () => {
       try {
         const resp = await fetch(`${API_BASE}/api/pattern/progress`);
         const data = await resp.json(); setProgress(data.progress || 0); setProgressMsg(data.message || '');
         if (!data.running) {
-          clearInterval(interval);
+          clearInterval(analyzerIntervalRef.current);
+          analyzerIntervalRef.current = null;
           if (data.error) { setError(data.error); setAnalyzing(false); }
           else if (data.has_result) {
             const resResp = await fetch(`${API_BASE}/api/pattern/result`);
@@ -655,8 +668,12 @@ export default function PatternDetector() {
             setAnalyzing(false);
           }
         }
-      } catch (e) { clearInterval(interval); setError('진행률 조회 실패'); setAnalyzing(false); }
-    }, 1000);
+      } catch (e) {
+        clearInterval(analyzerIntervalRef.current);
+        analyzerIntervalRef.current = null;
+        setError('진행률 조회 실패'); setAnalyzing(false);
+      }
+    }, 1500);
   }, []);
 
   // ━━━ 분석기 모드 진입 시: 이전 결과 자동 로드 ━━━
@@ -729,7 +746,13 @@ export default function PatternDetector() {
       }
     })();
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      if (analyzerIntervalRef.current) {
+        clearInterval(analyzerIntervalRef.current);
+        analyzerIntervalRef.current = null;
+      }
+    };
   }, [pageMode]);
 
   // ━━━ 이전 분석 결과 상세 로드 ━━━
@@ -1804,7 +1827,7 @@ function ScanResultView({ scanResult, scanSortKey, setScanSortKey, scanSortDir, 
     else { setScanSortKey(key); setScanSortDir('desc'); }
   };
   const stats = scanResult.stats || {};
-  const filtered = getFilteredScanResults();
+  const filtered = filteredScanResults;
   const fmtDate = (iso) => { if (!iso) return ''; try { const d = new Date(iso); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; } catch { return iso; } };
 
   return (<div>
@@ -2110,13 +2133,16 @@ function MiniReturnChart({ returns, label }) {
   </div>);
 }
 
-function OverlayChart({ patterns, dataKey, yLabel }) {
+const OverlayChart = React.memo(function OverlayChart({ patterns, dataKey, yLabel }) {
   if(!patterns||patterns.length===0) return null;
   const W=700, H=220, PAD=40, plotW=W-PAD*2, plotH=H-PAD*2;
   const palette=['#3b82f6','#ef4444','#10b981','#f59e0b','#8b5cf6','#ec4899','#14b8a6','#f97316','#6366f1','#06b6d4','#84cc16','#e11d48'];
   const allSeries=patterns.map(p=>p[dataKey]||[]);
   const allVals=allSeries.flat(); if(allVals.length===0) return null;
-  const minVal=Math.min(...allVals), maxVal=Math.max(...allVals), range=maxVal-minVal||1;
+  // ★ Math.min/max 스프레드 대신 reduce 사용 (대량 배열 스택오버플로 방지)
+  let minVal=Infinity, maxVal=-Infinity;
+  for(let i=0;i<allVals.length;i++){if(allVals[i]<minVal)minVal=allVals[i];if(allVals[i]>maxVal)maxVal=allVals[i];}
+  const range=maxVal-minVal||1;
   const toX=(i,len)=>PAD+(i/Math.max(len-1,1))*plotW, toY=v=>PAD+(1-(v-minVal)/range)*plotH;
   return (
     <svg width={W} height={H} style={{display:'block',maxWidth:'100%'}}>
@@ -2127,18 +2153,21 @@ function OverlayChart({ patterns, dataKey, yLabel }) {
       <text x={12} y={PAD+plotH/2} fontSize={10} fill={COLORS.textDim} textAnchor="middle" transform={`rotate(-90, 12, ${PAD+plotH/2})`}>{yLabel}</text>
       {patterns.slice(0,8).map((p,i) => (<g key={i} transform={`translate(${PAD+8+(i%4)*160}, ${PAD+8+Math.floor(i/4)*14})`}><rect width={10} height={3} fill={palette[i%palette.length]} rx={1}/><text x={14} y={4} fontSize={9} fill={COLORS.textDim}>{p.name}</text></g>))}
     </svg>);
-}
+});
 
-function MiniCandleChart({ candles }) {
+const MiniCandleChart = React.memo(function MiniCandleChart({ candles }) {
   if(!candles||candles.length===0) return null;
   const W=300, H=80;
   const allP=candles.flatMap(c=>[c.high,c.low]).filter(p=>p>0); if(allP.length===0) return null;
-  const minP=Math.min(...allP), maxP=Math.max(...allP), rP=maxP-minP||1;
+  // ★ reduce로 대량 배열 안전 처리
+  let minP=Infinity, maxP=-Infinity;
+  for(let i=0;i<allP.length;i++){if(allP[i]<minP)minP=allP[i];if(allP[i]>maxP)maxP=allP[i];}
+  const rP=maxP-minP||1;
   const cw=(W-10)/candles.length, toY=p=>5+(1-(p-minP)/rP)*(H-10);
   return (<svg width={W} height={H} style={{display:'block'}}>
     {candles.map((c,i) => { const x=5+i*cw, isUp=c.close>=c.open, color=isUp?COLORS.red:COLORS.accent; const bT=toY(Math.max(c.open,c.close)), bB=toY(Math.min(c.open,c.close)), bH=Math.max(bB-bT,1); return (<g key={i}><line x1={x+cw/2} y1={toY(c.high)} x2={x+cw/2} y2={toY(c.low)} stroke={color} strokeWidth={0.8}/><rect x={x+1} y={bT} width={Math.max(cw-2,2)} height={bH} fill={color} rx={0.5}/></g>); })}
   </svg>);
-}
+});
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 스캔 종목 표준 차트 (TradeCandleChart 동일 스펙)
