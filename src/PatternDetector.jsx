@@ -1743,16 +1743,18 @@ function TabSummary({ result, saveClusterPattern, savingPattern }) {
         {summary.common_features.map((f,i) => (<div key={i} style={{ fontSize:13, color:COLORS.text, marginBottom:4, paddingLeft:12 }}>• {f}</div>))}
       </div>
       {saveClusterPattern && clusters.length > 0 && (
-        <div style={{ display:'flex', flexDirection:'column', gap:6, flexShrink:0 }}>
+        <div style={{ display:'flex', gap:8, flexShrink:0 }}>
           {clusters.map((c, ci) => (
             <button key={ci} onClick={(e) => { e.stopPropagation(); saveClusterPattern(c, ci); }}
               disabled={savingPattern === ci}
-              style={{ padding:'8px 18px', fontSize:12, fontWeight:700, borderRadius:8, cursor:'pointer',
-                border:'1px solid #8b5cf6', background:'rgba(139,92,246,0.18)', color:'#c4b5fd',
-                opacity: savingPattern === ci ? 0.5 : 1, whiteSpace:'nowrap', transition:'all 0.15s' }}
-              onMouseEnter={e => { e.currentTarget.style.background='rgba(139,92,246,0.35)'; e.currentTarget.style.color='#fff'; }}
-              onMouseLeave={e => { e.currentTarget.style.background='rgba(139,92,246,0.18)'; e.currentTarget.style.color='#c4b5fd'; }}>
-              {savingPattern === ci ? '⏳ 저장 중...' : `💾 패턴 ${clusters.length > 1 ? `#${ci+1} ` : ''}저장`}
+              style={{ width:90, height:90, fontSize:12, fontWeight:700, borderRadius:14, cursor:'pointer',
+                border:'2px solid #8b5cf6', background:'rgba(139,92,246,0.15)', color:'#c4b5fd',
+                opacity: savingPattern === ci ? 0.5 : 1, transition:'all 0.15s',
+                display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:6 }}
+              onMouseEnter={e => { e.currentTarget.style.background='rgba(139,92,246,0.35)'; e.currentTarget.style.color='#fff'; e.currentTarget.style.boxShadow='0 0 20px rgba(139,92,246,0.4)'; }}
+              onMouseLeave={e => { e.currentTarget.style.background='rgba(139,92,246,0.15)'; e.currentTarget.style.color='#c4b5fd'; e.currentTarget.style.boxShadow='none'; }}>
+              <span style={{ fontSize:28 }}>{savingPattern === ci ? '⏳' : '💾'}</span>
+              <span style={{ fontSize:11, fontWeight:700 }}>{savingPattern === ci ? '저장 중...' : `패턴 ${clusters.length > 1 ? `#${ci+1} ` : ''}저장`}</span>
             </button>
           ))}
         </div>
