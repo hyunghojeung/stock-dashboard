@@ -493,6 +493,7 @@ export default function App() {
   const [auth,setAuth]=useState(true);
   const [pw,setPw]=useState("");
   const [page,setPage]=useState("dashboard");
+  const [vpKey,setVpKey]=useState(0);
   const [sideOpen,setSideOpen]=useState(true);
   const {data:st}=useApi("/api/strategy/",0);
   const {data:ah}=useApi("/api/portfolio/asset-history",60000);
@@ -531,7 +532,7 @@ export default function App() {
       case "swing": return <SwingBacktest/>;
       case "settings": return <SettingsPage/>;
       case "pattern": return <PatternDetector/>;
-      case "virtual-portfolio": return <VirtualPortfolioTracker/>;
+      case "virtual-portfolio": return <VirtualPortfolioTracker key={vpKey}/>;
       default: return <DashboardPage/>;
     }
   };
@@ -543,7 +544,7 @@ export default function App() {
       <div style={{width:sideOpen?200:60,background:"rgba(8,14,30,0.95)",borderRight:"1px solid rgba(100,140,200,0.1)",display:"flex",flexDirection:"column",transition:"width 0.2s",flexShrink:0}}>
         <div style={{padding:sideOpen?"16px 16px 12px":"16px 8px 12px",cursor:"pointer"}} onClick={()=>setSideOpen(!sideOpen)}>{sideOpen?<span style={{color:"#ffd54f",fontWeight:700,fontSize:15}}>💰 10억 만들기</span>:<span style={{fontSize:20}}>💰</span>}</div>
         <div style={{borderBottom:"1px solid rgba(100,140,200,0.1)",margin:"0 8px 8px"}}/>
-        {MENU.map(m=><div key={m.id} onClick={()=>setPage(m.id)} style={{padding:sideOpen?"10px 16px":"10px 0",cursor:"pointer",background:page===m.id?"rgba(26,58,110,0.6)":"transparent",borderRadius:6,margin:"1px 6px",color:page===m.id?"#64b5f6":"#6688aa",fontSize:13,textAlign:sideOpen?"left":"center",transition:"background 0.15s"}}>{m.icon}{sideOpen?` ${m.label}`:""}</div>)}
+        {MENU.map(m=><div key={m.id} onClick={()=>{setPage(m.id);if(m.id==='virtual-portfolio')setVpKey(k=>k+1);}} style={{padding:sideOpen?"10px 16px":"10px 0",cursor:"pointer",background:page===m.id?"rgba(26,58,110,0.6)":"transparent",borderRadius:6,margin:"1px 6px",color:page===m.id?"#64b5f6":"#6688aa",fontSize:13,textAlign:sideOpen?"left":"center",transition:"background 0.15s"}}>{m.icon}{sideOpen?` ${m.label}`:""}</div>)}
         <div style={{flex:1}}/>
         <div style={{borderTop:"1px solid rgba(100,140,200,0.1)",margin:"0 8px",padding:sideOpen?16:8}}>
           {sideOpen&&<><div style={{color:"#556677",fontSize:11}}>총 자산</div><div style={{color:"#4cff8b",fontSize:14,fontWeight:600,fontFamily:"monospace"}}>{ta?`${fmt(ta)}원`:"—"}</div><div style={{color:"#556677",fontSize:11,marginTop:8}}>목표 진행률</div><div style={{background:"rgba(10,18,40,0.8)",borderRadius:6,height:6,marginTop:4,overflow:"hidden"}}><div style={{background:"#64b5f6",width:`${Math.max(tp,0.1)}%`,minWidth:3,height:"100%",borderRadius:6}}/></div><div style={{color:"#445566",fontSize:10,marginTop:3}}>{tp.toFixed(2)}% / 10억</div></>}
