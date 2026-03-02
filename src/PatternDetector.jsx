@@ -1108,7 +1108,7 @@ export default function PatternDetector() {
           setScanFilterLevel={setScanFilterLevel} selectedScanStocks={selectedScanStocks}
           toggleScanStock={toggleScanStock} selectAllVisible={selectAllVisible}
           setSelectedScanStocks={setSelectedScanStocks} sendToAnalyzer={sendToAnalyzer}
-          getFilteredScanResults={getFilteredScanResults}
+          filteredScanResults={filteredScanResults}
           scanDate={scanDate} scanSource={scanSource} onReload={reloadScanFromDB}
           scanChartCode={scanChartCode} scanChartCandles={scanChartCandles}
           scanChartLoading={scanChartLoading} fetchScanChart={fetchScanChart} />}
@@ -1821,7 +1821,7 @@ function SettingsPanel(p) {
   </div>);
 }
 
-function ScanResultView({ scanResult, scanSortKey, setScanSortKey, scanSortDir, setScanSortDir, scanFilterLevel, setScanFilterLevel, selectedScanStocks, toggleScanStock, selectAllVisible, setSelectedScanStocks, sendToAnalyzer, getFilteredScanResults, scanDate, scanSource, onReload, scanChartCode, scanChartCandles, scanChartLoading, fetchScanChart }) {
+function ScanResultView({ scanResult, scanSortKey, setScanSortKey, scanSortDir, setScanSortDir, scanFilterLevel, setScanFilterLevel, selectedScanStocks, toggleScanStock, selectAllVisible, setSelectedScanStocks, sendToAnalyzer, filteredScanResults, scanDate, scanSource, onReload, scanChartCode, scanChartCandles, scanChartLoading, fetchScanChart }) {
   const handleSort = (key) => {
     if (scanSortKey === key) { setScanSortDir(prev => prev === 'desc' ? 'asc' : 'desc'); }
     else { setScanSortKey(key); setScanSortDir('desc'); }
