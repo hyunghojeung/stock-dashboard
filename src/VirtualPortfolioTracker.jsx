@@ -209,6 +209,31 @@ export default function VirtualPortfolioTracker() {
     }
   };
 
+  // ★ 전체 갱신 (활성 포트폴리오 일괄 가격 갱신)
+  const handleBatchRefresh = async (ids) => {
+    if (!ids || ids.length === 0) return;
+    if (!isMarketOpen()) {
+      alert(`⏰ 현재 ${getMarketStatusText()}입니다.\n장중(평일 09:00~15:30)에만 가격 갱신이 가능합니다.`);
+      return;
+    }
+    const activeIds = portfolios.filter(p => ids.includes(p.id) && p.status === 'active').map(p => p.id);
+    if (activeIds.length === 0) { alert('갱신할 활성 포트폴리오가 없습니다.'); return; }
+    // 진행 상태를 반환하는 콜백 사용
+    let completed = 0;
+    const total = activeIds.length;
+    for (const id of activeIds) {
+      try {
+        await fetch(`${API_BASE}/api/virtual-portfolio/update-prices/${id}`, { method: 'POST' });
+        completed++;
+      } catch (e) {
+        console.error(`포트폴리오 #${id} 갱신 실패:`, e);
+        completed++;
+      }
+    }
+    await loadList();
+    return { completed, total };
+  };
+
   // ★ 포트폴리오 제목 수정
   const handleRenamePortfolio = async (id, newName) => {
     if (!newName || !newName.trim()) return;
@@ -388,7 +413,7 @@ export default function VirtualPortfolioTracker() {
         </div>
       )}
 
-      {view === 'list' && <PortfolioList portfolios={portfolios} loading={loading} onSelect={loadDetail} onRefresh={loadList} onRename={handleRenamePortfolio} onBatchDelete={handleBatchDelete} />}
+      {view === 'list' && <PortfolioList portfolios={portfolios} loading={loading} onSelect={loadDetail} onRefresh={loadList} onRename={handleRenamePortfolio} onBatchDelete={handleBatchDelete} onBatchRefresh={handleBatchRefresh} />}
       {view === 'detail' && detail && (
         <PortfolioDetail
           detail={detail}
@@ -493,10 +518,12 @@ export default function VirtualPortfolioTracker() {
 // 포트폴리오 목록
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-function PortfolioList({ portfolios, loading, onSelect, onRefresh, onRename, onBatchDelete }) {
+function PortfolioList({ portfolios, loading, onSelect, onRefresh, onRename, onBatchDelete, onBatchRefresh }) {
   const [renamingId, setRenamingId] = useState(null);
   const [renameText, setRenameText] = useState('');
   const [selectedIds, setSelectedIds] = useState(new Set());
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshProgress, setRefreshProgress] = useState('');
   if (loading) {
     return <div style={{ textAlign: 'center', padding: 60, color: COLORS.textDim }}>로딩 중...</div>;
   }
@@ -564,13 +591,50 @@ function PortfolioList({ portfolios, loading, onSelect, onRefresh, onRename, onB
             <span style={{ fontSize: 12, color: COLORS.accent, fontWeight: 600 }}>{selectedIds.size}개 선택됨</span>
           )}
         </div>
-        {selectedIds.size > 0 && (
-          <button onClick={() => { onBatchDelete([...selectedIds]); setSelectedIds(new Set()); }}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* ★ 전체 갱신 버튼 */}
+          <button
+            disabled={refreshing}
+            onClick={async () => {
+              const targetIds = selectedIds.size > 0
+                ? [...selectedIds]
+                : portfolios.filter(p => p.status === 'active').map(p => p.id);
+              if (targetIds.length === 0) { alert('갱신할 활성 포트폴리오가 없습니다.'); return; }
+              setRefreshing(true);
+              setRefreshProgress(`0/${targetIds.length}`);
+              try {
+                let done = 0;
+                for (const id of targetIds) {
+                  try {
+                    await onBatchRefresh([id]);
+                  } catch(e) { /* skip */ }
+                  done++;
+                  setRefreshProgress(`${done}/${targetIds.length}`);
+                }
+                await onRefresh();
+              } finally {
+                setRefreshing(false);
+                setRefreshProgress('');
+              }
+            }}
             style={{
-              background: COLORS.redDim, color: COLORS.red, border: `1px solid ${COLORS.red}40`,
-              borderRadius: 8, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
-            }}>🗑 선택 삭제 ({selectedIds.size})</button>
-        )}
+              background: refreshing ? 'rgba(245,158,11,0.15)' : 'rgba(16,185,129,0.15)',
+              color: refreshing ? COLORS.yellow : COLORS.green,
+              border: `1px solid ${refreshing ? COLORS.yellow + '40' : COLORS.green + '40'}`,
+              borderRadius: 8, padding: '6px 14px', fontSize: 12, fontWeight: 600,
+              cursor: refreshing ? 'not-allowed' : 'pointer', transition: 'all 0.2s',
+            }}>
+            {refreshing ? `⏳ 갱신중 ${refreshProgress}` : `🔄 전체 갱신${selectedIds.size > 0 ? ` (${selectedIds.size})` : ''}`}
+          </button>
+          {/* 선택 삭제 버튼 */}
+          {selectedIds.size > 0 && (
+            <button onClick={() => { onBatchDelete([...selectedIds]); setSelectedIds(new Set()); }}
+              style={{
+                background: COLORS.redDim, color: COLORS.red, border: `1px solid ${COLORS.red}40`,
+                borderRadius: 8, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+              }}>🗑 선택 삭제 ({selectedIds.size})</button>
+          )}
+        </div>
       </div>
 
       {/* 포트폴리오 리스트 */}
