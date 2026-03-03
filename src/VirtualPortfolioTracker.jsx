@@ -182,6 +182,23 @@ export default function VirtualPortfolioTracker() {
     }
   };
 
+  // ── 일괄 가격 갱신 ──
+  const handleBatchUpdatePrices = async (ids) => {
+    if (!ids || ids.length === 0) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/virtual-portfolio/batch-update-prices`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        await loadList();
+      }
+    } catch (e) {
+      console.error('일괄 가격 갱신 실패:', e);
+    }
+  };
+
   // ★ 포트폴리오 제목 수정
   const handleRenamePortfolio = async (id, newName) => {
     if (!newName || !newName.trim()) return;
@@ -361,7 +378,7 @@ export default function VirtualPortfolioTracker() {
         </div>
       )}
 
-      {view === 'list' && <PortfolioList portfolios={portfolios} loading={loading} onSelect={loadDetail} onRefresh={loadList} onRename={handleRenamePortfolio} onBatchDelete={handleBatchDelete} />}
+      {view === 'list' && <PortfolioList portfolios={portfolios} loading={loading} onSelect={loadDetail} onRefresh={loadList} onRename={handleRenamePortfolio} onBatchDelete={handleBatchDelete} onBatchUpdatePrices={handleBatchUpdatePrices} />}
       {view === 'detail' && detail && (
         <PortfolioDetail
           detail={detail}
@@ -466,7 +483,7 @@ export default function VirtualPortfolioTracker() {
 // 포트폴리오 목록
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-function PortfolioList({ portfolios, loading, onSelect, onRefresh, onRename, onBatchDelete }) {
+function PortfolioList({ portfolios, loading, onSelect, onRefresh, onRename, onBatchDelete, onBatchUpdatePrices }) {
   const [renamingId, setRenamingId] = useState(null);
   const [renameText, setRenameText] = useState('');
   const [selectedIds, setSelectedIds] = useState(new Set());
@@ -538,11 +555,18 @@ function PortfolioList({ portfolios, loading, onSelect, onRefresh, onRename, onB
           )}
         </div>
         {selectedIds.size > 0 && (
-          <button onClick={() => { onBatchDelete([...selectedIds]); setSelectedIds(new Set()); }}
-            style={{
-              background: COLORS.redDim, color: COLORS.red, border: `1px solid ${COLORS.red}40`,
-              borderRadius: 8, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
-            }}>🗑 선택 삭제 ({selectedIds.size})</button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={() => { onBatchUpdatePrices([...selectedIds]); }}
+              style={{
+                background: 'rgba(59,130,246,0.12)', color: '#3b82f6', border: '1px solid rgba(59,130,246,0.25)',
+                borderRadius: 8, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+              }}>🔄 가격 갱신 ({selectedIds.size})</button>
+            <button onClick={() => { onBatchDelete([...selectedIds]); setSelectedIds(new Set()); }}
+              style={{
+                background: COLORS.redDim, color: COLORS.red, border: `1px solid ${COLORS.red}40`,
+                borderRadius: 8, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+              }}>🗑 선택 삭제 ({selectedIds.size})</button>
+          </div>
         )}
       </div>
 
