@@ -252,7 +252,7 @@ export default function VirtualPortfolioTracker() {
     } catch (e) { console.error('제목 변경 실패:', e); }
   };
 
-  useEffect(() => { loadList(); loadCompoundGroups(); }, [loadList]);
+  useEffect(() => { loadList(); }, [loadList]);
 
   // ★ v2: 복리 그룹 목록 로드
   const loadCompoundGroups = useCallback(async () => {
@@ -525,7 +525,38 @@ function PortfolioList({ portfolios, loading, onSelect, onRefresh, onRename, onB
   const [refreshing, setRefreshing] = useState(false);
   const [refreshProgress, setRefreshProgress] = useState('');
   if (loading) {
-    return <div style={{ textAlign: 'center', padding: 60, color: COLORS.textDim }}>로딩 중...</div>;
+    return (
+      <div>
+        {/* 요약 카드 스켈레톤 */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
+          {[1,2,3,4].map(i => (
+            <div key={i} style={{
+              background: COLORS.card, border: `1px solid ${COLORS.cardBorder}`,
+              borderRadius: 10, padding: '14px 16px', textAlign: 'center',
+            }}>
+              <div style={{ width: 40, height: 10, background: COLORS.cardBorder, borderRadius: 4, margin: '0 auto 8px', animation: 'pulse 1.5s infinite' }} />
+              <div style={{ width: 50, height: 24, background: COLORS.cardBorder, borderRadius: 4, margin: '0 auto', animation: 'pulse 1.5s infinite' }} />
+            </div>
+          ))}
+        </div>
+        {/* 포트폴리오 카드 스켈레톤 */}
+        {[1,2].map(i => (
+          <div key={i} style={{
+            background: COLORS.card, border: `1px solid ${COLORS.cardBorder}`,
+            borderRadius: 12, padding: '16px 20px', marginBottom: 10,
+            display: 'flex', alignItems: 'center', gap: 14,
+          }}>
+            <div style={{ width: 60, height: 36, background: COLORS.cardBorder, borderRadius: 8, animation: 'pulse 1.5s infinite' }} />
+            <div style={{ flex: 1 }}>
+              <div style={{ width: 140, height: 14, background: COLORS.cardBorder, borderRadius: 4, marginBottom: 6, animation: 'pulse 1.5s infinite' }} />
+              <div style={{ width: 220, height: 10, background: COLORS.cardBorder, borderRadius: 4, animation: 'pulse 1.5s infinite' }} />
+            </div>
+            <div style={{ width: 60, height: 20, background: COLORS.cardBorder, borderRadius: 4, animation: 'pulse 1.5s infinite' }} />
+          </div>
+        ))}
+        <style>{`@keyframes pulse { 0%,100% { opacity: 0.4; } 50% { opacity: 0.8; } }`}</style>
+      </div>
+    );
   }
 
   if (portfolios.length === 0) {
