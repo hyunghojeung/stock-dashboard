@@ -14,9 +14,12 @@
 
 import logging
 import uuid
+import pytz
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass, asdict
+
+KST = pytz.timezone("Asia/Seoul")
 
 logger = logging.getLogger(__name__)
 
@@ -865,13 +868,29 @@ async def start_realtime(
     }
 
 
+def _is_market_open() -> bool:
+    """한국 주식시장 장중 여부 확인 (평일 09:00~15:30 KST)"""
+    now = datetime.now(KST)
+    weekday = now.weekday()  # 0=월, 6=일
+    if weekday >= 5:  # 토/일
+        return False
+    mins = now.hour * 60 + now.minute
+    return 540 <= mins <= 930  # 09:00 ~ 15:30
+
+
 async def update_realtime(session_id: str, supabase=None) -> Dict:
     """
-    실시간 모의투자 현재가 업데이트 (장 마감 후 호출)
+    실시간 모의투자 현재가 업데이트
     Update realtime positions with current prices
+    ★ 장 종료 후에는 가격 갱신을 건너뜁니다 (시간외 거래 가격 변동 방지)
     """
     if not supabase:
         return {"error": "DB 연결 없음"}
+
+    # ★ 장중이 아니면 가격 갱신 건너뛰기
+    if not _is_market_open():
+        logger.info("[실시간모의] 장 종료 — 가격 갱신 건너뜀")
+        return {"session_id": session_id, "updated": 0, "skipped": True, "message": "장 종료 후에는 가격이 갱신되지 않습니다"}
 
     try:
         # 활성 포지션 조회

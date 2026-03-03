@@ -11,6 +11,16 @@ import React, { useState, useEffect, useCallback } from 'react';
 
 const API_BASE = "https://web-production-139e9.up.railway.app";
 
+/** 한국 주식시장 장중 여부 (평일 09:00~15:30 KST) */
+function isMarketOpen() {
+  const now = new Date();
+  const kst = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }));
+  const day = kst.getDay(); // 0=Sun, 6=Sat
+  if (day === 0 || day === 6) return false;
+  const mins = kst.getHours() * 60 + kst.getMinutes();
+  return mins >= 540 && mins <= 930; // 09:00 ~ 15:30
+}
+
 const COLORS = {
   bg: '#0a0e1a', card: '#111827', cardBorder: '#1e293b',
   accent: '#3b82f6', accentDim: 'rgba(59,130,246,0.15)',
@@ -125,6 +135,10 @@ export default function VirtualPortfolioTracker() {
 
   // ── 가격 갱신 ──
   const handleUpdatePrices = async (id) => {
+    if (!isMarketOpen()) {
+      alert('장 종료 후에는 가격이 변동되지 않습니다.\n(평일 09:00~15:30 장중에만 갱신 가능)');
+      return;
+    }
     setUpdating(true);
     try {
       const res = await fetch(`${API_BASE}/api/virtual-portfolio/update-prices/${id}`, { method: 'POST' });
@@ -185,6 +199,10 @@ export default function VirtualPortfolioTracker() {
   // ── 일괄 가격 갱신 ──
   const handleBatchUpdatePrices = async (ids) => {
     if (!ids || ids.length === 0) return;
+    if (!isMarketOpen()) {
+      alert('장 종료 후에는 가격이 변동되지 않습니다.\n(평일 09:00~15:30 장중에만 갱신 가능)');
+      return;
+    }
     try {
       const res = await fetch(`${API_BASE}/api/virtual-portfolio/batch-update-prices`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
