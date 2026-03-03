@@ -116,11 +116,31 @@ export default function VirtualPortfolioTracker() {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [createForm, setCreateForm] = useState({ name: '10억 도전', seedMoney: 100000, goalAmount: 1000000000 });
 
-  // ── 포트폴리오 목록 로드 ──
+  // ── 포트폴리오 목록 로드 (★ v3: 타임아웃 + 리트라이) ──
   const loadList = useCallback(async () => {
     setLoading(true);
+    const fetchWithTimeout = async (url, timeout = 10000) => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeout);
+      try {
+        const res = await fetch(url, { signal: controller.signal });
+        clearTimeout(timer);
+        return res;
+      } catch (e) {
+        clearTimeout(timer);
+        throw e;
+      }
+    };
     try {
-      const res = await fetch(`${API_BASE}/api/virtual-portfolio/list`);
+      let res;
+      try {
+        res = await fetchWithTimeout(`${API_BASE}/api/virtual-portfolio/list`, 8000);
+      } catch (e) {
+        // 첫 시도 실패 (Cold Start) → 1초 후 재시도
+        console.warn('첫 로드 타임아웃, 재시도...');
+        await new Promise(r => setTimeout(r, 1000));
+        res = await fetchWithTimeout(`${API_BASE}/api/virtual-portfolio/list`, 15000);
+      }
       const data = await res.json();
       setPortfolios(data.portfolios || []);
     } catch (e) {
