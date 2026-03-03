@@ -2051,7 +2051,8 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
   let recs = [...rawRecs];
   if (excludeMa5Down) recs = recs.filter(r => !r.ma5_declining);
   if (requireMa5Above) recs = recs.filter(r => r.ma5_above_ma20 !== false);
-  if (recFilter === 'auto_buy') recs = recs.filter(r => r.entry_grade === 'auto_buy');
+  if (recFilter === 'early') recs = recs.filter(r => r.early_entry);
+  else if (recFilter === 'auto_buy') recs = recs.filter(r => r.entry_grade === 'auto_buy');
   else if (recFilter === 'watch') recs = recs.filter(r => r.entry_grade === 'watch' || r.entry_grade === 'auto_buy');
 
   // 정렬 적용
@@ -2059,6 +2060,7 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
     let va, vb;
     if (recSortKey === 'composite_score') { va = a.composite_score || 0; vb = b.composite_score || 0; }
     else if (recSortKey === 'entry_score') { va = a.entry_score || 0; vb = b.entry_score || 0; }
+    else if (recSortKey === 'early_score') { va = a.early_score || 0; vb = b.early_score || 0; }
     else if (recSortKey === 'similarity') { va = a.similarity || 0; vb = b.similarity || 0; }
     else { va = a.similarity || 0; vb = b.similarity || 0; }
     return recSortDir === 'desc' ? vb - va : va - vb;
@@ -2098,6 +2100,7 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
     {entrySummary.total > 0 && (
       <div style={{ marginBottom:12, padding:'10px 14px', borderRadius:8, background:'rgba(16,185,129,0.06)', border:'1px solid rgba(16,185,129,0.2)', display:'flex', alignItems:'center', gap:16, fontSize:12 }}>
         <span style={{ color:COLORS.textDim }}>📊 진입 품질 평가</span>
+        <span style={{ color:'#f97316', fontWeight:700 }}>⚡ 조기진입 {rawRecs.filter(r => r.early_entry).length}</span>
         <span style={{ color:'#10b981', fontWeight:700 }}>🟢 자동매수 {entrySummary.auto_buy||0}</span>
         <span style={{ color:'#f59e0b', fontWeight:700 }}>🟡 감시 {entrySummary.watch||0}</span>
         <span style={{ color:'#6b7280' }}>⬜ 보류 {entrySummary.hold||0}</span>
@@ -2113,7 +2116,7 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
     {rawRecs.length > 0 && (
       <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12, flexWrap:'wrap' }}>
         <span style={{ fontSize:11, color:COLORS.textDim }}>필터:</span>
-        {[{v:'all',l:'전체',c:COLORS.accent},{v:'auto_buy',l:'🟢 자동매수',c:'#10b981'},{v:'watch',l:'🟡 감시이상',c:'#f59e0b'}].map(f => (
+        {[{v:'all',l:'전체',c:COLORS.accent},{v:'early',l:'⚡ 조기진입',c:'#f97316'},{v:'auto_buy',l:'🟢 자동매수',c:'#10b981'},{v:'watch',l:'🟡 감시이상',c:'#f59e0b'}].map(f => (
           <button key={f.v} onClick={() => setRecFilter(f.v)} style={{
             padding:'4px 10px', fontSize:11, borderRadius:6, cursor:'pointer',
             border:`1px solid ${recFilter===f.v?f.c:COLORS.cardBorder}`,
@@ -2136,7 +2139,7 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
           )}
         </label>
         <span style={{ fontSize:11, color:COLORS.textDim, marginLeft:12 }}>정렬:</span>
-        {[{v:'composite_score',l:'종합점수'},{v:'entry_score',l:'진입점수'},{v:'similarity',l:'유사도'}].map(s => {
+        {[{v:'composite_score',l:'종합점수'},{v:'early_score',l:'⚡조기진입'},{v:'entry_score',l:'진입점수'},{v:'similarity',l:'유사도'}].map(s => {
           const active = recSortKey===s.v;
           return (<button key={s.v} onClick={() => { if(active) setRecSortDir(d=>d==='desc'?'asc':'desc'); else { setRecSortKey(s.v); setRecSortDir('desc'); }}} style={{
             padding:'4px 10px', fontSize:11, borderRadius:6, cursor:'pointer',
@@ -2220,7 +2223,24 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
                 {isSelected && <span style={{ color:'white', fontSize:12, fontWeight:700 }}>✓</span>}
               </div>
             </div>
-            <div><div style={{fontSize:13,fontWeight:600}}>{rec.name}</div><div style={{fontSize:11,color:COLORS.textDim}}>{rec.code}</div></div>
+            <div>
+              <div style={{fontSize:13,fontWeight:600,display:'flex',alignItems:'center',gap:4}}>
+                {rec.name}
+                {rec.early_entry && (
+                  <span title={rec.early_reason || '조기진입 가능'} style={{
+                    fontSize:9, fontWeight:700, padding:'1px 5px', borderRadius:4,
+                    background:'rgba(249,115,22,0.2)', color:'#f97316', border:'1px solid rgba(249,115,22,0.3)',
+                    cursor:'help', whiteSpace:'nowrap',
+                  }}>⚡ {Math.round((rec.pattern_progress||1)*100)}%</span>
+                )}
+              </div>
+              <div style={{fontSize:11,color:COLORS.textDim}}>
+                {rec.code}
+                {rec.early_entry && rec.early_reason && (
+                  <span style={{marginLeft:6,fontSize:10,color:'#f97316'}}>{rec.early_reason}</span>
+                )}
+              </div>
+            </div>
             <div style={{textAlign:'right',fontSize:13,fontWeight:600}}>{fmt(rec.current_price)}</div>
             <div style={{textAlign:'center'}}><div style={{display:'flex',alignItems:'center',gap:4,justifyContent:'center'}}><div style={{width:40,height:5,background:'#1a2234',borderRadius:3,overflow:'hidden'}}><div style={{width:`${Math.min(rec.similarity,100)}%`,height:'100%',background:sc,borderRadius:3}} /></div><span style={{fontSize:11,fontWeight:700,color:sc}}>{rec.similarity}%</span></div></div>
             <div style={{textAlign:'center',fontSize:12,fontWeight:700,color:esColor}}>{es > 0 ? `${es.toFixed(0)}` : '-'}</div>
