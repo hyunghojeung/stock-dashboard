@@ -25,6 +25,29 @@ const COLORS = {
 
 const fmt = (n) => n?.toLocaleString() ?? '-';
 
+// ── 장 운영시간 체크 (KST 기준) / Market hours check ──
+function isMarketOpen() {
+  const now = new Date();
+  const kst = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }));
+  const h = kst.getHours(), m = kst.getMinutes();
+  const mins = h * 60 + m;
+  const day = kst.getDay(); // 0=Sun, 6=Sat
+  // 평일 09:00 ~ 15:30 KST
+  return day >= 1 && day <= 5 && mins >= 540 && mins <= 930;
+}
+
+function getMarketStatusText() {
+  const now = new Date();
+  const kst = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }));
+  const h = kst.getHours(), m = kst.getMinutes();
+  const mins = h * 60 + m;
+  const day = kst.getDay();
+  if (day === 0 || day === 6) return '주말 휴장';
+  if (mins < 540) return '장 시작 전 (09:00 오픈)';
+  if (mins > 930) return '장 마감 (15:30 종료)';
+  return '장중';
+}
+
 const STATUS_MAP = {
   holding: { label: '보유중', color: COLORS.orange, bg: COLORS.orangeDim },
   profit: { label: '익절', color: COLORS.green, bg: COLORS.greenDim },
@@ -123,8 +146,12 @@ export default function VirtualPortfolioTracker() {
     }
   }, []);
 
-  // ── 가격 갱신 ──
+  // ── 가격 갱신 (장중에만 허용) ──
   const handleUpdatePrices = async (id) => {
+    if (!isMarketOpen()) {
+      alert(`⏰ 현재 ${getMarketStatusText()}입니다.\n장중(평일 09:00~15:30)에만 가격 갱신이 가능합니다.`);
+      return;
+    }
     setUpdating(true);
     try {
       const res = await fetch(`${API_BASE}/api/virtual-portfolio/update-prices/${id}`, { method: 'POST' });
@@ -728,11 +755,13 @@ function PortfolioDetail({ detail, updating, onUpdate, onClose, onDelete, onRena
             {isActive && (
               <>
                 <button onClick={onUpdate} disabled={updating} style={{
-                  padding: '7px 16px', borderRadius: 8, border: `1px solid ${COLORS.accent}40`,
-                  background: COLORS.accentDim, color: COLORS.accent, cursor: 'pointer',
+                  padding: '7px 16px', borderRadius: 8, border: `1px solid ${isMarketOpen() ? COLORS.accent + '40' : COLORS.gray + '40'}`,
+                  background: isMarketOpen() ? COLORS.accentDim : 'rgba(107,114,128,0.1)', color: isMarketOpen() ? COLORS.accent : COLORS.gray, cursor: 'pointer',
                   fontSize: 12, fontWeight: 600, opacity: updating ? 0.5 : 1,
-                }}>🔄 {updating ? '갱신 중...' : '가격 갱신'}</button>
-                <span style={{ fontSize: 10, color: COLORS.textDim, alignSelf: 'center' }}>⏱ 장중 20분 자동</span>
+                }}>🔄 {updating ? '갱신 중...' : isMarketOpen() ? '가격 갱신' : '장 마감'}</button>
+                <span style={{ fontSize: 10, color: isMarketOpen() ? COLORS.textDim : COLORS.red, alignSelf: 'center' }}>
+                  {isMarketOpen() ? '⏱ 장중 20분 자동' : `⏸ ${getMarketStatusText()}`}
+                </span>
                 <button onClick={onClose} style={{
                   padding: '7px 16px', borderRadius: 8, border: `1px solid ${COLORS.red}40`,
                   background: COLORS.redDim, color: COLORS.red, cursor: 'pointer', fontSize: 12, fontWeight: 600,
