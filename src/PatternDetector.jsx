@@ -2037,9 +2037,28 @@ function TabChart({ result }) {
 }
 
 function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegister }) {
-  const recs = result.recommendations||[];
-  const scannedCount = result.scanned_candidates || recs.length;
+  const [recSortKey, setRecSortKey] = useState('composite_score');
+  const [recSortDir, setRecSortDir] = useState('desc');
+  const [recFilter, setRecFilter] = useState('all');
+  const rawRecs = result.recommendations||[];
+  const entrySummary = result.entry_summary || {};
+  const scannedCount = result.scanned_candidates || rawRecs.length;
   const analyzedCodes = result.analyzed_codes || [];
+
+  // 필터 적용
+  let recs = [...rawRecs];
+  if (recFilter === 'auto_buy') recs = recs.filter(r => r.entry_grade === 'auto_buy');
+  else if (recFilter === 'watch') recs = recs.filter(r => r.entry_grade === 'watch' || r.entry_grade === 'auto_buy');
+
+  // 정렬 적용
+  recs.sort((a, b) => {
+    let va, vb;
+    if (recSortKey === 'composite_score') { va = a.composite_score || 0; vb = b.composite_score || 0; }
+    else if (recSortKey === 'entry_score') { va = a.entry_score || 0; vb = b.entry_score || 0; }
+    else if (recSortKey === 'similarity') { va = a.similarity || 0; vb = b.similarity || 0; }
+    else { va = a.similarity || 0; vb = b.similarity || 0; }
+    return recSortDir === 'desc' ? vb - va : va - vb;
+  });
 
   const toggleRec = (code) => {
     setSelectedRecStocks(prev => {
@@ -2050,11 +2069,18 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
   };
 
   const toggleAll = () => {
-    if (selectedRecStocks.size === recs.length) {
+    if (selectedRecStocks.size === rawRecs.length) {
       setSelectedRecStocks(new Set());
     } else {
-      setSelectedRecStocks(new Set(recs.map(r => r.code)));
+      setSelectedRecStocks(new Set(rawRecs.map(r => r.code)));
     }
+  };
+
+  // 진입등급 뱃지 렌더러
+  const gradeLabel = (grade) => {
+    if (grade === 'auto_buy') return { text: '🟢 자동매수', color: '#10b981', bg: 'rgba(16,185,129,0.15)' };
+    if (grade === 'watch') return { text: '🟡 감시', color: '#f59e0b', bg: 'rgba(245,158,11,0.12)' };
+    return { text: '⬜ 보류', color: '#6b7280', bg: 'rgba(107,114,128,0.1)' };
   };
 
   return (<div>
@@ -2063,6 +2089,46 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
       🔍 전종목 DB에서 <span style={{fontWeight:700,color:'#4fc3f7'}}>{scannedCount}개</span> 종목을 스캔하여,
       분석 대상({analyzedCodes.length}개)을 <span style={{fontWeight:700,color:'#ff6b6b'}}>제외</span>한 유사 패턴 종목입니다.
     </div>
+
+    {/* ★ v5: 진입 품질 요약 */}
+    {entrySummary.total > 0 && (
+      <div style={{ marginBottom:12, padding:'10px 14px', borderRadius:8, background:'rgba(16,185,129,0.06)', border:'1px solid rgba(16,185,129,0.2)', display:'flex', alignItems:'center', gap:16, fontSize:12 }}>
+        <span style={{ color:COLORS.textDim }}>📊 진입 품질 평가</span>
+        <span style={{ color:'#10b981', fontWeight:700 }}>🟢 자동매수 {entrySummary.auto_buy||0}</span>
+        <span style={{ color:'#f59e0b', fontWeight:700 }}>🟡 감시 {entrySummary.watch||0}</span>
+        <span style={{ color:'#6b7280' }}>⬜ 보류 {entrySummary.hold||0}</span>
+        {entrySummary.avg_composite_score > 0 && (
+          <span style={{ color:COLORS.accent, marginLeft:'auto', fontSize:11 }}>
+            평균 종합점수: <b>{entrySummary.avg_composite_score}</b>점
+          </span>
+        )}
+      </div>
+    )}
+
+    {/* ★ v5: 필터 + 정렬 */}
+    {rawRecs.length > 0 && (
+      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12, flexWrap:'wrap' }}>
+        <span style={{ fontSize:11, color:COLORS.textDim }}>필터:</span>
+        {[{v:'all',l:'전체',c:COLORS.accent},{v:'auto_buy',l:'🟢 자동매수',c:'#10b981'},{v:'watch',l:'🟡 감시이상',c:'#f59e0b'}].map(f => (
+          <button key={f.v} onClick={() => setRecFilter(f.v)} style={{
+            padding:'4px 10px', fontSize:11, borderRadius:6, cursor:'pointer',
+            border:`1px solid ${recFilter===f.v?f.c:COLORS.cardBorder}`,
+            background:recFilter===f.v?`${f.c}20`:'transparent',
+            color:recFilter===f.v?f.c:COLORS.textDim,
+          }}>{f.l}</button>
+        ))}
+        <span style={{ fontSize:11, color:COLORS.textDim, marginLeft:12 }}>정렬:</span>
+        {[{v:'composite_score',l:'종합점수'},{v:'entry_score',l:'진입점수'},{v:'similarity',l:'유사도'}].map(s => {
+          const active = recSortKey===s.v;
+          return (<button key={s.v} onClick={() => { if(active) setRecSortDir(d=>d==='desc'?'asc':'desc'); else { setRecSortKey(s.v); setRecSortDir('desc'); }}} style={{
+            padding:'4px 10px', fontSize:11, borderRadius:6, cursor:'pointer',
+            border:`1px solid ${active?COLORS.accent:COLORS.cardBorder}`,
+            background:active?COLORS.accentDim:'transparent',
+            color:active?COLORS.accent:COLORS.textDim,
+          }}>{s.l}{active?(recSortDir==='desc'?' ▼':' ▲'):''}</button>);
+        })}
+      </div>
+    )}
 
     {/* 선택된 종목 액션 바 */}
     {recs.length > 0 && (
@@ -2101,17 +2167,22 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
 
     {recs.length===0 ? <div style={{textAlign:'center',padding:40,color:COLORS.textDim}}>유사 패턴 종목이 발견되지 않았습니다.<br/><span style={{fontSize:11}}>클러스터가 없거나 DB에 종목이 부족합니다.</span></div> : (
       <div style={{ background:COLORS.card, border:`1px solid ${COLORS.cardBorder}`, borderRadius:12, overflow:'hidden' }}>
-        <div style={{ display:'grid', gridTemplateColumns:'40px 1fr 90px 100px 80px', padding:'12px 18px', fontSize:11, color:COLORS.textDim, fontWeight:600, borderBottom:`1px solid ${COLORS.cardBorder}`, background:'#0d1321' }}>
-          <span></span><span>종목</span><span style={{textAlign:'right'}}>현재가</span><span style={{textAlign:'center'}}>유사도</span><span style={{textAlign:'center'}}>시그널</span>
+        <div style={{ display:'grid', gridTemplateColumns:'36px 1fr 80px 70px 70px 74px 74px', padding:'12px 14px', fontSize:11, color:COLORS.textDim, fontWeight:600, borderBottom:`1px solid ${COLORS.cardBorder}`, background:'#0d1321' }}>
+          <span></span><span>종목</span><span style={{textAlign:'right'}}>현재가</span><span style={{textAlign:'center'}}>유사도</span><span style={{textAlign:'center'}}>진입점수</span><span style={{textAlign:'center'}}>종합</span><span style={{textAlign:'center'}}>등급</span>
         </div>
         {recs.map((rec,i) => {
           const isSelected = selectedRecStocks.has(rec.code);
           const sc = rec.similarity>=65?COLORS.green:rec.similarity>=50?COLORS.yellow:rec.similarity>=40?COLORS.grayLight:COLORS.gray;
           const sb = rec.signal_code==='strong_buy'?COLORS.greenDim:rec.signal_code==='watch'?COLORS.yellowDim:'transparent';
+          const gl = gradeLabel(rec.entry_grade);
+          const cs = rec.composite_score || 0;
+          const csColor = cs >= 75 ? '#10b981' : cs >= 60 ? '#f59e0b' : '#6b7280';
+          const es = rec.entry_score || 0;
+          const esColor = es >= 70 ? '#10b981' : es >= 50 ? '#f59e0b' : '#6b7280';
           return (<div key={i}
             onClick={() => toggleRec(rec.code)}
             style={{
-              display:'grid', gridTemplateColumns:'40px 1fr 90px 100px 80px', padding:'12px 18px', alignItems:'center',
+              display:'grid', gridTemplateColumns:'36px 1fr 80px 70px 70px 74px 74px', padding:'10px 14px', alignItems:'center',
               borderBottom:`1px solid ${COLORS.cardBorder}`,
               background: isSelected ? 'rgba(16,185,129,0.08)' : i%2===0?'transparent':'rgba(255,255,255,0.02)',
               cursor:'pointer', transition:'background 0.15s',
@@ -2133,8 +2204,10 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
             </div>
             <div><div style={{fontSize:13,fontWeight:600}}>{rec.name}</div><div style={{fontSize:11,color:COLORS.textDim}}>{rec.code}</div></div>
             <div style={{textAlign:'right',fontSize:13,fontWeight:600}}>{fmt(rec.current_price)}</div>
-            <div style={{textAlign:'center'}}><div style={{display:'flex',alignItems:'center',gap:6,justifyContent:'center'}}><div style={{width:50,height:6,background:'#1a2234',borderRadius:3,overflow:'hidden'}}><div style={{width:`${Math.min(rec.similarity,100)}%`,height:'100%',background:sc,borderRadius:3}} /></div><span style={{fontSize:12,fontWeight:700,color:sc}}>{rec.similarity}%</span></div></div>
-            <div style={{textAlign:'center',fontSize:11,fontWeight:600,padding:'3px 6px',borderRadius:6,background:sb}}>{rec.signal}</div>
+            <div style={{textAlign:'center'}}><div style={{display:'flex',alignItems:'center',gap:4,justifyContent:'center'}}><div style={{width:40,height:5,background:'#1a2234',borderRadius:3,overflow:'hidden'}}><div style={{width:`${Math.min(rec.similarity,100)}%`,height:'100%',background:sc,borderRadius:3}} /></div><span style={{fontSize:11,fontWeight:700,color:sc}}>{rec.similarity}%</span></div></div>
+            <div style={{textAlign:'center',fontSize:12,fontWeight:700,color:esColor}}>{es > 0 ? `${es.toFixed(0)}` : '-'}</div>
+            <div style={{textAlign:'center',fontSize:13,fontWeight:700,color:csColor}}>{cs > 0 ? `${cs.toFixed(0)}` : '-'}</div>
+            <div style={{textAlign:'center'}}><span style={{fontSize:10,fontWeight:600,padding:'2px 6px',borderRadius:4,background:gl.bg,color:gl.color,whiteSpace:'nowrap'}}>{gl.text}</span></div>
           </div>);
         })}
       </div>
@@ -2149,7 +2222,10 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
       }}>
         <div style={{ fontSize:13, color:COLORS.green }}>
           ✅ <b>{selectedRecStocks.size}개</b> 종목 선택 — 
-          {recs.filter(r => selectedRecStocks.has(r.code)).map(r => r.name).join(', ')}
+          {rawRecs.filter(r => selectedRecStocks.has(r.code)).map(r => {
+            const g = gradeLabel(r.entry_grade);
+            return `${r.name}(${g.text.split(' ')[1]||'보류'})`;
+          }).join(', ')}
         </div>
         <button onClick={onRegister} style={{
           padding:'10px 24px', fontSize:14, fontWeight:700, borderRadius:8,
