@@ -243,8 +243,16 @@ export default function PatternDetector() {
   const saveClusterPattern = async (cluster, clusterIndex) => {
     setSavingPattern(clusterIndex);
     try {
+      // ★ v8: 기존 저장된 패턴에서 최대 번호 추출 → +1 (중복 방지)
+      let maxNum = 0;
+      (savedPatterns || []).forEach(p => {
+        const m = (p.name || '').match(/패턴\s*#(\d+)/);
+        if (m) maxNum = Math.max(maxNum, parseInt(m[1], 10));
+      });
+      const nextNum = maxNum + 1;
+
       const body = {
-        name: `패턴 #${clusterIndex + 1} — ${(cluster.description || '').slice(0, 30) || '무제'}`,
+        name: `패턴 #${nextNum} — ${(cluster.description || '').slice(0, 30) || '무제'}`,
         description: cluster.description || '',
         session_id: null,
         cluster_id: cluster.cluster_id ?? clusterIndex,
