@@ -2040,6 +2040,8 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
   const [recSortKey, setRecSortKey] = useState('composite_score');
   const [recSortDir, setRecSortDir] = useState('desc');
   const [recFilter, setRecFilter] = useState('all');
+  const [excludeMa5Down, setExcludeMa5Down] = useState(true);
+  const [requireMa5Above, setRequireMa5Above] = useState(true);
   const rawRecs = result.recommendations||[];
   const entrySummary = result.entry_summary || {};
   const scannedCount = result.scanned_candidates || rawRecs.length;
@@ -2047,6 +2049,8 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
 
   // 필터 적용
   let recs = [...rawRecs];
+  if (excludeMa5Down) recs = recs.filter(r => !r.ma5_declining);
+  if (requireMa5Above) recs = recs.filter(r => r.ma5_above_ma20 !== false);
   if (recFilter === 'auto_buy') recs = recs.filter(r => r.entry_grade === 'auto_buy');
   else if (recFilter === 'watch') recs = recs.filter(r => r.entry_grade === 'watch' || r.entry_grade === 'auto_buy');
 
@@ -2117,6 +2121,20 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
             color:recFilter===f.v?f.c:COLORS.textDim,
           }}>{f.l}</button>
         ))}
+        <label style={{ display:'flex', alignItems:'center', gap:4, marginLeft:10, cursor:'pointer', fontSize:11, color: excludeMa5Down ? '#f59e0b' : COLORS.textDim }}>
+          <input type="checkbox" checked={excludeMa5Down} onChange={e => setExcludeMa5Down(e.target.checked)} style={{ accentColor:'#f59e0b' }} />
+          MA5 하향 제외
+          {excludeMa5Down && rawRecs.filter(r => r.ma5_declining).length > 0 && (
+            <span style={{ color:'#ef4444', fontWeight:600 }}>(-{rawRecs.filter(r => r.ma5_declining).length})</span>
+          )}
+        </label>
+        <label style={{ display:'flex', alignItems:'center', gap:4, marginLeft:10, cursor:'pointer', fontSize:11, color: requireMa5Above ? '#a78bfa' : COLORS.textDim }}>
+          <input type="checkbox" checked={requireMa5Above} onChange={e => setRequireMa5Above(e.target.checked)} style={{ accentColor:'#a78bfa' }} />
+          MA5{'>'}MA20
+          {requireMa5Above && rawRecs.filter(r => r.ma5_above_ma20 === false).length > 0 && (
+            <span style={{ color:'#ef4444', fontWeight:600 }}>(-{rawRecs.filter(r => r.ma5_above_ma20 === false).length})</span>
+          )}
+        </label>
         <span style={{ fontSize:11, color:COLORS.textDim, marginLeft:12 }}>정렬:</span>
         {[{v:'composite_score',l:'종합점수'},{v:'entry_score',l:'진입점수'},{v:'similarity',l:'유사도'}].map(s => {
           const active = recSortKey===s.v;
