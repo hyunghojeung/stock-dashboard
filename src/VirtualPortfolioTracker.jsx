@@ -1906,7 +1906,7 @@ function CompoundGroupDetailView({ data, onBack, onSelectPortfolio, onStop, onDe
                     </tr>
                   );
                 })}
-              </tbody> 
+              </tbody>
             </table>
           </div>
         )}
