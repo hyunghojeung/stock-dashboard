@@ -2235,7 +2235,95 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
     )}
 
     <div style={{ marginTop:16, padding:12, borderRadius:8, background:'rgba(245,158,11,0.08)', border:'1px solid rgba(245,158,11,0.2)', fontSize:11, color:COLORS.yellow, lineHeight:1.6 }}>⚠️ 패턴 유사도는 과거 데이터 기반 통계이며, 미래 수익을 보장하지 않습니다.</div>
+
+    {/* ★ v6: 추천 종목 과거 패턴 백테스트 결과 */}
+    <RecBacktestSection recBacktest={result.rec_backtest_result} />
   </div>);
+}
+
+function RecBacktestSection({ recBacktest }) {
+  const [showDetail, setShowDetail] = useState(false);
+  if (!recBacktest || !recBacktest.stock_results || recBacktest.total_occurrences === 0) return null;
+
+  const { stock_results, strategy_summary, total_occurrences, total_stocks_tested, avg_win_rate } = recBacktest;
+  const ranked = Object.entries(strategy_summary || {})
+    .filter(([,v]) => v.total_trades > 0)
+    .sort((a, b) => (a[1].rank || 99) - (b[1].rank || 99));
+
+  const stratLabels = { smart: '🧠 스마트', aggressive: '🔥 공격', standard: '⚖️ 기본', conservative: '🛡️ 보수', longterm: '🐢 장기' };
+
+  return (
+    <div style={{ marginTop:20, background: COLORS.card, border:`1px solid ${COLORS.cardBorder}`, borderRadius:12, overflow:'hidden' }}>
+      {/* 헤더 */}
+      <div style={{ padding:'14px 18px', borderBottom:`1px solid ${COLORS.cardBorder}`, background:'rgba(139,92,246,0.06)', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+        <div>
+          <span style={{ fontSize:14, fontWeight:700, color:'#a78bfa' }}>📊 추천 종목 과거 패턴 백테스트</span>
+          <span style={{ fontSize:11, color:COLORS.textDim, marginLeft:10 }}>{total_stocks_tested}개 종목 · {total_occurrences}회 시뮬레이션</span>
+        </div>
+        <span style={{ fontSize:13, fontWeight:700, color: avg_win_rate >= 55 ? '#10b981' : avg_win_rate >= 45 ? '#f59e0b' : '#ef4444' }}>
+          평균 승률 {avg_win_rate}%
+        </span>
+      </div>
+
+      {/* 전략 비교표 */}
+      {ranked.length > 0 && (
+        <div style={{ padding:'12px 18px' }}>
+          <div style={{ fontSize:12, fontWeight:600, color:COLORS.textDim, marginBottom:8 }}>📋 전략 비교표 / Strategy Comparison</div>
+          <div style={{ display:'grid', gridTemplateColumns:'30px 1fr 65px 70px 55px 55px 55px 60px', padding:'8px 10px', fontSize:10, color:COLORS.textDim, fontWeight:600, borderBottom:`1px solid ${COLORS.cardBorder}`, background:'#0d1321' }}>
+            <span>#</span><span>전략</span><span style={{textAlign:'right'}}>수익률</span><span style={{textAlign:'right'}}>수익금</span><span style={{textAlign:'center'}}>승률</span><span style={{textAlign:'center'}}>승/패</span><span style={{textAlign:'center'}}>MDD</span><span style={{textAlign:'center'}}>손익비</span>
+          </div>
+          {ranked.map(([key, s], idx) => {
+            const retColor = s.avg_return > 0 ? '#10b981' : s.avg_return < 0 ? '#ef4444' : COLORS.textDim;
+            return (
+              <div key={key} style={{ display:'grid', gridTemplateColumns:'30px 1fr 65px 70px 55px 55px 55px 60px', padding:'8px 10px', fontSize:12, alignItems:'center', borderBottom:`1px solid ${COLORS.cardBorder}`, background: idx === 0 ? 'rgba(167,139,250,0.06)' : 'transparent' }}>
+                <span style={{ fontWeight:700, color: idx === 0 ? '#a78bfa' : COLORS.textDim }}>{idx === 0 ? '🏆' : idx + 1}</span>
+                <span style={{ fontWeight:600 }}>{stratLabels[key] || key}</span>
+                <span style={{ textAlign:'right', fontWeight:700, color:retColor }}>{s.avg_return > 0 ? '+' : ''}{s.avg_return}%</span>
+                <span style={{ textAlign:'right', fontWeight:600, color:retColor }}>{s.total_return > 0 ? '+' : ''}{(s.total_return * 10000).toLocaleString()}원</span>
+                <span style={{ textAlign:'center', fontWeight:700, color: s.win_rate >= 55 ? '#10b981' : s.win_rate >= 45 ? '#f59e0b' : '#ef4444' }}>{s.win_rate}%</span>
+                <span style={{ textAlign:'center', fontSize:11 }}>{s.wins}승/{s.losses || s.total_trades - s.wins}패</span>
+                <span style={{ textAlign:'center', fontSize:11, color:'#ef4444' }}>-{s.mdd}%</span>
+                <span style={{ textAlign:'center', fontSize:11, color: s.profit_loss_ratio >= 2 ? '#10b981' : '#f59e0b' }}>{s.profit_loss_ratio}:1</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* 종목별 상세 토글 */}
+      <div style={{ padding:'10px 18px', borderTop:`1px solid ${COLORS.cardBorder}` }}>
+        <button onClick={() => setShowDetail(!showDetail)} style={{
+          background:'transparent', border:`1px solid ${COLORS.cardBorder}`, color:COLORS.accent,
+          padding:'6px 14px', borderRadius:6, fontSize:12, cursor:'pointer',
+        }}>{showDetail ? '▲ 종목별 상세 닫기' : '▼ 종목별 상세 보기'}</button>
+      </div>
+
+      {showDetail && (
+        <div style={{ padding:'0 18px 14px' }}>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 60px 55px 65px 65px 65px', padding:'8px 10px', fontSize:10, color:COLORS.textDim, fontWeight:600, borderBottom:`1px solid ${COLORS.cardBorder}`, background:'#0d1321', borderRadius:'6px 6px 0 0' }}>
+            <span>종목</span><span style={{textAlign:'center'}}>유사도</span><span style={{textAlign:'center'}}>발생횟수</span><span style={{textAlign:'center'}}>최적전략</span><span style={{textAlign:'center'}}>승률</span><span style={{textAlign:'center'}}>평균수익</span>
+          </div>
+          {stock_results.map((sr, idx) => {
+            const bestKey = sr.best_strategy;
+            const wr = sr.best_win_rate || 0;
+            const ar = sr.best_avg_return || 0;
+            const wrColor = wr >= 55 ? '#10b981' : wr >= 45 ? '#f59e0b' : '#ef4444';
+            const arColor = ar > 0 ? '#10b981' : ar < 0 ? '#ef4444' : COLORS.textDim;
+            return (
+              <div key={idx} style={{ display:'grid', gridTemplateColumns:'1fr 60px 55px 65px 65px 65px', padding:'8px 10px', fontSize:12, alignItems:'center', borderBottom:`1px solid ${COLORS.cardBorder}`, background: idx%2===0?'transparent':'rgba(255,255,255,0.02)' }}>
+                <div><span style={{fontWeight:600}}>{sr.name}</span><span style={{fontSize:10,color:COLORS.textDim,marginLeft:6}}>{sr.code}</span></div>
+                <span style={{textAlign:'center',fontWeight:600,color:COLORS.accent}}>{sr.current_similarity}%</span>
+                <span style={{textAlign:'center',fontWeight:700,color: sr.occurrences > 0 ? '#a78bfa' : COLORS.textDim}}>{sr.occurrences}회</span>
+                <span style={{textAlign:'center',fontSize:11}}>{sr.occurrences > 0 ? (stratLabels[bestKey] || '-') : '-'}</span>
+                <span style={{textAlign:'center',fontWeight:700,color:sr.occurrences > 0 ? wrColor : COLORS.textDim}}>{sr.occurrences > 0 ? `${wr}%` : '-'}</span>
+                <span style={{textAlign:'center',fontWeight:700,color:sr.occurrences > 0 ? arColor : COLORS.textDim}}>{sr.occurrences > 0 ? `${ar > 0 ? '+' : ''}${ar}%` : '-'}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function MiniReturnChart({ returns, label }) {
