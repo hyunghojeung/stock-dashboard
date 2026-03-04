@@ -46,6 +46,25 @@ const COLORS = {
 
 const fmt = (n) => n?.toLocaleString() ?? '-';
 
+// ★ v10: 장대봉 패턴 경보 깜빡임 CSS 주입
+const SURGE_BLINK_STYLE_ID = 'surge-candle-blink-style';
+if (typeof document !== 'undefined' && !document.getElementById(SURGE_BLINK_STYLE_ID)) {
+  const style = document.createElement('style');
+  style.id = SURGE_BLINK_STYLE_ID;
+  style.textContent = `
+    @keyframes surgeCandelBlink {
+      0%, 100% { color: #ef4444; opacity: 1; }
+      50% { color: #ff6b6b; opacity: 0.4; }
+    }
+    .surge-candle-alert-name {
+      animation: surgeCandelBlink 1s ease-in-out infinite;
+      font-weight: 800 !important;
+      text-shadow: 0 0 8px rgba(239,68,68,0.6);
+    }
+  `;
+  document.head.appendChild(style);
+}
+
 export default function PatternDetector() {
   const [pageMode, setPageMode] = useState('scanner');
 
@@ -1678,6 +1697,22 @@ const PatternScanMatchTable = React.memo(function PatternScanMatchTable({
   selectedPatternStocks, setSelectedPatternStocks, openRegModal
 }) {
   const [visibleCount, setVisibleCount] = React.useState(50);
+
+  // ★ v10: 장대봉 패턴 감지 종목 자동 선택 (패턴 스캔 결과에서도)
+  const surgeAutoRef = React.useRef(false);
+  React.useEffect(() => {
+    if (surgeAutoRef.current || rawMatches.length === 0) return;
+    const surgeAlertCodes = rawMatches.filter(m => m.surge_candle_alert).map(m => m.code);
+    if (surgeAlertCodes.length > 0) {
+      setSelectedPatternStocks(prev => {
+        const next = new Set(prev);
+        surgeAlertCodes.forEach(c => next.add(c));
+        return next;
+      });
+      surgeAutoRef.current = true;
+    }
+  }, [rawMatches]);
+
   // 정렬된 매칭 결과 (useMemo)
   const sortedMatches = React.useMemo(() => {
     return [...rawMatches].sort((a, b) => {
@@ -1812,7 +1847,11 @@ const PatternScanMatchTable = React.memo(function PatternScanMatchTable({
                 {isSelected && <span style={{ color:'white', fontSize:10, fontWeight:700 }}>✓</span>}
               </div>
             </td>
-            <td style={{ padding:'6px 8px', fontWeight:600 }}>{m.name} <span style={{color:COLORS.textDim}}>({m.code})</span></td>
+            <td style={{ padding:'6px 8px', fontWeight:600 }}>
+              <span className={m.surge_candle_alert ? 'surge-candle-alert-name' : ''}>{m.name}</span>
+              {m.surge_candle_alert && <span style={{fontSize:9,fontWeight:800,marginLeft:4,padding:'1px 5px',borderRadius:4,background:'rgba(239,68,68,0.25)',color:'#ef4444',border:'1px solid rgba(239,68,68,0.5)'}}>🔴 급등봉</span>}
+              {' '}<span style={{color:COLORS.textDim}}>({m.code})</span>
+            </td>
             <td style={{ padding:'6px 8px', color:COLORS.textDim }}>{m.market}</td>
             <td style={{ padding:'6px 8px', textAlign:'right' }}>{m.current_price?.toLocaleString()}</td>
             <td style={{ padding:'6px 8px', textAlign:'right', fontWeight:700,
@@ -2052,6 +2091,21 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
   const [requireMa5Above, setRequireMa5Above] = useState(true);
   const [excludeGcExpired, setExcludeGcExpired] = useState(true);  // ★ v9: GC 5일 경과 제외
   const rawRecs = result.recommendations||[];
+
+  // ★ v10: 장대봉 패턴 감지 종목 자동 선택 (최초 로드 시 1회)
+  const surgeAutoSelectedRef = useRef(false);
+  useEffect(() => {
+    if (surgeAutoSelectedRef.current || rawRecs.length === 0) return;
+    const surgeAlertCodes = rawRecs.filter(r => r.surge_candle_alert).map(r => r.code);
+    if (surgeAlertCodes.length > 0) {
+      setSelectedRecStocks(prev => {
+        const next = new Set(prev);
+        surgeAlertCodes.forEach(c => next.add(c));
+        return next;
+      });
+      surgeAutoSelectedRef.current = true;
+    }
+  }, [rawRecs]);
   const entrySummary = result.entry_summary || {};
   const scannedCount = result.scanned_candidates || rawRecs.length;
   const analyzedCodes = result.analyzed_codes || [];
@@ -2061,7 +2115,8 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
   if (excludeMa5Down) recs = recs.filter(r => !r.ma5_declining);
   if (requireMa5Above) recs = recs.filter(r => r.ma5_above_ma20 !== false);
   if (excludeGcExpired) recs = recs.filter(r => !(r.gc_days >= 5));  // ★ v9: GC 5일 경과 제외
-  if (recFilter === 'early') recs = recs.filter(r => r.early_entry);
+  if (recFilter === 'surge_candle') recs = recs.filter(r => r.surge_candle_alert);
+  else if (recFilter === 'early') recs = recs.filter(r => r.early_entry);
   else if (recFilter === 'auto_buy') recs = recs.filter(r => r.entry_grade === 'auto_buy');
   else if (recFilter === 'watch') recs = recs.filter(r => r.entry_grade === 'watch' || r.entry_grade === 'auto_buy');
 
@@ -2110,6 +2165,7 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
     {entrySummary.total > 0 && (
       <div style={{ marginBottom:12, padding:'10px 14px', borderRadius:8, background:'rgba(16,185,129,0.06)', border:'1px solid rgba(16,185,129,0.2)', display:'flex', alignItems:'center', gap:16, fontSize:12 }}>
         <span style={{ color:COLORS.textDim }}>📊 진입 품질 평가</span>
+        <span style={{ color:'#ef4444', fontWeight:700 }}>🔴 급등봉 {rawRecs.filter(r => r.surge_candle_alert).length}</span>
         <span style={{ color:'#f97316', fontWeight:700 }}>⚡ 조기진입 {rawRecs.filter(r => r.early_entry).length}</span>
         <span style={{ color:'#10b981', fontWeight:700 }}>🟢 자동매수 {entrySummary.auto_buy||0}</span>
         <span style={{ color:'#f59e0b', fontWeight:700 }}>🟡 감시 {entrySummary.watch||0}</span>
@@ -2129,7 +2185,7 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
     {rawRecs.length > 0 && (
       <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12, flexWrap:'wrap' }}>
         <span style={{ fontSize:11, color:COLORS.textDim }}>필터:</span>
-        {[{v:'all',l:'전체',c:COLORS.accent},{v:'early',l:'⚡ 조기진입',c:'#f97316'},{v:'auto_buy',l:'🟢 자동매수',c:'#10b981'},{v:'watch',l:'🟡 감시이상',c:'#f59e0b'}].map(f => (
+        {[{v:'all',l:'전체',c:COLORS.accent},{v:'surge_candle',l:'🔴 급등봉',c:'#ef4444'},{v:'early',l:'⚡ 조기진입',c:'#f97316'},{v:'auto_buy',l:'🟢 자동매수',c:'#10b981'},{v:'watch',l:'🟡 감시이상',c:'#f59e0b'}].map(f => (
           <button key={f.v} onClick={() => setRecFilter(f.v)} style={{
             padding:'4px 10px', fontSize:11, borderRadius:6, cursor:'pointer',
             border:`1px solid ${recFilter===f.v?f.c:COLORS.cardBorder}`,
@@ -2245,7 +2301,16 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
             </div>
             <div>
               <div style={{fontSize:13,fontWeight:600,display:'flex',alignItems:'center',gap:4}}>
-                {rec.name}
+                <span className={rec.surge_candle_alert ? 'surge-candle-alert-name' : ''}>
+                  {rec.name}
+                </span>
+                {rec.surge_candle_alert && (
+                  <span title={`장대봉 패턴 감지 (양봉→음봉→양봉)${rec.surge_candle_detail ? '\n최대 변동: ' + (rec.surge_candle_detail.max_return || rec.surge_candle_detail.max_body_pct || 0) + '%' : ''}`} style={{
+                    fontSize:9, fontWeight:800, padding:'1px 5px', borderRadius:4,
+                    background:'rgba(239,68,68,0.25)', color:'#ef4444', border:'1px solid rgba(239,68,68,0.5)',
+                    cursor:'help', whiteSpace:'nowrap',
+                  }}>🔴 급등봉</span>
+                )}
                 {rec.early_entry && (
                   <span title={rec.early_reason || '조기진입 가능'} style={{
                     fontSize:9, fontWeight:700, padding:'1px 5px', borderRadius:4,
@@ -2265,7 +2330,14 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
               </div>
               <div style={{fontSize:11,color:COLORS.textDim}}>
                 {rec.code}
-                {rec.early_entry && rec.early_reason && (
+                {rec.surge_candle_alert && rec.surge_candle_detail && (
+                  <span style={{marginLeft:6,fontSize:10,color:'#ef4444',fontWeight:600}}>
+                    양봉{Math.abs(rec.surge_candle_detail.legs?.[0]?.return_pct || rec.surge_candle_detail.legs?.[0]?.body_pct || 0).toFixed(0)}%
+                    →음봉{Math.abs(rec.surge_candle_detail.legs?.[1]?.return_pct || rec.surge_candle_detail.legs?.[1]?.body_pct || 0).toFixed(0)}%
+                    →양봉{Math.abs(rec.surge_candle_detail.legs?.[2]?.return_pct || rec.surge_candle_detail.legs?.[2]?.body_pct || 0).toFixed(0)}%
+                  </span>
+                )}
+                {!rec.surge_candle_alert && rec.early_entry && rec.early_reason && (
                   <span style={{marginLeft:6,fontSize:10,color:'#f97316'}}>{rec.early_reason}</span>
                 )}
               </div>

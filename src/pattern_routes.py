@@ -78,6 +78,121 @@ router = APIRouter(prefix="/api/pattern", tags=["pattern"])
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# ★ v10: DTW 구간 장대봉 패턴 감지 (양봉-음봉-양봉)
+# Surge Candle Pattern Detection in DTW zone
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+def _detect_surge_candle_pattern_from_returns(returns: list, window: int = 10) -> dict:
+    """
+    DB 벡터(returns_30d) 기반 장대봉 패턴 근사 감지
+    OHLC 없이 일별 등락률만으로 탐지 (근사)
+
+    패턴: 양봉(+10%↑) → 음봉(-10%↓) → 양봉(+10%↑), 10일 이내
+    3개 중 최소 1개는 |return| >= 15% 필수
+    """
+    if not returns or len(returns) < 3:
+        return {"detected": False}
+
+    recent = returns[-window:] if len(returns) >= window else returns
+    BODY_THRESHOLD = 10.0   # 꼬리 포함 완화 기준
+    LARGE_THRESHOLD = 15.0  # 순수 장대봉 기준
+
+    for i in range(len(recent)):
+        if recent[i] < BODY_THRESHOLD:
+            continue
+        for j in range(i + 1, len(recent)):
+            if recent[j] > -BODY_THRESHOLD:
+                continue
+            for k in range(j + 1, len(recent)):
+                if recent[k] < BODY_THRESHOLD:
+                    continue
+                max_abs = max(abs(recent[i]), abs(recent[j]), abs(recent[k]))
+                if max_abs >= LARGE_THRESHOLD:
+                    return {
+                        "detected": True,
+                        "legs": [
+                            {"day_offset": i, "return_pct": round(recent[i], 2), "type": "bullish"},
+                            {"day_offset": j, "return_pct": round(recent[j], 2), "type": "bearish"},
+                            {"day_offset": k, "return_pct": round(recent[k], 2), "type": "bullish"},
+                        ],
+                        "max_return": round(max_abs, 2),
+                        "method": "returns_approx",
+                    }
+    return {"detected": False}
+
+
+def _detect_surge_candle_pattern_from_ohlc(candles: list, window: int = 10) -> dict:
+    """
+    OHLC 캔들 데이터 기반 정밀 장대봉 패턴 감지
+
+    장대 양봉: body >= 15% OR (body >= 7% AND 윗꼬리 >= 3%)
+    장대 음봉: body >= 15% OR (body >= 7% AND 아래꼬리 >= 3%)
+    패턴: 장대양봉 → 장대음봉 → 장대양봉, 10일 이내
+    3개 중 최소 1개는 body >= 15% 필수
+    """
+    if not candles or len(candles) < 3:
+        return {"detected": False}
+
+    recent = candles[-window:] if len(candles) >= window else candles
+    LARGE_BODY = 15.0
+    SHADOW_BODY = 7.0
+    SHADOW_MIN = 3.0
+
+    def is_large_bullish(c):
+        o, h, cl = float(c.get("open", 0)), float(c.get("high", 0)), float(c.get("close", 0))
+        if o <= 0 or cl <= o:
+            return False, 0
+        body_pct = ((cl - o) / o) * 100
+        upper_shadow = ((h - cl) / cl) * 100 if cl > 0 else 0
+        if body_pct >= LARGE_BODY:
+            return True, body_pct
+        if body_pct >= SHADOW_BODY and upper_shadow >= SHADOW_MIN:
+            return True, body_pct
+        return False, 0
+
+    def is_large_bearish(c):
+        o, l, cl = float(c.get("open", 0)), float(c.get("low", 0)), float(c.get("close", 0))
+        if o <= 0 or cl >= o:
+            return False, 0
+        body_pct = ((o - cl) / o) * 100
+        lower_shadow = ((cl - l) / cl) * 100 if cl > 0 else 0
+        if body_pct >= LARGE_BODY:
+            return True, body_pct
+        if body_pct >= SHADOW_BODY and lower_shadow >= SHADOW_MIN:
+            return True, body_pct
+        return False, 0
+
+    for i in range(len(recent)):
+        bull1, bp1 = is_large_bullish(recent[i])
+        if not bull1:
+            continue
+        for j in range(i + 1, len(recent)):
+            bear, bp2 = is_large_bearish(recent[j])
+            if not bear:
+                continue
+            for k in range(j + 1, len(recent)):
+                bull2, bp3 = is_large_bullish(recent[k])
+                if not bull2:
+                    continue
+                max_body = max(bp1, bp2, bp3)
+                if max_body >= LARGE_BODY:
+                    return {
+                        "detected": True,
+                        "legs": [
+                            {"day_offset": i, "body_pct": round(bp1, 2), "type": "bullish",
+                             "date": recent[i].get("date", "")},
+                            {"day_offset": j, "body_pct": round(bp2, 2), "type": "bearish",
+                             "date": recent[j].get("date", "")},
+                            {"day_offset": k, "body_pct": round(bp3, 2), "type": "bullish",
+                             "date": recent[k].get("date", "")},
+                        ],
+                        "max_body_pct": round(max_body, 2),
+                        "method": "ohlc_precise",
+                    }
+    return {"detected": False}
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 전역 상태 (분석 진행률 + 결과 캐시)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -345,6 +460,9 @@ def _match_from_db_vectors(
         except Exception:
             pass
 
+        # ★ v10: DTW 구간 장대봉 패턴 감지 (양봉-음봉-양봉)
+        surge_candle_info = _detect_surge_candle_pattern_from_returns(returns_full)
+
         # 시그널 판단
         if best_sim >= 65:
             signal = "🟢 강력 매수"
@@ -359,7 +477,10 @@ def _match_from_db_vectors(
             signal = "⬜ 미해당"
             signal_code = "none"
 
-        if best_sim >= 35:
+        # ★ v10: 장대봉 패턴 감지 시 유사도 무관 무조건 포함
+        include = best_sim >= 35 or surge_candle_info.get("detected", False)
+
+        if include:
             recommendations.append({
                 "code": code,
                 "name": name,
@@ -377,6 +498,9 @@ def _match_from_db_vectors(
                 "early_score": early_info.get("early_score", 0),
                 "pattern_progress": early_info.get("pattern_progress", 1.0),
                 "early_reason": early_info.get("entry_reason", ""),
+                # ★ v10: 장대봉 패턴 경보
+                "surge_candle_alert": surge_candle_info.get("detected", False),
+                "surge_candle_detail": surge_candle_info if surge_candle_info.get("detected") else None,
             })
 
         # 진행률 업데이트 (500개마다)
@@ -512,7 +636,17 @@ async def _match_realtime_fallback(
         else:
             signal, signal_code = "⬜ 미해당", "none"
 
-        if best_sim >= 35:
+        # ★ v10: 장대봉 패턴 감지 (OHLC 정밀 모드 — fallback에서는 candle 데이터 보유)
+        candle_dicts = [{"open": c.open, "high": c.high, "low": c.low, "close": c.close,
+                         "date": c.date} for c in candles[-10:]] if candles else []
+        surge_candle_info = _detect_surge_candle_pattern_from_ohlc(candle_dicts)
+        if not surge_candle_info.get("detected"):
+            surge_candle_info = _detect_surge_candle_pattern_from_returns(current_returns)
+
+        # ★ v10: 장대봉 패턴 감지 시 유사도 무관 무조건 포함
+        include = best_sim >= 35 or surge_candle_info.get("detected", False)
+
+        if include:
             recommendations.append({
                 "code": code,
                 "name": name,
@@ -525,6 +659,9 @@ async def _match_realtime_fallback(
                 "current_volumes": current_volumes[-5:],
                 "last_date": candles[-1].date if candles else "",
                 "signal_date": candles[-1].date if candles else "",
+                # ★ v10: 장대봉 패턴 경보
+                "surge_candle_alert": surge_candle_info.get("detected", False),
+                "surge_candle_detail": surge_candle_info if surge_candle_info.get("detected") else None,
             })
 
     recommendations.sort(key=lambda r: r["similarity"], reverse=True)
@@ -1122,7 +1259,11 @@ async def scan_with_saved_patterns(req: PatternScanRequest):
                         best_pattern_id = p["id"]
                         best_pattern_name = p["name"]
 
-                if best_sim >= req.min_similarity:
+                # ★ v10: 장대봉 패턴 감지
+                surge_candle_info = _detect_surge_candle_pattern_from_returns(returns_raw)
+                include = best_sim >= req.min_similarity or surge_candle_info.get("detected", False)
+
+                if include:
                     matches.append({
                         "code": stock["code"],
                         "name": stock["name"],
@@ -1133,6 +1274,9 @@ async def scan_with_saved_patterns(req: PatternScanRequest):
                         "matched_pattern_name": best_pattern_name,
                         "returns_30d": returns_raw[-10:],
                         "last_date": stock.get("last_date", ""),
+                        # ★ v10: 장대봉 패턴 경보
+                        "surge_candle_alert": surge_candle_info.get("detected", False),
+                        "surge_candle_detail": surge_candle_info if surge_candle_info.get("detected") else None,
                     })
             except Exception:
                 continue
