@@ -2619,7 +2619,7 @@ function ScanStockChart({ candles, stock }) {
 
 function TabPatternLibrary({ patterns, loading, onRefresh, onDelete, onToggleActive, editingId, editingName, setEditingId, setEditingName, onSaveName, onScanWithPattern }) {
   if (loading) return <div style={{ textAlign:'center', padding:40, color:COLORS.textDim }}>⏳ 패턴 목록 로드 중...</div>;
-
+ 
   return (<div>
     <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
       <div style={{ fontSize:15, fontWeight:700, color:'#8b5cf6' }}>📚 저장된 패턴 라이브러리</div>
