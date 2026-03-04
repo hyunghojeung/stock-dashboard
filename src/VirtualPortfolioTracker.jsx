@@ -25,6 +25,23 @@ const COLORS = {
 
 const fmt = (n) => n?.toLocaleString() ?? '-';
 
+// ★ v9: DB의 UTC 시간 → KST 표시 변환
+function toKST(dateStr) {
+  if (!dateStr) return '';
+  try {
+    // DB가 UTC로 저장 → +09:00 보정
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr.slice(0, 16).replace('T', ' ');
+    const kst = new Date(d.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }));
+    const y = kst.getFullYear();
+    const mo = String(kst.getMonth() + 1).padStart(2, '0');
+    const dd = String(kst.getDate()).padStart(2, '0');
+    const hh = String(kst.getHours()).padStart(2, '0');
+    const mm = String(kst.getMinutes()).padStart(2, '0');
+    return `${y}-${mo}-${dd} ${hh}:${mm}`;
+  } catch { return dateStr.slice(0, 16).replace('T', ' '); }
+}
+
 // ── 장 운영시간 체크 (KST 기준) / Market hours check ──
 function isMarketOpen() {
   const now = new Date();
@@ -694,7 +711,7 @@ function PortfolioList({ portfolios, loading, onSelect, onRefresh, onRename, onB
           const isActive = pf.status === 'active';
           const isProfit = (pf.total_return_won || 0) >= 0;
           const pcts = pf.total_return_pct || 0;
-          const datePart = pf.created_at ? pf.created_at.slice(5, 10).replace('-', '/') : '';
+          const datePart = pf.created_at ? toKST(pf.created_at).slice(5, 10).replace('-', '/') : '';
           const stocks = pf.positions_summary || [];
 
           const isSelected = selectedIds.has(pf.id);
@@ -862,8 +879,8 @@ function PortfolioDetail({ detail, updating, onUpdate, onClose, onDelete, onRena
               )}
             </h2>
             <div style={{ fontSize: 12, color: COLORS.textDim, marginTop: 4, fontFamily: 'JetBrains Mono, monospace' }}>
-              등록: {pf.created_at?.slice(0, 16).replace('T', ' ')} · D+{daysSince}일 · {STRATEGY_LABELS[pf.strategy] || pf.strategy}
-              {!isActive && ` · 종료: ${pf.closed_at?.slice(0, 10) || ''}`}
+              등록: {toKST(pf.created_at)} · D+{daysSince}일 · {STRATEGY_LABELS[pf.strategy] || pf.strategy}
+              {!isActive && ` · 종료: ${pf.closed_at ? toKST(pf.closed_at).slice(0, 10) : ''}`}
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -1898,10 +1915,10 @@ function CompoundGroupDetailView({ data, onBack, onSelectPortfolio, onStop, onDe
                         {(r.win_count || 0)}승 {(r.loss_count || 0)}패
                       </td>
                       <td style={{ textAlign: 'center', color: COLORS.textDim, fontSize: 10 }}>
-                        {r.created_at?.slice(0, 10) || '-'}
+                        {r.created_at ? toKST(r.created_at).slice(0, 10) : '-'}
                       </td>
                       <td style={{ textAlign: 'center', color: COLORS.textDim, fontSize: 10 }}>
-                        {r.closed_at?.slice(0, 10) || (isActive ? '진행중' : '-')}
+                        {r.closed_at ? toKST(r.closed_at).slice(0, 10) : (isActive ? '진행중' : '-')}
                       </td>
                     </tr>
                   );
