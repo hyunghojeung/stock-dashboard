@@ -46,7 +46,7 @@ const COLORS = {
 
 const fmt = (n) => n?.toLocaleString() ?? '-';
 
-// ★ v10: 장대봉 패턴 경보 깜빡임 CSS 주입
+// ★ v10/v11: 패턴 경보 깜빡임 CSS 주입
 const SURGE_BLINK_STYLE_ID = 'surge-candle-blink-style';
 if (typeof document !== 'undefined' && !document.getElementById(SURGE_BLINK_STYLE_ID)) {
   const style = document.createElement('style');
@@ -60,6 +60,24 @@ if (typeof document !== 'undefined' && !document.getElementById(SURGE_BLINK_STYL
       animation: surgeCandelBlink 1s ease-in-out infinite;
       font-weight: 800 !important;
       text-shadow: 0 0 8px rgba(239,68,68,0.6);
+    }
+    @keyframes breakoutBlink {
+      0%, 100% { color: #f59e0b; opacity: 1; }
+      50% { color: #fbbf24; opacity: 0.5; }
+    }
+    .breakout-alert-name {
+      animation: breakoutBlink 1.2s ease-in-out infinite;
+      font-weight: 800 !important;
+      text-shadow: 0 0 8px rgba(245,158,11,0.6);
+    }
+    @keyframes comboSignalBlink {
+      0%, 100% { color: #ef4444; opacity: 1; text-shadow: 0 0 10px rgba(239,68,68,0.8); }
+      33% { color: #f59e0b; opacity: 0.8; text-shadow: 0 0 10px rgba(245,158,11,0.8); }
+      66% { color: #ff6b6b; opacity: 0.6; text-shadow: 0 0 12px rgba(239,68,68,0.6); }
+    }
+    .combo-signal-name {
+      animation: comboSignalBlink 1.5s ease-in-out infinite;
+      font-weight: 900 !important;
     }
   `;
   document.head.appendChild(style);
@@ -1698,18 +1716,18 @@ const PatternScanMatchTable = React.memo(function PatternScanMatchTable({
 }) {
   const [visibleCount, setVisibleCount] = React.useState(50);
 
-  // ★ v10: 장대봉 패턴 감지 종목 자동 선택 (패턴 스캔 결과에서도)
-  const surgeAutoRef = React.useRef(false);
+  // ★ v10/v11: 장대봉 + 전고점 돌파 감지 종목 자동 선택 (패턴 스캔 결과에서도)
+  const alertAutoRef = React.useRef(false);
   React.useEffect(() => {
-    if (surgeAutoRef.current || rawMatches.length === 0) return;
-    const surgeAlertCodes = rawMatches.filter(m => m.surge_candle_alert).map(m => m.code);
-    if (surgeAlertCodes.length > 0) {
+    if (alertAutoRef.current || rawMatches.length === 0) return;
+    const alertCodes = rawMatches.filter(m => m.surge_candle_alert || m.breakout_alert).map(m => m.code);
+    if (alertCodes.length > 0) {
       setSelectedPatternStocks(prev => {
         const next = new Set(prev);
-        surgeAlertCodes.forEach(c => next.add(c));
+        alertCodes.forEach(c => next.add(c));
         return next;
       });
-      surgeAutoRef.current = true;
+      alertAutoRef.current = true;
     }
   }, [rawMatches]);
 
@@ -1848,8 +1866,14 @@ const PatternScanMatchTable = React.memo(function PatternScanMatchTable({
               </div>
             </td>
             <td style={{ padding:'6px 8px', fontWeight:600 }}>
-              <span className={m.surge_candle_alert ? 'surge-candle-alert-name' : ''}>{m.name}</span>
+              <span className={
+                (m.surge_candle_alert && m.breakout_alert) ? 'combo-signal-name'
+                : m.surge_candle_alert ? 'surge-candle-alert-name'
+                : m.breakout_alert ? 'breakout-alert-name' : ''
+              }>{m.name}</span>
+              {m.surge_candle_alert && m.breakout_alert && <span style={{fontSize:9,fontWeight:900,marginLeft:4,padding:'1px 5px',borderRadius:4,background:'linear-gradient(135deg, rgba(239,68,68,0.3), rgba(245,158,11,0.3))',color:'#fbbf24',border:'1px solid rgba(245,158,11,0.6)'}}>🔥 콤보</span>}
               {m.surge_candle_alert && <span style={{fontSize:9,fontWeight:800,marginLeft:4,padding:'1px 5px',borderRadius:4,background:'rgba(239,68,68,0.25)',color:'#ef4444',border:'1px solid rgba(239,68,68,0.5)'}}>🔴 급등봉</span>}
+              {m.breakout_alert && <span style={{fontSize:9,fontWeight:800,marginLeft:4,padding:'1px 5px',borderRadius:4,background:'rgba(245,158,11,0.2)',color:'#f59e0b',border:'1px solid rgba(245,158,11,0.5)'}}>🚀 {m.breakout_grade === 'perfect' ? '완벽돌파' : '돌파'}</span>}
               {' '}<span style={{color:COLORS.textDim}}>({m.code})</span>
             </td>
             <td style={{ padding:'6px 8px', color:COLORS.textDim }}>{m.market}</td>
@@ -2092,18 +2116,18 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
   const [excludeGcExpired, setExcludeGcExpired] = useState(true);  // ★ v9: GC 5일 경과 제외
   const rawRecs = result.recommendations||[];
 
-  // ★ v10: 장대봉 패턴 감지 종목 자동 선택 (최초 로드 시 1회)
-  const surgeAutoSelectedRef = useRef(false);
+  // ★ v10/v11: 장대봉 + 전고점 돌파 감지 종목 자동 선택 (최초 로드 시 1회)
+  const alertAutoSelectedRef = useRef(false);
   useEffect(() => {
-    if (surgeAutoSelectedRef.current || rawRecs.length === 0) return;
-    const surgeAlertCodes = rawRecs.filter(r => r.surge_candle_alert).map(r => r.code);
-    if (surgeAlertCodes.length > 0) {
+    if (alertAutoSelectedRef.current || rawRecs.length === 0) return;
+    const alertCodes = rawRecs.filter(r => r.surge_candle_alert || r.breakout_alert).map(r => r.code);
+    if (alertCodes.length > 0) {
       setSelectedRecStocks(prev => {
         const next = new Set(prev);
-        surgeAlertCodes.forEach(c => next.add(c));
+        alertCodes.forEach(c => next.add(c));
         return next;
       });
-      surgeAutoSelectedRef.current = true;
+      alertAutoSelectedRef.current = true;
     }
   }, [rawRecs]);
   const entrySummary = result.entry_summary || {};
@@ -2115,12 +2139,23 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
   if (excludeMa5Down) recs = recs.filter(r => !r.ma5_declining);
   if (requireMa5Above) recs = recs.filter(r => r.ma5_above_ma20 !== false);
   if (excludeGcExpired) recs = recs.filter(r => !(r.gc_days >= 5));  // ★ v9: GC 5일 경과 제외
-  if (recFilter === 'surge_candle') recs = recs.filter(r => r.surge_candle_alert);
+  if (recFilter === 'combo') recs = recs.filter(r => r.surge_candle_alert && r.breakout_alert);
+  else if (recFilter === 'surge_candle') recs = recs.filter(r => r.surge_candle_alert);
+  else if (recFilter === 'breakout') recs = recs.filter(r => r.breakout_alert);
   else if (recFilter === 'early') recs = recs.filter(r => r.early_entry);
   else if (recFilter === 'auto_buy') recs = recs.filter(r => r.entry_grade === 'auto_buy');
   else if (recFilter === 'watch') recs = recs.filter(r => r.entry_grade === 'watch' || r.entry_grade === 'auto_buy');
 
-  // 정렬 적용
+  // ★ v11: 복합 시그널 우선순위 정렬 (콤보 → 돌파 → 급등봉 → 일반)
+  const _alertPriority = (r) => {
+    let p = 0;
+    if (r.surge_candle_alert && r.breakout_alert) p += 300;  // 콤보 최우선
+    else if (r.breakout_alert) p += (r.breakout_grade === 'perfect' ? 250 : r.breakout_grade === 'strong' ? 220 : 200);
+    else if (r.surge_candle_alert) p += 150;
+    if (r.early_entry) p += 50;
+    return p;
+  };
+
   recs.sort((a, b) => {
     let va, vb;
     if (recSortKey === 'composite_score') { va = a.composite_score || 0; vb = b.composite_score || 0; }
@@ -2128,6 +2163,10 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
     else if (recSortKey === 'early_score') { va = a.early_score || 0; vb = b.early_score || 0; }
     else if (recSortKey === 'similarity') { va = a.similarity || 0; vb = b.similarity || 0; }
     else { va = a.similarity || 0; vb = b.similarity || 0; }
+    // 1차: 시그널 우선순위 (콤보/돌파/급등봉 우선)
+    const pa = _alertPriority(a), pb = _alertPriority(b);
+    if (pa !== pb) return pb - pa;
+    // 2차: 선택된 정렬 기준
     return recSortDir === 'desc' ? vb - va : va - vb;
   });
 
@@ -2165,7 +2204,9 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
     {entrySummary.total > 0 && (
       <div style={{ marginBottom:12, padding:'10px 14px', borderRadius:8, background:'rgba(16,185,129,0.06)', border:'1px solid rgba(16,185,129,0.2)', display:'flex', alignItems:'center', gap:16, fontSize:12 }}>
         <span style={{ color:COLORS.textDim }}>📊 진입 품질 평가</span>
+        <span style={{ color:'#fbbf24', fontWeight:700 }}>🔥 콤보 {rawRecs.filter(r => r.surge_candle_alert && r.breakout_alert).length}</span>
         <span style={{ color:'#ef4444', fontWeight:700 }}>🔴 급등봉 {rawRecs.filter(r => r.surge_candle_alert).length}</span>
+        <span style={{ color:'#f59e0b', fontWeight:700 }}>🚀 돌파 {rawRecs.filter(r => r.breakout_alert).length}</span>
         <span style={{ color:'#f97316', fontWeight:700 }}>⚡ 조기진입 {rawRecs.filter(r => r.early_entry).length}</span>
         <span style={{ color:'#10b981', fontWeight:700 }}>🟢 자동매수 {entrySummary.auto_buy||0}</span>
         <span style={{ color:'#f59e0b', fontWeight:700 }}>🟡 감시 {entrySummary.watch||0}</span>
@@ -2185,7 +2226,7 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
     {rawRecs.length > 0 && (
       <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12, flexWrap:'wrap' }}>
         <span style={{ fontSize:11, color:COLORS.textDim }}>필터:</span>
-        {[{v:'all',l:'전체',c:COLORS.accent},{v:'surge_candle',l:'🔴 급등봉',c:'#ef4444'},{v:'early',l:'⚡ 조기진입',c:'#f97316'},{v:'auto_buy',l:'🟢 자동매수',c:'#10b981'},{v:'watch',l:'🟡 감시이상',c:'#f59e0b'}].map(f => (
+        {[{v:'all',l:'전체',c:COLORS.accent},{v:'combo',l:'🔥 콤보',c:'#fbbf24'},{v:'surge_candle',l:'🔴 급등봉',c:'#ef4444'},{v:'breakout',l:'🚀 돌파',c:'#f59e0b'},{v:'early',l:'⚡ 조기진입',c:'#f97316'},{v:'auto_buy',l:'🟢 자동매수',c:'#10b981'},{v:'watch',l:'🟡 감시이상',c:'#f59e0b'}].map(f => (
           <button key={f.v} onClick={() => setRecFilter(f.v)} style={{
             padding:'4px 10px', fontSize:11, borderRadius:6, cursor:'pointer',
             border:`1px solid ${recFilter===f.v?f.c:COLORS.cardBorder}`,
@@ -2300,16 +2341,36 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
               </div>
             </div>
             <div>
-              <div style={{fontSize:13,fontWeight:600,display:'flex',alignItems:'center',gap:4}}>
-                <span className={rec.surge_candle_alert ? 'surge-candle-alert-name' : ''}>
+              <div style={{fontSize:13,fontWeight:600,display:'flex',alignItems:'center',gap:4,flexWrap:'wrap'}}>
+                <span className={
+                  (rec.surge_candle_alert && rec.breakout_alert) ? 'combo-signal-name'
+                  : rec.surge_candle_alert ? 'surge-candle-alert-name'
+                  : rec.breakout_alert ? 'breakout-alert-name' : ''
+                }>
                   {rec.name}
                 </span>
+                {rec.surge_candle_alert && rec.breakout_alert && (
+                  <span title="급등봉 + 전고점 돌파 동시 감지! 최강 시그널" style={{
+                    fontSize:9, fontWeight:900, padding:'1px 5px', borderRadius:4,
+                    background:'linear-gradient(135deg, rgba(239,68,68,0.3), rgba(245,158,11,0.3))',
+                    color:'#fbbf24', border:'1px solid rgba(245,158,11,0.6)',
+                    cursor:'help', whiteSpace:'nowrap',
+                  }}>🔥 콤보</span>
+                )}
                 {rec.surge_candle_alert && (
                   <span title={`장대봉 패턴 감지 (양봉→음봉→양봉)${rec.surge_candle_detail ? '\n최대 변동: ' + (rec.surge_candle_detail.max_return || rec.surge_candle_detail.max_body_pct || 0) + '%' : ''}`} style={{
                     fontSize:9, fontWeight:800, padding:'1px 5px', borderRadius:4,
                     background:'rgba(239,68,68,0.25)', color:'#ef4444', border:'1px solid rgba(239,68,68,0.5)',
                     cursor:'help', whiteSpace:'nowrap',
                   }}>🔴 급등봉</span>
+                )}
+                {rec.breakout_alert && (
+                  <span title={`전고점 돌파 (${rec.breakout_detail?.grade_label || '돌파'})\n거래량 ${rec.breakout_detail?.detail?.vol_ratio || 0}배 | 정배열 ${rec.breakout_detail?.detail?.trend_aligned ? '✓' : '✗'} | 고점돌파 ${rec.breakout_detail?.detail?.high_breakout ? '✓' : '✗'} | 에너지 ${rec.breakout_detail?.detail?.energy_ok ? '✓' : '✗'}`} style={{
+                    fontSize:9, fontWeight:800, padding:'1px 5px', borderRadius:4,
+                    background: rec.breakout_grade === 'perfect' ? 'rgba(245,158,11,0.35)' : 'rgba(245,158,11,0.2)',
+                    color:'#f59e0b', border:'1px solid rgba(245,158,11,0.5)',
+                    cursor:'help', whiteSpace:'nowrap',
+                  }}>🚀 {rec.breakout_grade === 'perfect' ? '완벽돌파' : rec.breakout_grade === 'strong' ? '강력돌파' : '돌파'}</span>
                 )}
                 {rec.early_entry && (
                   <span title={rec.early_reason || '조기진입 가능'} style={{
@@ -2330,14 +2391,22 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
               </div>
               <div style={{fontSize:11,color:COLORS.textDim}}>
                 {rec.code}
-                {rec.surge_candle_alert && rec.surge_candle_detail && (
+                {rec.breakout_alert && rec.breakout_detail?.detail && (
+                  <span style={{marginLeft:6,fontSize:10,color:'#f59e0b',fontWeight:600}}>
+                    거래량{rec.breakout_detail.detail.vol_ratio}배
+                    {rec.breakout_detail.detail.trend_aligned ? ' 정배열' : ''}
+                    {rec.breakout_detail.detail.high_breakout ? ' 고점↑' : ''}
+                    {rec.breakout_detail.detail.energy_ok ? ` +${rec.breakout_detail.detail.today_return || rec.breakout_detail.detail.intraday_range_pct}%` : ''}
+                  </span>
+                )}
+                {rec.surge_candle_alert && rec.surge_candle_detail && !rec.breakout_alert && (
                   <span style={{marginLeft:6,fontSize:10,color:'#ef4444',fontWeight:600}}>
                     양봉{Math.abs(rec.surge_candle_detail.legs?.[0]?.return_pct || rec.surge_candle_detail.legs?.[0]?.body_pct || 0).toFixed(0)}%
                     →음봉{Math.abs(rec.surge_candle_detail.legs?.[1]?.return_pct || rec.surge_candle_detail.legs?.[1]?.body_pct || 0).toFixed(0)}%
                     →양봉{Math.abs(rec.surge_candle_detail.legs?.[2]?.return_pct || rec.surge_candle_detail.legs?.[2]?.body_pct || 0).toFixed(0)}%
                   </span>
                 )}
-                {!rec.surge_candle_alert && rec.early_entry && rec.early_reason && (
+                {!rec.surge_candle_alert && !rec.breakout_alert && rec.early_entry && rec.early_reason && (
                   <span style={{marginLeft:6,fontSize:10,color:'#f97316'}}>{rec.early_reason}</span>
                 )}
               </div>

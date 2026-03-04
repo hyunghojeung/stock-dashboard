@@ -193,6 +193,198 @@ def _detect_surge_candle_pattern_from_ohlc(candles: list, window: int = 10) -> d
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# ★ v11: 전고점 돌파 감지 (N자형 눌림목 & 거래량 급증)
+# Breakout Detection — Volume-backed High Breakout
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+def _detect_breakout_from_returns(returns: list, volumes: list, window_short: int = 20, window_long: int = 60) -> dict:
+    """
+    DB 벡터(returns_30d, volumes_30d) 기반 전고점 돌파 근사 감지
+
+    [조건]
+    1. 거래량 급증: 금일 거래량 >= 최근 20일 평균의 300% 이상
+    2. 정배열 근사: 최근 5일 평균 등락률 > 최근 20일 평균 등락률 (상승 추세)
+    3. 전고점 돌파: 금일 등락률이 양수이고, 누적 수익이 최근 20일 고점 갱신
+    4. 에너지 확인: 금일 등락률 >= 5% (당일 상승 에너지)
+    """
+    if not returns or len(returns) < 10:
+        return {"detected": False}
+
+    recent_ret = returns[-window_short:] if len(returns) >= window_short else returns
+    recent_vol = volumes[-window_short:] if volumes and len(volumes) >= window_short else (volumes or [])
+
+    today_ret = recent_ret[-1]
+    today_vol = recent_vol[-1] if recent_vol else 0
+
+    # (1) 거래량 급증 체크
+    vol_surge = False
+    vol_ratio = 0
+    if recent_vol and len(recent_vol) >= 5:
+        avg_vol = sum(recent_vol[:-1]) / max(len(recent_vol) - 1, 1)
+        if avg_vol > 0:
+            vol_ratio = today_vol / avg_vol
+            vol_surge = vol_ratio >= 3.0  # 300% 이상
+
+    # (2) 정배열 근사: MA5 수익 > MA20 수익 (상승 추세)
+    ma5_ret = sum(recent_ret[-5:]) / min(len(recent_ret[-5:]), 5) if len(recent_ret) >= 5 else 0
+    ma20_ret = sum(recent_ret) / len(recent_ret) if recent_ret else 0
+    trend_aligned = ma5_ret > ma20_ret and ma5_ret > 0
+
+    # (3) 전고점 돌파: 누적수익 기준 (returns → 누적합)
+    cumulative = []
+    cum_sum = 0
+    for r in recent_ret:
+        cum_sum += r
+        cumulative.append(cum_sum)
+    if len(cumulative) >= 2:
+        prev_high = max(cumulative[:-1])
+        today_cum = cumulative[-1]
+        high_breakout = today_cum > prev_high and today_ret > 0
+    else:
+        high_breakout = False
+        prev_high = 0
+
+    # (4) 에너지 확인: 금일 등락률 5%+ (DB 벡터 모드 완화)
+    energy_ok = today_ret >= 5.0
+
+    # 종합 판단: 4가지 중 3가지 이상 충족 시 돌파 인정
+    conditions_met = sum([vol_surge, trend_aligned, high_breakout, energy_ok])
+    detected = conditions_met >= 3
+
+    # 돌파 등급 산정
+    if detected:
+        if conditions_met == 4:
+            grade = "perfect"
+            grade_label = "완벽한 돌파"
+        else:
+            grade = "partial"
+            grade_label = "부분 돌파"
+    else:
+        grade = "none"
+        grade_label = ""
+
+    return {
+        "detected": detected,
+        "grade": grade,
+        "grade_label": grade_label,
+        "conditions_met": conditions_met,
+        "detail": {
+            "vol_surge": vol_surge,
+            "vol_ratio": round(vol_ratio, 1),
+            "trend_aligned": trend_aligned,
+            "ma5_avg": round(ma5_ret, 2),
+            "ma20_avg": round(ma20_ret, 2),
+            "high_breakout": high_breakout,
+            "today_return": round(today_ret, 2),
+            "energy_ok": energy_ok,
+        },
+        "method": "returns_approx",
+    }
+
+
+def _detect_breakout_from_ohlc(candles: list, window_short: int = 20, window_long: int = 60) -> dict:
+    """
+    OHLC 캔들 데이터 기반 정밀 전고점 돌파 감지
+
+    [조건]
+    1. 거래량 급증: 금일 거래량 >= 20일 평균의 300%+ (시총 구간별 차등 불가 → 기본 300%)
+    2. 정배열: 종가 > MA5 > MA20 (정배열 초입)
+    3. 전고점 돌파: 종가 > 직전 20봉 최고가
+    4. 변동성/에너지: (고가 - 시가) / 시가 >= 7%
+    """
+    if not candles or len(candles) < 10:
+        return {"detected": False}
+
+    recent = candles[-window_short:] if len(candles) >= window_short else candles
+    today = recent[-1]
+    today_close = float(today.get("close", 0))
+    today_open = float(today.get("open", 0))
+    today_high = float(today.get("high", 0))
+    today_vol = float(today.get("volume", 0))
+
+    if today_close <= 0 or today_open <= 0:
+        return {"detected": False}
+
+    # (1) 거래량 급증
+    vol_list = [float(c.get("volume", 0)) for c in recent[:-1] if float(c.get("volume", 0)) > 0]
+    avg_vol = sum(vol_list) / len(vol_list) if vol_list else 0
+    vol_ratio = (today_vol / avg_vol) if avg_vol > 0 else 0
+    vol_surge = vol_ratio >= 3.0
+
+    # (2) 정배열: close > MA5 > MA20
+    closes = [float(c.get("close", 0)) for c in recent]
+    ma5 = sum(closes[-5:]) / min(len(closes[-5:]), 5) if len(closes) >= 5 else today_close
+    ma20 = sum(closes) / len(closes) if closes else today_close
+    trend_aligned = today_close > ma5 > ma20
+
+    # 보조: MA60 체크 (데이터 있으면)
+    if len(candles) >= window_long:
+        all_closes = [float(c.get("close", 0)) for c in candles[-window_long:]]
+        ma60 = sum(all_closes) / len(all_closes) if all_closes else 0
+        ma60_above = today_close > ma60
+    else:
+        ma60_above = True  # 데이터 부족 시 패스
+
+    # (3) 전고점 돌파: 종가 > 20봉 내 최고가
+    prev_highs = [float(c.get("high", 0)) for c in recent[:-1]]
+    recent_high = max(prev_highs) if prev_highs else 0
+    high_breakout = today_close > recent_high and recent_high > 0
+
+    # 보조: 60일 고점 돌파 여부
+    if len(candles) >= window_long:
+        long_highs = [float(c.get("high", 0)) for c in candles[-window_long:-1]]
+        long_high = max(long_highs) if long_highs else 0
+        long_breakout = today_close > long_high
+    else:
+        long_breakout = high_breakout
+
+    # (4) 에너지: (고가 - 시가) / 시가 >= 7%
+    intraday_range = ((today_high - today_open) / today_open) * 100 if today_open > 0 else 0
+    energy_ok = intraday_range >= 7.0
+
+    # 종합 판단
+    conditions_met = sum([vol_surge, trend_aligned, high_breakout, energy_ok])
+    detected = conditions_met >= 3
+
+    if detected:
+        if conditions_met == 4 and long_breakout and ma60_above:
+            grade = "perfect"
+            grade_label = "완벽한 돌파 (정배열+60일 고점)"
+        elif conditions_met == 4:
+            grade = "strong"
+            grade_label = "강력 돌파"
+        else:
+            grade = "partial"
+            grade_label = "부분 돌파"
+    else:
+        grade = "none"
+        grade_label = ""
+
+    return {
+        "detected": detected,
+        "grade": grade,
+        "grade_label": grade_label,
+        "conditions_met": conditions_met,
+        "detail": {
+            "vol_surge": vol_surge,
+            "vol_ratio": round(vol_ratio, 1),
+            "trend_aligned": trend_aligned,
+            "ma5": round(ma5, 0),
+            "ma20": round(ma20, 0),
+            "ma60_above": ma60_above,
+            "high_breakout": high_breakout,
+            "recent_high": round(recent_high, 0),
+            "long_breakout": long_breakout,
+            "today_close": round(today_close, 0),
+            "intraday_range_pct": round(intraday_range, 1),
+            "energy_ok": energy_ok,
+        },
+        "method": "ohlc_precise",
+        "date": today.get("date", ""),
+    }
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 전역 상태 (분석 진행률 + 결과 캐시)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -463,6 +655,9 @@ def _match_from_db_vectors(
         # ★ v10: DTW 구간 장대봉 패턴 감지 (양봉-음봉-양봉)
         surge_candle_info = _detect_surge_candle_pattern_from_returns(returns_full)
 
+        # ★ v11: 전고점 돌파 감지 (거래량 급증 + 정배열 + 고점 갱신)
+        breakout_info = _detect_breakout_from_returns(returns_full, volumes_full)
+
         # 시그널 판단
         if best_sim >= 65:
             signal = "🟢 강력 매수"
@@ -477,8 +672,10 @@ def _match_from_db_vectors(
             signal = "⬜ 미해당"
             signal_code = "none"
 
-        # ★ v10: 장대봉 패턴 감지 시 유사도 무관 무조건 포함
-        include = best_sim >= 35 or surge_candle_info.get("detected", False)
+        # ★ v10/v11: 장대봉 또는 돌파 감지 시 유사도 무관 무조건 포함
+        include = (best_sim >= 35
+                   or surge_candle_info.get("detected", False)
+                   or breakout_info.get("detected", False))
 
         if include:
             recommendations.append({
@@ -501,6 +698,10 @@ def _match_from_db_vectors(
                 # ★ v10: 장대봉 패턴 경보
                 "surge_candle_alert": surge_candle_info.get("detected", False),
                 "surge_candle_detail": surge_candle_info if surge_candle_info.get("detected") else None,
+                # ★ v11: 전고점 돌파 경보
+                "breakout_alert": breakout_info.get("detected", False),
+                "breakout_grade": breakout_info.get("grade", "none"),
+                "breakout_detail": breakout_info if breakout_info.get("detected") else None,
             })
 
         # 진행률 업데이트 (500개마다)
@@ -638,13 +839,20 @@ async def _match_realtime_fallback(
 
         # ★ v10: 장대봉 패턴 감지 (OHLC 정밀 모드 — fallback에서는 candle 데이터 보유)
         candle_dicts = [{"open": c.open, "high": c.high, "low": c.low, "close": c.close,
-                         "date": c.date} for c in candles[-10:]] if candles else []
-        surge_candle_info = _detect_surge_candle_pattern_from_ohlc(candle_dicts)
+                         "date": c.date, "volume": c.volume} for c in candles[-60:]] if candles else []
+        surge_candle_info = _detect_surge_candle_pattern_from_ohlc(candle_dicts[-10:])
         if not surge_candle_info.get("detected"):
             surge_candle_info = _detect_surge_candle_pattern_from_returns(current_returns)
 
-        # ★ v10: 장대봉 패턴 감지 시 유사도 무관 무조건 포함
-        include = best_sim >= 35 or surge_candle_info.get("detected", False)
+        # ★ v11: 전고점 돌파 감지 (OHLC 정밀 모드)
+        breakout_info = _detect_breakout_from_ohlc(candle_dicts)
+        if not breakout_info.get("detected"):
+            breakout_info = _detect_breakout_from_returns(current_returns, current_volumes)
+
+        # ★ v10/v11: 장대봉 또는 돌파 감지 시 유사도 무관 무조건 포함
+        include = (best_sim >= 35
+                   or surge_candle_info.get("detected", False)
+                   or breakout_info.get("detected", False))
 
         if include:
             recommendations.append({
@@ -662,6 +870,10 @@ async def _match_realtime_fallback(
                 # ★ v10: 장대봉 패턴 경보
                 "surge_candle_alert": surge_candle_info.get("detected", False),
                 "surge_candle_detail": surge_candle_info if surge_candle_info.get("detected") else None,
+                # ★ v11: 전고점 돌파 경보
+                "breakout_alert": breakout_info.get("detected", False),
+                "breakout_grade": breakout_info.get("grade", "none"),
+                "breakout_detail": breakout_info if breakout_info.get("detected") else None,
             })
 
     recommendations.sort(key=lambda r: r["similarity"], reverse=True)
@@ -1261,7 +1473,11 @@ async def scan_with_saved_patterns(req: PatternScanRequest):
 
                 # ★ v10: 장대봉 패턴 감지
                 surge_candle_info = _detect_surge_candle_pattern_from_returns(returns_raw)
-                include = best_sim >= req.min_similarity or surge_candle_info.get("detected", False)
+                # ★ v11: 전고점 돌파 감지
+                breakout_info = _detect_breakout_from_returns(returns_raw, volumes_raw)
+                include = (best_sim >= req.min_similarity
+                           or surge_candle_info.get("detected", False)
+                           or breakout_info.get("detected", False))
 
                 if include:
                     matches.append({
@@ -1277,6 +1493,10 @@ async def scan_with_saved_patterns(req: PatternScanRequest):
                         # ★ v10: 장대봉 패턴 경보
                         "surge_candle_alert": surge_candle_info.get("detected", False),
                         "surge_candle_detail": surge_candle_info if surge_candle_info.get("detected") else None,
+                        # ★ v11: 전고점 돌파 경보
+                        "breakout_alert": breakout_info.get("detected", False),
+                        "breakout_grade": breakout_info.get("grade", "none"),
+                        "breakout_detail": breakout_info if breakout_info.get("detected") else None,
                     })
             except Exception:
                 continue
