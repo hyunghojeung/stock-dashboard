@@ -2734,7 +2734,7 @@ function TabPatternLibrary({ patterns, loading, onRefresh, onDelete, onToggleAct
                   </div>
                 ))}
               </div>
-
+ 
               {/* 태그 + 날짜 */}
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:10, fontSize:10, color:COLORS.textDim }}>
                 <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
