@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import SwingBacktest from "./SwingBacktest";
 import PatternDetector from "./PatternDetector";
 import VirtualPortfolioTracker from "./VirtualPortfolioTracker";
+import DatabaseBackup from "./DatabaseBackup";
 // ============================================================
 // API Helper
 // ============================================================
@@ -485,6 +486,7 @@ const MENU=[
    {id:"swing",icon:"📊",label:"스윙백테스트"},
   {id:"pattern",icon:"🔍",label:"패턴탐지기"},
   {id:"virtual-portfolio",icon:"📊",label:"실시간 추적"},
+  {id:"backup",icon:"💾",label:"DB 백업"},
   {id:"settings",icon:"⚙️",label:"설정"},
 
 ];
@@ -531,6 +533,7 @@ export default function App() {
       case "strategy": return <StrategyPage/>;
       case "swing": return <SwingBacktest/>;
       case "settings": return <SettingsPage/>;
+      case "backup": return <DatabaseBackup/>;
       case "pattern": return <PatternDetector/>;
       case "virtual-portfolio": return <VirtualPortfolioTracker key={vpKey}/>;
       default: return <DashboardPage/>;
