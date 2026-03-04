@@ -2050,6 +2050,7 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
   const [recFilter, setRecFilter] = useState('all');
   const [excludeMa5Down, setExcludeMa5Down] = useState(true);
   const [requireMa5Above, setRequireMa5Above] = useState(true);
+  const [excludeGcExpired, setExcludeGcExpired] = useState(true);  // ★ v9: GC 5일 경과 제외
   const rawRecs = result.recommendations||[];
   const entrySummary = result.entry_summary || {};
   const scannedCount = result.scanned_candidates || rawRecs.length;
@@ -2059,6 +2060,7 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
   let recs = [...rawRecs];
   if (excludeMa5Down) recs = recs.filter(r => !r.ma5_declining);
   if (requireMa5Above) recs = recs.filter(r => r.ma5_above_ma20 !== false);
+  if (excludeGcExpired) recs = recs.filter(r => !(r.gc_days >= 5));  // ★ v9: GC 5일 경과 제외
   if (recFilter === 'early') recs = recs.filter(r => r.early_entry);
   else if (recFilter === 'auto_buy') recs = recs.filter(r => r.entry_grade === 'auto_buy');
   else if (recFilter === 'watch') recs = recs.filter(r => r.entry_grade === 'watch' || r.entry_grade === 'auto_buy');
@@ -2112,6 +2114,9 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
         <span style={{ color:'#10b981', fontWeight:700 }}>🟢 자동매수 {entrySummary.auto_buy||0}</span>
         <span style={{ color:'#f59e0b', fontWeight:700 }}>🟡 감시 {entrySummary.watch||0}</span>
         <span style={{ color:'#6b7280' }}>⬜ 보류 {entrySummary.hold||0}</span>
+        {rawRecs.filter(r => r.gc_days >= 5).length > 0 && (
+          <span style={{ color:'#ef4444', fontWeight:700 }}>⏰ GC경과 {rawRecs.filter(r => r.gc_days >= 5).length}</span>
+        )}
         {entrySummary.avg_composite_score > 0 && (
           <span style={{ color:COLORS.accent, marginLeft:'auto', fontSize:11 }}>
             평균 종합점수: <b>{entrySummary.avg_composite_score}</b>점
@@ -2144,6 +2149,13 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
           MA5{'>'}MA20
           {requireMa5Above && rawRecs.filter(r => r.ma5_above_ma20 === false).length > 0 && (
             <span style={{ color:'#ef4444', fontWeight:600 }}>(-{rawRecs.filter(r => r.ma5_above_ma20 === false).length})</span>
+          )}
+        </label>
+        <label style={{ display:'flex', alignItems:'center', gap:4, marginLeft:10, cursor:'pointer', fontSize:11, color: excludeGcExpired ? '#ef4444' : COLORS.textDim }}>
+          <input type="checkbox" checked={excludeGcExpired} onChange={e => setExcludeGcExpired(e.target.checked)} style={{ accentColor:'#ef4444' }} />
+          GC 5일 경과 제외
+          {excludeGcExpired && rawRecs.filter(r => r.gc_days >= 5).length > 0 && (
+            <span style={{ color:'#ef4444', fontWeight:600 }}>(-{rawRecs.filter(r => r.gc_days >= 5).length})</span>
           )}
         </label>
         <span style={{ fontSize:11, color:COLORS.textDim, marginLeft:12 }}>정렬:</span>
@@ -2240,6 +2252,15 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
                     background:'rgba(249,115,22,0.2)', color:'#f97316', border:'1px solid rgba(249,115,22,0.3)',
                     cursor:'help', whiteSpace:'nowrap',
                   }}>⚡ {Math.round((rec.pattern_progress||1)*100)}%</span>
+                )}
+                {rec.gc_days >= 0 && (
+                  <span title={`MA5>MA20 골든크로스 ${rec.gc_days}일 경과`} style={{
+                    fontSize:9, fontWeight:700, padding:'1px 5px', borderRadius:4,
+                    background: rec.gc_days >= 5 ? 'rgba(239,68,68,0.2)' : 'rgba(16,185,129,0.2)',
+                    color: rec.gc_days >= 5 ? '#ef4444' : '#10b981',
+                    border: `1px solid ${rec.gc_days >= 5 ? 'rgba(239,68,68,0.3)' : 'rgba(16,185,129,0.3)'}`,
+                    cursor:'help', whiteSpace:'nowrap',
+                  }}>GC+{rec.gc_days}일</span>
                 )}
               </div>
               <div style={{fontSize:11,color:COLORS.textDim}}>
@@ -2619,7 +2640,7 @@ function ScanStockChart({ candles, stock }) {
 
 function TabPatternLibrary({ patterns, loading, onRefresh, onDelete, onToggleActive, editingId, editingName, setEditingId, setEditingName, onSaveName, onScanWithPattern }) {
   if (loading) return <div style={{ textAlign:'center', padding:40, color:COLORS.textDim }}>⏳ 패턴 목록 로드 중...</div>;
- 
+
   return (<div>
     <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
       <div style={{ fontSize:15, fontWeight:700, color:'#8b5cf6' }}>📚 저장된 패턴 라이브러리</div>
