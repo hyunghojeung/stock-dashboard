@@ -383,7 +383,7 @@ export default function DatabaseBackup() {
           ))
         )}
       </div>
- 
+
       {/* 하단 안내 */}
       <div style={{ marginTop: 16, fontSize: 11, color: COLORS.textDim, lineHeight: 1.8 }}>
         <div>💡 <strong>ZIP 백업</strong>: 모든 테이블을 CSV로 변환하여 하나의 ZIP 파일로 다운로드</div>
