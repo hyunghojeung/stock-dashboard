@@ -539,7 +539,7 @@ export default function App() {
       default: return <DashboardPage/>;
     }
   };
-
+ 
   return (
     <div style={{minHeight:"100vh",background:"radial-gradient(ellipse at 30% 20%,rgba(14,24,50,1) 0%,rgba(8,12,24,1) 70%)",fontFamily:"'Noto Sans KR',sans-serif",color:"#e0e6f0",display:"flex"}}>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap');*{margin:0;padding:0;box-sizing:border-box;}::-webkit-scrollbar{width:6px;}::-webkit-scrollbar-track{background:rgba(10,18,40,0.5);}::-webkit-scrollbar-thumb{background:rgba(100,140,200,0.3);border-radius:3px;}`}</style>
