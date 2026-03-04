@@ -13,7 +13,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 
-const API_BASE = import.meta.env.VITE_API_URL || '';
+const API_BASE = "https://web-production-139e9.up.railway.app";
 
 const COLORS = {
   bg: '#0a0f1c', card: '#111827', cardBorder: 'rgba(100,140,200,0.12)',
