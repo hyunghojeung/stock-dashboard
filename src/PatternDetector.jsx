@@ -1986,16 +1986,78 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
   const [recChartLoading, setRecChartLoading] = useState(false);
   const [requireMa5Above, setRequireMa5Above] = useState(true);
   const [excludeGcExpired, setExcludeGcExpired] = useState(true);  // ★ v9: GC 5일 경과 제외
+  const [filterHyunmu, setFilterHyunmu] = useState(false);  // ★ 현무 (양음양 +-+) 필터
+  const [candleFilters, setCandleFilters] = useState({});  // code -> { ma5Declining, hyunmu }
+  const [candleLoading, setCandleLoading] = useState(false);
+  const candleFetchedRef = useRef(false);
   const rawRecs = result.recommendations||[];
   const entrySummary = result.entry_summary || {};
   const scannedCount = result.scanned_candidates || rawRecs.length;
   const analyzedCodes = result.analyzed_codes || [];
 
+  // ★ 일봉 기반 필터 계산 (MA5 하향 + 현무 패턴)
+  const computeCandleFilters = useCallback((candles) => {
+    const res = { ma5Declining: false, hyunmu: false };
+    if (!candles || candles.length < 5) return res;
+
+    // --- MA5 하향 계산: 5일 이동평균이 직전 최고점 대비 하향 ---
+    const ma5Values = [];
+    for (let i = 4; i < candles.length; i++) {
+      const sum = candles.slice(i - 4, i + 1).reduce((s, c) => s + c.close, 0);
+      ma5Values.push(sum / 5);
+    }
+    if (ma5Values.length >= 3) {
+      const recentMA5 = ma5Values.slice(-10);
+      const peakMA5 = Math.max(...recentMA5);
+      const currentMA5 = recentMA5[recentMA5.length - 1];
+      const prevMA5 = recentMA5[recentMA5.length - 2];
+      res.ma5Declining = currentMA5 < peakMA5 && currentMA5 < prevMA5;
+    }
+
+    // --- 현무 패턴 (양음양 +-+): 최근 30일 내 3연속 캔들 ---
+    const recent = candles.slice(-30);
+    for (let i = 0; i <= recent.length - 3; i++) {
+      const c1 = recent[i], c2 = recent[i + 1], c3 = recent[i + 2];
+      const isBullishPlus = (c) => c.close > c.open &&
+        ((c.close - c.open) / c.open >= 0.10 || (c.high - c.open) / c.open >= 0.15);
+      const isBearishPlus = (c) => c.close < c.open &&
+        ((c.open - c.close) / c.open >= 0.10 || (c.open - c.low) / c.open >= 0.15);
+      if (isBullishPlus(c1) && isBearishPlus(c2) && isBullishPlus(c3)) {
+        res.hyunmu = true;
+        break;
+      }
+    }
+    return res;
+  }, []);
+
+  // 일봉 데이터 가져와서 필터 계산
+  useEffect(() => {
+    if (rawRecs.length === 0 || candleFetchedRef.current) return;
+    candleFetchedRef.current = true;
+    setCandleLoading(true);
+    Promise.all(rawRecs.map(async (rec) => {
+      try {
+        const res = await fetch(`${API_BASE}/api/virtual-invest/candles/${rec.code}?count=60`);
+        const data = await res.json();
+        return { code: rec.code, ...computeCandleFilters(data.candles || []) };
+      } catch { return { code: rec.code, ma5Declining: false, hyunmu: false }; }
+    })).then(results => {
+      const map = {};
+      results.forEach(r => { map[r.code] = { ma5Declining: r.ma5Declining, hyunmu: r.hyunmu }; });
+      setCandleFilters(map);
+      setCandleLoading(false);
+    });
+  }, [rawRecs.length > 0]);  // eslint-disable-line react-hooks/exhaustive-deps
+
   // 필터 적용
   let recs = [...rawRecs];
-  if (excludeMa5Down) recs = recs.filter(r => !r.ma5_declining);
+  if (excludeMa5Down) recs = recs.filter(r => {
+    const cf = candleFilters[r.code];
+    return cf ? !cf.ma5Declining : !r.ma5_declining;  // 일봉 데이터 우선, 없으면 API 필드 fallback
+  });
   if (requireMa5Above) recs = recs.filter(r => r.ma5_above_ma20 !== false);
   if (excludeGcExpired) recs = recs.filter(r => !(r.gc_days >= 5));  // ★ v9: GC 5일 경과 제외
+  if (filterHyunmu) recs = recs.filter(r => candleFilters[r.code]?.hyunmu);
   if (recFilter === 'early') recs = recs.filter(r => r.early_entry);
   else if (recFilter === 'auto_buy') recs = recs.filter(r => r.entry_grade === 'auto_buy');
   else if (recFilter === 'watch') recs = recs.filter(r => r.entry_grade === 'watch' || r.entry_grade === 'auto_buy');
@@ -2094,9 +2156,11 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
         <label style={{ display:'flex', alignItems:'center', gap:4, marginLeft:10, cursor:'pointer', fontSize:11, color: excludeMa5Down ? '#f59e0b' : COLORS.textDim }}>
           <input type="checkbox" checked={excludeMa5Down} onChange={e => setExcludeMa5Down(e.target.checked)} style={{ accentColor:'#f59e0b' }} />
           MA5 하향 제외
-          {excludeMa5Down && rawRecs.filter(r => r.ma5_declining).length > 0 && (
-            <span style={{ color:'#ef4444', fontWeight:600 }}>(-{rawRecs.filter(r => r.ma5_declining).length})</span>
-          )}
+          {candleLoading && <span style={{ color:'#f59e0b', fontSize:9 }}>(계산중)</span>}
+          {excludeMa5Down && !candleLoading && (() => {
+            const cnt = rawRecs.filter(r => candleFilters[r.code]?.ma5Declining).length;
+            return cnt > 0 ? <span style={{ color:'#ef4444', fontWeight:600 }}>(-{cnt})</span> : null;
+          })()}
         </label>
         <label style={{ display:'flex', alignItems:'center', gap:4, marginLeft:10, cursor:'pointer', fontSize:11, color: requireMa5Above ? '#a78bfa' : COLORS.textDim }}>
           <input type="checkbox" checked={requireMa5Above} onChange={e => setRequireMa5Above(e.target.checked)} style={{ accentColor:'#a78bfa' }} />
@@ -2110,6 +2174,14 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
           GC 5일 경과 제외
           {excludeGcExpired && rawRecs.filter(r => r.gc_days >= 5).length > 0 && (
             <span style={{ color:'#ef4444', fontWeight:600 }}>(-{rawRecs.filter(r => r.gc_days >= 5).length})</span>
+          )}
+        </label>
+        <label style={{ display:'flex', alignItems:'center', gap:4, marginLeft:10, cursor:'pointer', fontSize:11, color: filterHyunmu ? '#4fc3f7' : COLORS.textDim }}>
+          <input type="checkbox" checked={filterHyunmu} onChange={e => setFilterHyunmu(e.target.checked)} style={{ accentColor:'#4fc3f7' }} />
+          🐢 현무
+          {candleLoading && <span style={{ color:'#4fc3f7', fontSize:9 }}>(계산중)</span>}
+          {!candleLoading && Object.keys(candleFilters).length > 0 && (
+            <span style={{ color:'#4fc3f7', fontWeight:600 }}>({rawRecs.filter(r => candleFilters[r.code]?.hyunmu).length})</span>
           )}
         </label>
         <span style={{ fontSize:11, color:COLORS.textDim, marginLeft:12 }}>정렬:</span>
