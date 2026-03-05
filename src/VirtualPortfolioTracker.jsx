@@ -875,6 +875,17 @@ function PortfolioDetail({ detail, updating, onUpdate, onClose, onDelete, onRena
                   <button onClick={() => { setTempName(pf.name); setEditingName(true); }}
                     style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 14, color: COLORS.textDim, padding: '2px 4px' }}
                     title="제목 수정">✏️</button>
+                  {/* 패턴명 뱃지 - 상세 제목 옆 */}
+                  {(() => {
+                    const pnames = [...new Set(positions.filter(p => p.pattern_name).map(p => p.pattern_name))];
+                    return pnames.map((pn, pi) => (
+                      <span key={pi} style={{
+                        fontSize: 11, padding: '2px 10px', borderRadius: 4, marginLeft: 4,
+                        background: 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.25)', color: '#8b5cf6',
+                        fontWeight: 600,
+                      }}>📚 {pn}</span>
+                    ));
+                  })()}
                 </>
               )}
             </h2>

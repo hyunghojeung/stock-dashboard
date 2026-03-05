@@ -831,7 +831,7 @@ async def start_realtime(
             per_stock = capital / num_stocks
 
             for stock in stocks[:MAX_POSITIONS]:
-                supabase.table("virtual_positions").insert({
+                pos_data = {
                     "session_id": session_id,
                     "strategy": "realtime",
                     "mode": "realtime",
@@ -844,7 +844,12 @@ async def start_realtime(
                     "take_profit_pct": take_profit_pct,
                     "stop_loss_pct": stop_loss_pct,
                     "max_hold_days": max_hold_days,
-                }).execute()
+                }
+                if stock.get("pattern_name"):
+                    pos_data["pattern_name"] = stock["pattern_name"]
+                if stock.get("pattern_id"):
+                    pos_data["pattern_id"] = stock["pattern_id"]
+                supabase.table("virtual_positions").insert(pos_data).execute()
 
             logger.info(f"[실시간모의] 시작: session={session_id}, 종목수={num_stocks}")
 

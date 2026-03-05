@@ -211,6 +211,8 @@ export default function PatternDetector() {
   const [newCompoundSeed, setNewCompoundSeed] = useState(100000);
   const [newCompoundGoal, setNewCompoundGoal] = useState(1000000000);
   const [regMode, setRegMode] = useState('portfolio'); // 'portfolio' | 'compound' | 'new-compound'
+  const [regPatternId, setRegPatternId] = useState(null);   // 등록 시 선택한 패턴 ID
+  const [regPatternName, setRegPatternName] = useState(''); // 등록 시 선택한 패턴명
 
   // ━━━ ★ 패턴 라이브러리 상태 ━━━
   const [savingPattern, setSavingPattern] = useState(null); // 저장 중 클러스터 인덱스
@@ -342,13 +344,27 @@ export default function PatternDetector() {
     const today = new Date();
     const dateStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
     setRegTitle(source === 'patternScan' ? `패턴스캔_${dateStr}` : dateStr);
+    // 패턴 스캔에서 온 경우, 이미 매칭된 패턴명을 자동 선택
+    if (source === 'patternScan') {
+      const matches = (patternScanResult?.matches || []).filter(r => selectedPatternStocks.has(r.code));
+      const firstPatternName = matches.find(m => m.matched_pattern_name)?.matched_pattern_name || '';
+      const firstPatternId = matches.find(m => m.matched_pattern_id)?.matched_pattern_id || null;
+      setRegPatternId(firstPatternId);
+      setRegPatternName(firstPatternName);
+    } else {
+      setRegPatternId(null);
+      setRegPatternName('');
+    }
     setShowRegModal(true);
-    // 복리 그룹 목록 로드
+    // 복리 그룹 목록 + 패턴 라이브러리 동시 로드
     try {
-      const res = await fetch(`${API_BASE}/api/virtual-portfolio/compound/list`);
-      const data = await res.json();
-      if (data.success) setCompoundGroups(data.groups || []);
-    } catch(e) { console.error('복리 그룹 로드 실패:', e); }
+      const [compRes] = await Promise.all([
+        fetch(`${API_BASE}/api/virtual-portfolio/compound/list`),
+        savedPatterns.length === 0 ? fetchSavedPatterns() : Promise.resolve(),
+      ]);
+      const compData = await compRes.json();
+      if (compData.success) setCompoundGroups(compData.groups || []);
+    } catch(e) { console.error('모달 데이터 로드 실패:', e); }
   };
 
   const doRegisterVirtual = async () => {
@@ -375,8 +391,8 @@ export default function PatternDetector() {
         code: s.code || '', name: s.name || '',
         buy_price: s.current_price || 0, current_price: s.current_price || 0,
         similarity: s.similarity || 0, signal: s.signal || '',
-        pattern_id: s.matched_pattern_id || null,
-        pattern_name: s.matched_pattern_name || null,
+        pattern_id: s.matched_pattern_id || regPatternId || null,
+        pattern_name: s.matched_pattern_name || regPatternName || null,
       }));
 
       let data;
@@ -1374,6 +1390,41 @@ export default function PatternDetector() {
               </div>
             )}
 
+            {/* ★ 적용 패턴 선택 (필수) */}
+            <div style={{ marginBottom:16 }}>
+              <div style={{ fontSize:12, color: regPatternName ? '#9ca3af' : '#ff9800', marginBottom:8, display:'flex', alignItems:'center', gap:6 }}>
+                📚 적용 패턴 <span style={{ fontSize:10, color:'#ff9800' }}>필수</span>
+                {regPatternName && <span style={{
+                  fontSize:10, padding:'2px 8px', borderRadius:4,
+                  background:'rgba(139,92,246,0.15)', border:'1px solid rgba(139,92,246,0.25)', color:'#8b5cf6', fontWeight:600,
+                }}>✓ {regPatternName}</span>}
+              </div>
+              <div style={{ display:'flex', flexWrap:'wrap', gap:6, maxHeight:120, overflowY:'auto', padding:4 }}>
+                {(savedPatterns || []).filter(p => p.is_active).length === 0 ? (
+                  <div style={{ fontSize:11, color:'#6b7280', padding:10 }}>
+                    활성화된 패턴이 없습니다. 패턴 라이브러리에서 패턴을 먼저 등록하세요.
+                  </div>
+                ) : (
+                  (savedPatterns || []).filter(p => p.is_active).map(p => (
+                    <button key={p.id} onClick={() => { setRegPatternId(p.id); setRegPatternName(p.name); }} style={{
+                      padding:'6px 12px', borderRadius:8, cursor:'pointer', fontSize:11, fontFamily:'inherit',
+                      border: regPatternId === p.id ? '2px solid #8b5cf6' : '1px solid #1e293b',
+                      background: regPatternId === p.id ? 'rgba(139,92,246,0.2)' : '#0d1321',
+                      color: regPatternId === p.id ? '#a78bfa' : '#9ca3af',
+                      fontWeight: regPatternId === p.id ? 700 : 400,
+                    }}>
+                      {regPatternId === p.id ? '✓ ' : ''}{p.name}
+                    </button>
+                  ))
+                )}
+              </div>
+              {!regPatternName && (
+                <div style={{ fontSize:10, color:'#ff9800', marginTop:4 }}>
+                  ⚠️ 패턴을 선택해야 등록할 수 있습니다
+                </div>
+              )}
+            </div>
+
             {/* 전략 선택 */}
             <div style={{ marginBottom:16 }}>
               <div style={{ fontSize:12, color:'#9ca3af', marginBottom:8 }}>매매 전략</div>
@@ -1452,12 +1503,12 @@ export default function PatternDetector() {
                   background:'transparent', border:'1px solid #374151', color:'#9ca3af',
                 }}>취소</button>
               <button onClick={doRegisterVirtual}
-                disabled={regLoading || (regMode === 'compound' && !selectedCompound)}
+                disabled={regLoading || !regPatternName || (regMode === 'compound' && !selectedCompound)}
                 style={{
                   padding:'10px 28px', borderRadius:8, cursor:'pointer', fontSize:14, fontWeight:700, fontFamily:'inherit',
-                  background: regLoading ? '#374151' : regMode === 'portfolio' ? '#10b981' : '#ff9800',
-                  border:'none', color: regLoading ? '#6b7280' : 'white',
-                  opacity: (regMode === 'compound' && !selectedCompound) ? 0.5 : 1,
+                  background: regLoading || !regPatternName ? '#374151' : regMode === 'portfolio' ? '#10b981' : '#ff9800',
+                  border:'none', color: regLoading || !regPatternName ? '#6b7280' : 'white',
+                  opacity: (!regPatternName || (regMode === 'compound' && !selectedCompound)) ? 0.5 : 1,
                 }}>{regLoading ? '⏳ 등록 중...' :
                     regMode === 'new-compound' ? '🔄 복리 그룹 생성 + 등록' :
                     regMode === 'compound' ? `🔄 ${selectedCompound?.current_round || '?'}회차 등록` :
