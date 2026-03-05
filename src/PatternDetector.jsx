@@ -1980,6 +1980,10 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
   const [recSortDir, setRecSortDir] = useState('desc');
   const [recFilter, setRecFilter] = useState('all');
   const [excludeMa5Down, setExcludeMa5Down] = useState(true);
+  // ★ 차트 토글 상태
+  const [recChartCode, setRecChartCode] = useState(null);
+  const [recChartCandles, setRecChartCandles] = useState([]);
+  const [recChartLoading, setRecChartLoading] = useState(false);
   const [requireMa5Above, setRequireMa5Above] = useState(true);
   const [excludeGcExpired, setExcludeGcExpired] = useState(true);  // ★ v9: GC 5일 경과 제외
   const rawRecs = result.recommendations||[];
@@ -2030,11 +2034,30 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
     return { text: '⬜ 보류', color: '#6b7280', bg: 'rgba(107,114,128,0.1)' };
   };
 
+  // ★ 차트 데이터 로드
+  const fetchRecChart = async (rec) => {
+    if (recChartCode === rec.code) {
+      setRecChartCode(null); setRecChartCandles([]); return;
+    }
+    setRecChartCode(rec.code);
+    setRecChartLoading(true);
+    setRecChartCandles([]);
+    try {
+      const res = await fetch(`${API_BASE}/api/virtual-invest/candles/${rec.code}?count=120`);
+      const data = await res.json();
+      setRecChartCandles(data.candles || []);
+    } catch (e) {
+      console.error('추천종목 차트 로드 실패:', e);
+    } finally {
+      setRecChartLoading(false);
+    }
+  };
+
   return (<div>
     {/* 스캔 정보 헤더 */}
     <div style={{ marginBottom:12, padding:'10px 14px', borderRadius:8, background:'rgba(79,195,247,0.08)', border:'1px solid rgba(79,195,247,0.2)', fontSize:12, color:COLORS.accent, lineHeight:1.6 }}>
       🔍 전종목 DB에서 <span style={{fontWeight:700,color:'#4fc3f7'}}>{scannedCount}개</span> 종목을 스캔하여,
-      분석 대상({analyzedCodes.length}개)을 <span style={{fontWeight:700,color:'#ff6b6b'}}>제외</span>한 유사 패턴 종목입니다.
+      분석 대상({analyzedCodes.length}개) <span style={{fontWeight:700,color:'#10b981'}}>포함</span> 유사 패턴 종목입니다.
     </div>
 
     {/* ★ v5: 진입 품질 요약 */}
@@ -2139,8 +2162,8 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
 
     {recs.length===0 ? <div style={{textAlign:'center',padding:40,color:COLORS.textDim}}>유사 패턴 종목이 발견되지 않았습니다.<br/><span style={{fontSize:11}}>클러스터가 없거나 DB에 종목이 부족합니다.</span></div> : (
       <div style={{ background:COLORS.card, border:`1px solid ${COLORS.cardBorder}`, borderRadius:12, overflow:'hidden' }}>
-        <div style={{ display:'grid', gridTemplateColumns:'36px 1fr 80px 70px 70px 74px 74px', padding:'12px 14px', fontSize:11, color:COLORS.textDim, fontWeight:600, borderBottom:`1px solid ${COLORS.cardBorder}`, background:'#0d1321' }}>
-          <span></span><span>종목</span><span style={{textAlign:'right'}}>현재가</span><span style={{textAlign:'center'}}>유사도</span><span style={{textAlign:'center'}}>진입점수</span><span style={{textAlign:'center'}}>종합</span><span style={{textAlign:'center'}}>등급</span>
+        <div style={{ display:'grid', gridTemplateColumns:'36px 1fr 80px 70px 70px 74px 74px 40px', padding:'12px 14px', fontSize:11, color:COLORS.textDim, fontWeight:600, borderBottom:`1px solid ${COLORS.cardBorder}`, background:'#0d1321' }}>
+          <span></span><span>종목</span><span style={{textAlign:'right'}}>현재가</span><span style={{textAlign:'center'}}>유사도</span><span style={{textAlign:'center'}}>진입점수</span><span style={{textAlign:'center'}}>종합</span><span style={{textAlign:'center'}}>등급</span><span></span>
         </div>
         {recs.map((rec,i) => {
           const isSelected = selectedRecStocks.has(rec.code);
@@ -2151,11 +2174,13 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
           const csColor = cs >= 75 ? '#10b981' : cs >= 60 ? '#f59e0b' : '#6b7280';
           const es = rec.entry_score || 0;
           const esColor = es >= 70 ? '#10b981' : es >= 50 ? '#f59e0b' : '#6b7280';
-          return (<div key={i}
+          const isChartOpen = recChartCode === rec.code;
+          return (<React.Fragment key={rec.code||i}>
+          <div
             onClick={() => toggleRec(rec.code)}
             style={{
-              display:'grid', gridTemplateColumns:'36px 1fr 80px 70px 70px 74px 74px', padding:'10px 14px', alignItems:'center',
-              borderBottom:`1px solid ${COLORS.cardBorder}`,
+              display:'grid', gridTemplateColumns:'36px 1fr 80px 70px 70px 74px 74px 40px', padding:'10px 14px', alignItems:'center',
+              borderBottom: isChartOpen ? 'none' : `1px solid ${COLORS.cardBorder}`,
               background: isSelected ? 'rgba(16,185,129,0.08)' : i%2===0?'transparent':'rgba(255,255,255,0.02)',
               cursor:'pointer', transition:'background 0.15s',
             }}
@@ -2206,7 +2231,26 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
             <div style={{textAlign:'center',fontSize:12,fontWeight:700,color:esColor}}>{es > 0 ? `${es.toFixed(0)}` : '-'}</div>
             <div style={{textAlign:'center',fontSize:13,fontWeight:700,color:csColor}}>{cs > 0 ? `${cs.toFixed(0)}` : '-'}</div>
             <div style={{textAlign:'center'}}><span style={{fontSize:10,fontWeight:600,padding:'2px 6px',borderRadius:4,background:gl.bg,color:gl.color,whiteSpace:'nowrap'}}>{gl.text}</span></div>
-          </div>);
+            {/* ★ 차트 버튼 */}
+            <div style={{ textAlign:'center' }}>
+              <button onClick={(e) => { e.stopPropagation(); fetchRecChart(rec); }}
+                style={{ background: isChartOpen ? 'rgba(79,195,247,0.2)' : 'transparent', border: isChartOpen ? '1px solid rgba(79,195,247,0.4)' : '1px solid rgba(100,140,200,0.15)', borderRadius:6, padding:'3px 6px', cursor:'pointer', fontSize:13, color: isChartOpen ? '#4fc3f7' : COLORS.textDim, transition:'all 0.15s' }}
+                title="일봉 차트 보기">📊</button>
+            </div>
+          </div>
+          {/* ★ 차트 확장 영역 */}
+          {isChartOpen && (
+            <div style={{ padding:'12px 14px 16px', borderBottom:`1px solid ${COLORS.cardBorder}`, background:'rgba(8,15,30,0.6)' }}>
+              {recChartLoading ? (
+                <div style={{ textAlign:'center', padding:30, color:COLORS.textDim, fontSize:13 }}>📊 차트 데이터 로딩 중...</div>
+              ) : recChartCandles.length > 0 ? (
+                <ScanStockChart candles={recChartCandles} stock={{ code: rec.code, name: rec.name, latest_surge_date: rec.signal_date || '' }} />
+              ) : (
+                <div style={{ textAlign:'center', padding:30, color:COLORS.textDim, fontSize:13 }}>차트 데이터가 없습니다.</div>
+              )}
+            </div>
+          )}
+          </React.Fragment>);
         })}
       </div>
     )}
