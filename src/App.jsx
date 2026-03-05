@@ -542,36 +542,44 @@ export default function App() {
  
   return (
     <div style={{minHeight:"100vh",background:"radial-gradient(ellipse at 30% 20%,rgba(14,24,50,1) 0%,rgba(8,12,24,1) 70%)",fontFamily:"'Noto Sans KR',sans-serif",color:"#e0e6f0",display:"flex"}}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700&family=JetBrains+Mono:wght@400;600;700&family=Orbitron:wght@400;500;600;700;800;900&display=swap');*{margin:0;padding:0;box-sizing:border-box;}::-webkit-scrollbar{width:6px;}::-webkit-scrollbar-track{background:rgba(10,18,40,0.5);}::-webkit-scrollbar-thumb{background:rgba(100,140,200,0.3);border-radius:3px;}@keyframes arcGlow{0%,100%{opacity:0.6;filter:drop-shadow(0 0 4px rgba(200,50,50,0.4))}50%{opacity:1;filter:drop-shadow(0 0 10px rgba(255,80,60,0.8))}}@keyframes reactorPulse{0%,100%{box-shadow:0 0 8px rgba(100,200,255,0.4),0 0 20px rgba(100,200,255,0.15)}50%{box-shadow:0 0 14px rgba(100,200,255,0.7),0 0 35px rgba(100,200,255,0.3)}}`}</style>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700&family=JetBrains+Mono:wght@400;600;700&family=Orbitron:wght@400;500;600;700;800;900&display=swap');*{margin:0;padding:0;box-sizing:border-box;}::-webkit-scrollbar{width:6px;}::-webkit-scrollbar-track{background:rgba(10,18,40,0.5);}::-webkit-scrollbar-thumb{background:rgba(100,140,200,0.3);border-radius:3px;}@keyframes arcGlow{0%,100%{opacity:0.7;filter:drop-shadow(0 0 8px rgba(100,200,255,0.6))}50%{opacity:1;filter:drop-shadow(0 0 20px rgba(100,220,255,1))}}@keyframes reactorPulse{0%,100%{box-shadow:0 0 15px rgba(100,200,255,0.5),0 0 40px rgba(100,200,255,0.25),0 0 60px rgba(100,200,255,0.1)}50%{box-shadow:0 0 25px rgba(100,220,255,0.9),0 0 55px rgba(100,200,255,0.5),0 0 80px rgba(100,200,255,0.2)}}`}</style>
       {/* Sidebar */}
       <div style={{width:sideOpen?200:60,background:"rgba(8,14,30,0.95)",borderRight:"1px solid rgba(100,140,200,0.1)",display:"flex",flexDirection:"column",transition:"width 0.2s",flexShrink:0}}>
         <div style={{padding:sideOpen?"16px 16px 12px":"16px 8px 12px",cursor:"pointer"}} onClick={()=>setSideOpen(!sideOpen)}>
           {sideOpen ? (
             <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
-              <div style={{position:'relative',display:'flex',alignItems:'center',justifyContent:'center'}}>
+              <div style={{position:'relative',display:'flex',alignItems:'center',justifyContent:'center',marginBottom:4}}>
                 {/* Arc reactor glow background */}
-                <div style={{position:'absolute',width:40,height:40,borderRadius:'50%',background:'radial-gradient(circle,rgba(100,200,255,0.15) 0%,transparent 70%)',animation:'reactorPulse 3s ease-in-out infinite'}}/>
-                <svg width="44" height="44" viewBox="0 0 44 44" style={{position:'relative',zIndex:1}}>
-                  <circle cx="22" cy="22" r="18" fill="none" stroke="rgba(200,60,50,0.5)" strokeWidth="1.5" style={{animation:'arcGlow 3s ease-in-out infinite'}}/>
-                  <circle cx="22" cy="22" r="14" fill="none" stroke="rgba(200,60,50,0.3)" strokeWidth="0.8"/>
-                  <circle cx="22" cy="22" r="6" fill="rgba(100,200,255,0.15)" stroke="rgba(100,200,255,0.6)" strokeWidth="1"/>
-                  <circle cx="22" cy="22" r="2.5" fill="rgba(100,200,255,0.8)"/>
-                  {[0,60,120,180,240,300].map((a,i)=><line key={i} x1={22+8*Math.cos(a*Math.PI/180)} y1={22+8*Math.sin(a*Math.PI/180)} x2={22+13*Math.cos(a*Math.PI/180)} y2={22+13*Math.sin(a*Math.PI/180)} stroke="rgba(100,200,255,0.4)" strokeWidth="1.2"/>)}
+                <div style={{position:'absolute',width:80,height:80,borderRadius:'50%',background:'radial-gradient(circle,rgba(100,210,255,0.3) 0%,rgba(100,200,255,0.1) 40%,transparent 70%)',animation:'reactorPulse 2.5s ease-in-out infinite'}}/>
+                <svg width="72" height="72" viewBox="0 0 72 72" style={{position:'relative',zIndex:1}}>
+                  <defs>
+                    <radialGradient id="coreGlow"><stop offset="0%" stopColor="rgba(180,230,255,0.9)"/><stop offset="100%" stopColor="rgba(100,200,255,0)"/></radialGradient>
+                  </defs>
+                  <circle cx="36" cy="36" r="32" fill="none" stroke="rgba(100,200,255,0.35)" strokeWidth="1" style={{animation:'arcGlow 2.5s ease-in-out infinite'}}/>
+                  <circle cx="36" cy="36" r="27" fill="none" stroke="rgba(100,200,255,0.5)" strokeWidth="1.5" style={{animation:'arcGlow 2.5s ease-in-out infinite'}}/>
+                  <circle cx="36" cy="36" r="22" fill="none" stroke="rgba(100,200,255,0.3)" strokeWidth="1"/>
+                  <circle cx="36" cy="36" r="10" fill="url(#coreGlow)" stroke="rgba(100,220,255,0.8)" strokeWidth="1.5"/>
+                  <circle cx="36" cy="36" r="4" fill="rgba(180,240,255,0.95)"/>
+                  {[0,60,120,180,240,300].map((a,i)=><line key={i} x1={36+13*Math.cos(a*Math.PI/180)} y1={36+13*Math.sin(a*Math.PI/180)} x2={36+21*Math.cos(a*Math.PI/180)} y2={36+21*Math.sin(a*Math.PI/180)} stroke="rgba(100,220,255,0.5)" strokeWidth="1.8" strokeLinecap="round"/>)}
+                  {[30,90,150,210,270,330].map((a,i)=><line key={i} x1={36+24*Math.cos(a*Math.PI/180)} y1={36+24*Math.sin(a*Math.PI/180)} x2={36+26*Math.cos(a*Math.PI/180)} y2={36+26*Math.sin(a*Math.PI/180)} stroke="rgba(100,200,255,0.3)" strokeWidth="1"/>)}
                 </svg>
               </div>
-              <div style={{fontFamily:"'Orbitron',sans-serif",fontWeight:800,fontSize:20,letterSpacing:4,background:'linear-gradient(180deg,#ff4444 0%,#cc2200 50%,#881100 100%)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',textShadow:'none',filter:'drop-shadow(0 0 8px rgba(255,60,40,0.4))',lineHeight:1}}>MARK I</div>
+              <div style={{fontFamily:"'Orbitron',sans-serif",fontWeight:800,fontSize:22,letterSpacing:5,background:'linear-gradient(180deg,#ffd700 0%,#f0a500 30%,#c8860a 60%,#a06a00 100%)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',textShadow:'none',filter:'drop-shadow(0 0 10px rgba(255,200,50,0.5))',lineHeight:1}}>MARK Ⅰ</div>
               <div style={{fontFamily:"'Orbitron',sans-serif",fontWeight:400,fontSize:8,letterSpacing:6,color:'rgba(100,200,255,0.6)',textTransform:'uppercase',marginTop:1}}>Ver 1.0</div>
-              <div style={{width:'80%',height:1,background:'linear-gradient(90deg,transparent,rgba(200,60,50,0.4),transparent)',marginTop:4}}/>
+              <div style={{width:'80%',height:1,background:'linear-gradient(90deg,transparent,rgba(255,200,50,0.4),transparent)',marginTop:4}}/>
               <div style={{fontFamily:"'Noto Sans KR',sans-serif",fontSize:9,color:'rgba(180,180,200,0.5)',letterSpacing:1,marginTop:2}}>매매 패턴 분석 투자</div>
             </div>
           ) : (
             <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
-              <svg width="28" height="28" viewBox="0 0 44 44">
-                <circle cx="22" cy="22" r="18" fill="none" stroke="rgba(200,60,50,0.5)" strokeWidth="1.5" style={{animation:'arcGlow 3s ease-in-out infinite'}}/>
-                <circle cx="22" cy="22" r="6" fill="rgba(100,200,255,0.15)" stroke="rgba(100,200,255,0.6)" strokeWidth="1"/>
-                <circle cx="22" cy="22" r="2.5" fill="rgba(100,200,255,0.8)"/>
-              </svg>
-              <div style={{fontFamily:"'Orbitron',sans-serif",fontWeight:800,fontSize:7,color:'#cc3322',letterSpacing:1}}>MK I</div>
+              <div style={{position:'relative',display:'flex',alignItems:'center',justifyContent:'center'}}>
+                <div style={{position:'absolute',width:38,height:38,borderRadius:'50%',background:'radial-gradient(circle,rgba(100,210,255,0.25) 0%,transparent 70%)',animation:'reactorPulse 2.5s ease-in-out infinite'}}/>
+                <svg width="34" height="34" viewBox="0 0 72 72" style={{position:'relative',zIndex:1}}>
+                  <circle cx="36" cy="36" r="27" fill="none" stroke="rgba(100,200,255,0.5)" strokeWidth="2" style={{animation:'arcGlow 2.5s ease-in-out infinite'}}/>
+                  <circle cx="36" cy="36" r="10" fill="rgba(100,210,255,0.2)" stroke="rgba(100,220,255,0.7)" strokeWidth="1.5"/>
+                  <circle cx="36" cy="36" r="4" fill="rgba(180,240,255,0.9)"/>
+                </svg>
+              </div>
+              <div style={{fontFamily:"'Orbitron',sans-serif",fontWeight:800,fontSize:7,color:'#f0a500',letterSpacing:1}}>MK Ⅰ</div>
             </div>
           )}
         </div>
