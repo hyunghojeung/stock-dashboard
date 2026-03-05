@@ -2034,7 +2034,7 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
     {/* 스캔 정보 헤더 */}
     <div style={{ marginBottom:12, padding:'10px 14px', borderRadius:8, background:'rgba(79,195,247,0.08)', border:'1px solid rgba(79,195,247,0.2)', fontSize:12, color:COLORS.accent, lineHeight:1.6 }}>
       🔍 전종목 DB에서 <span style={{fontWeight:700,color:'#4fc3f7'}}>{scannedCount}개</span> 종목을 스캔하여,
-      분석 대상({analyzedCodes.length}개)을 <span style={{fontWeight:700,color:'#ff6b6b'}}>제외</span>한 유사 패턴 종목입니다.
+      분석 대상({analyzedCodes.length}개) <span style={{fontWeight:700,color:'#10b981'}}>포함</span> 유사 패턴 종목입니다.
     </div>
 
     {/* ★ v5: 진입 품질 요약 */}

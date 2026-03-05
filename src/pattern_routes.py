@@ -10,7 +10,7 @@ GET  /api/pattern/result    — 결과 조회
 POST /api/pattern/search    — 종목 검색
 
 ★ v2 수정사항: 매수 추천을 전종목 DB에서 스캔하여
-  분석 대상이 아닌 "다른 종목" 중 유사 패턴 보유 종목을 추천
+  분석 대상 포함 전체 종목 중 유사 패턴 보유 종목을 추천
 """
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
@@ -204,7 +204,7 @@ async def _scan_recommendations(
 
     Args:
         clusters_dicts: 분석 결과의 클러스터 (dict 형태)
-        analyzed_codes: 분석 대상 종목 코드 (제외 대상)
+        analyzed_codes: 분석 대상 종목 코드 (참고용, 제외하지 않음)
         pre_days: 패턴 분석 일수
         progress_callback: 진행률 콜백
         max_candidates: 최대 후보 종목 수 (fallback 전용)
@@ -276,10 +276,6 @@ def _match_from_db_vectors(
     for idx, row in enumerate(pattern_rows):
         code = row.get("code", "")
         name = row.get("name", code)
-
-        # 분석 대상 종목 제외
-        if code in analyzed_codes:
-            continue
 
         # 벡터 파싱
         try:
@@ -422,7 +418,7 @@ async def _match_realtime_fallback(
     # ── 비주식 종목 필터링 ──
     from app.services.stock_pattern_collector import is_regular_stock
     filtered = [s for s in all_stocks if is_regular_stock(s)]
-    candidates = [s for s in filtered if s["code"] not in analyzed_codes]
+    candidates = filtered  # 분석 대상 포함 — 자기 패턴 반복도 감지
 
     # ── 샘플링 ──
     if len(candidates) > max_candidates:
