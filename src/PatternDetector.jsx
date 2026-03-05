@@ -2690,111 +2690,182 @@ function ScanStockChart({ candles, stock }) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function TabPatternLibrary({ patterns, loading, onRefresh, onDelete, onToggleActive, editingId, editingName, setEditingId, setEditingName, onSaveName, onScanWithPattern }) {
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [deleting, setDeleting] = useState(false);
+
+  const toggleSelect = (id) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const toggleSelectAll = () => {
+    if (selectedIds.size === patterns.length) setSelectedIds(new Set());
+    else setSelectedIds(new Set(patterns.map(p => p.id)));
+  };
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`선택한 ${selectedIds.size}개 패턴을 삭제하시겠습니까?`)) return;
+    setDeleting(true);
+    try {
+      for (const id of selectedIds) {
+        await fetch(`${API_BASE}/api/pattern/library/${id}`, { method: 'DELETE' });
+      }
+      setSelectedIds(new Set());
+      onRefresh();
+    } catch (e) { alert('삭제 실패: ' + e.message); }
+    setDeleting(false);
+  };
+
   if (loading) return <div style={{ textAlign:'center', padding:40, color:COLORS.textDim }}>⏳ 패턴 목록 로드 중...</div>;
 
   return (<div>
-    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
-      <div style={{ fontSize:15, fontWeight:700, color:'#8b5cf6' }}>📚 저장된 패턴 라이브러리</div>
-      <button onClick={onRefresh} style={{ padding:'6px 14px', fontSize:11, fontWeight:600, borderRadius:8,
-        border:'1px solid #8b5cf6', background:'rgba(139,92,246,0.12)', color:'#8b5cf6', cursor:'pointer' }}>
-        🔄 새로고침
-      </button>
+    {/* 헤더 바 */}
+    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
+      <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+        <div style={{ fontSize:14, fontWeight:700, color:'#8b5cf6' }}>📚 저장된 패턴 라이브러리</div>
+        {patterns.length > 0 && (
+          <label style={{ display:'flex', alignItems:'center', gap:4, fontSize:11, color:COLORS.textDim, cursor:'pointer' }}>
+            <input type="checkbox" checked={selectedIds.size === patterns.length && patterns.length > 0}
+              onChange={toggleSelectAll} style={{ accentColor:'#8b5cf6', width:13, height:13 }} />
+            전체선택
+          </label>
+        )}
+      </div>
+      <div style={{ display:'flex', gap:6 }}>
+        {selectedIds.size > 0 && (
+          <button onClick={handleBulkDelete} disabled={deleting}
+            style={{ padding:'4px 12px', fontSize:11, fontWeight:600, borderRadius:6,
+              border:'1px solid #ef4444', background:'rgba(239,68,68,0.15)', color:'#ef4444', cursor:'pointer' }}>
+            {deleting ? '삭제 중...' : `🗑 선택 삭제 (${selectedIds.size})`}
+          </button>
+        )}
+        <button onClick={onRefresh} style={{ padding:'4px 12px', fontSize:11, fontWeight:600, borderRadius:6,
+          border:'1px solid #8b5cf6', background:'rgba(139,92,246,0.12)', color:'#8b5cf6', cursor:'pointer' }}>
+          🔄 새로고침
+        </button>
+      </div>
     </div>
 
     {patterns.length === 0 ? (
-      <div style={{ textAlign:'center', padding:50, color:COLORS.textDim }}>
-        <div style={{ fontSize:48, marginBottom:16 }}>📚</div>
-        <div style={{ fontSize:14, fontWeight:600, marginBottom:8 }}>저장된 패턴이 없습니다</div>
-        <div style={{ fontSize:12 }}>공통 패턴 탭에서 클러스터를 분석한 후 "💾 패턴 저장" 버튼으로 저장하세요</div>
+      <div style={{ textAlign:'center', padding:40, color:COLORS.textDim }}>
+        <div style={{ fontSize:36, marginBottom:10 }}>📚</div>
+        <div style={{ fontSize:13, fontWeight:600, marginBottom:4 }}>저장된 패턴이 없습니다</div>
+        <div style={{ fontSize:11 }}>공통 패턴 탭에서 클러스터를 분석한 후 "💾 패턴 저장" 버튼으로 저장하세요</div>
       </div>
     ) : (
-      <div style={{ display:'grid', gap:12 }}>
+      <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+        {/* 테이블 헤더 */}
+        <div style={{ display:'grid', gridTemplateColumns:'28px 1fr 80px 50px 50px 48px 48px 48px 48px 60px 90px',
+          gap:0, padding:'4px 8px', fontSize:10, color:COLORS.textDim, fontWeight:600, borderBottom:`1px solid ${COLORS.cardBorder}` }}>
+          <div></div><div>패턴명</div><div style={{textAlign:'center'}}>등락률</div><div style={{textAlign:'center'}}>상승</div>
+          <div style={{textAlign:'center'}}>기간</div><div style={{textAlign:'center'}}>종목</div><div style={{textAlign:'center'}}>유사도</div>
+          <div style={{textAlign:'center'}}>매매</div><div style={{textAlign:'center'}}>승률</div><div style={{textAlign:'center'}}>수익</div>
+          <div style={{textAlign:'right'}}>액션</div>
+        </div>
+
         {patterns.map((p) => {
           const winRate = p.total_trades > 0 ? ((p.win_trades / p.total_trades) * 100).toFixed(0) : '-';
           const avgProfit = p.total_trades > 0 ? (p.total_profit_pct / p.total_trades).toFixed(1) : '-';
           const isEditing = editingId === p.id;
+          const isSelected = selectedIds.has(p.id);
 
           return (
-            <div key={p.id} style={{ background:COLORS.card, border:`1px solid ${p.is_active ? 'rgba(139,92,246,0.3)' : COLORS.cardBorder}`,
-              borderRadius:12, padding:16, opacity: p.is_active ? 1 : 0.55, transition:'all 0.2s' }}>
+            <div key={p.id} style={{ display:'grid', gridTemplateColumns:'28px 1fr 80px 50px 50px 48px 48px 48px 48px 60px 90px',
+              gap:0, alignItems:'center', padding:'6px 8px',
+              background: isSelected ? 'rgba(139,92,246,0.08)' : COLORS.card,
+              border:`1px solid ${isSelected ? 'rgba(139,92,246,0.4)' : p.is_active ? 'rgba(139,92,246,0.15)' : COLORS.cardBorder}`,
+              borderRadius:8, opacity: p.is_active ? 1 : 0.55, transition:'all 0.15s', fontSize:12 }}>
 
-              {/* 헤더: 이름 + 버튼 */}
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10, gap:10 }}>
-                <div style={{ flex:1, minWidth:0 }}>
-                  {isEditing ? (
-                    <div style={{ display:'flex', gap:6 }}>
-                      <input value={editingName} onChange={e => setEditingName(e.target.value)}
-                        style={{ flex:1, padding:'4px 8px', fontSize:13, fontWeight:600, background:'#1a2234',
-                          border:'1px solid #8b5cf6', borderRadius:6, color:COLORS.text, outline:'none' }}
-                        onKeyDown={e => { if (e.key === 'Enter') onSaveName(p.id); if (e.key === 'Escape') setEditingId(null); }} />
-                      <button onClick={() => onSaveName(p.id)} style={{ padding:'4px 10px', fontSize:11, borderRadius:6,
-                        border:'1px solid #10b981', background:'rgba(16,185,129,0.12)', color:'#10b981', cursor:'pointer' }}>✓</button>
-                    </div>
-                  ) : (
-                    <div style={{ fontSize:14, fontWeight:700, color:COLORS.text, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', cursor:'pointer' }}
-                      onClick={() => { setEditingId(p.id); setEditingName(p.name); }}>
+              {/* 체크박스 */}
+              <div><input type="checkbox" checked={isSelected} onChange={() => toggleSelect(p.id)}
+                style={{ accentColor:'#8b5cf6', width:14, height:14, cursor:'pointer' }} /></div>
+
+              {/* 패턴명 */}
+              <div style={{ minWidth:0, paddingRight:6 }}>
+                {isEditing ? (
+                  <div style={{ display:'flex', gap:4 }}>
+                    <input value={editingName} onChange={e => setEditingName(e.target.value)}
+                      style={{ flex:1, padding:'2px 6px', fontSize:12, fontWeight:600, background:'#1a2234',
+                        border:'1px solid #8b5cf6', borderRadius:4, color:COLORS.text, outline:'none', minWidth:0 }}
+                      onKeyDown={e => { if (e.key === 'Enter') onSaveName(p.id); if (e.key === 'Escape') setEditingId(null); }} />
+                    <button onClick={() => onSaveName(p.id)} style={{ padding:'2px 6px', fontSize:10, borderRadius:4,
+                      border:'1px solid #10b981', background:'rgba(16,185,129,0.12)', color:'#10b981', cursor:'pointer', flexShrink:0 }}>✓</button>
+                  </div>
+                ) : (
+                  <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                    <div style={{ fontSize:12, fontWeight:600, color:COLORS.text, overflow:'hidden', textOverflow:'ellipsis',
+                      whiteSpace:'nowrap', cursor:'pointer', flex:1, minWidth:0 }}
+                      onClick={() => { setEditingId(p.id); setEditingName(p.name); }} title={p.name}>
                       {p.name}
                     </div>
-                  )}
-                </div>
-                <div style={{ display:'flex', gap:6, flexShrink:0 }}>
-                  <button onClick={() => onToggleActive(p.id, p.is_active)} title={p.is_active ? '비활성화' : '활성화'}
-                    style={{ padding:'4px 10px', fontSize:11, borderRadius:6, cursor:'pointer',
-                      border:`1px solid ${p.is_active ? '#10b981' : '#6b7280'}`,
-                      background: p.is_active ? 'rgba(16,185,129,0.12)' : 'rgba(107,114,128,0.12)',
-                      color: p.is_active ? '#10b981' : '#6b7280' }}>
-                    {p.is_active ? '✅ 활성' : '⬜ 비활성'}
-                  </button>
-                  <button onClick={() => onScanWithPattern(p.id)} title="이 패턴으로 스캔"
-                    style={{ padding:'4px 10px', fontSize:11, borderRadius:6, cursor:'pointer',
-                      border:'1px solid #3b82f6', background:'rgba(59,130,246,0.12)', color:'#3b82f6' }}>
-                    🔍 스캔
-                  </button>
-                  <button onClick={() => onDelete(p.id)} title="삭제"
-                    style={{ padding:'4px 10px', fontSize:11, borderRadius:6, cursor:'pointer',
-                      border:'1px solid #ef4444', background:'rgba(239,68,68,0.08)', color:'#ef4444' }}>
-                    🗑
-                  </button>
-                </div>
-              </div>
-
-              {/* 설명 */}
-              {p.description && (
-                <div style={{ fontSize:12, color:COLORS.textDim, marginBottom:10, padding:8, background:'#0d1321',
-                  borderRadius:6, lineHeight:1.5, maxHeight:60, overflow:'hidden' }}>{p.description}</div>
-              )}
-
-              {/* 미니 차트 */}
-              {p.avg_return_flow?.length > 0 && <MiniReturnChart returns={p.avg_return_flow} label="등락률 흐름" />}
-
-              {/* 통계 그리드 */}
-              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(80px, 1fr))', gap:8, marginTop:10 }}>
-                {[
-                  { label:'평균 상승', value: p.avg_rise_pct ? `+${p.avg_rise_pct.toFixed(1)}%` : '-', color:COLORS.red },
-                  { label:'평균 기간', value: p.avg_rise_days ? `${p.avg_rise_days.toFixed(0)}일` : '-', color:COLORS.text },
-                  { label:'소속 종목', value: `${p.member_count || 0}개`, color:COLORS.accent },
-                  { label:'유사도', value: p.avg_similarity ? `${p.avg_similarity.toFixed(0)}%` : '-', color:'#4fc3f7' },
-                  { label:'사용 횟수', value: `${p.use_count || 0}회`, color:COLORS.textDim },
-                  { label:'매매 수', value: `${p.total_trades || 0}건`, color:'#8b5cf6' },
-                  { label:'승률', value: winRate !== '-' ? `${winRate}%` : '-', color: parseFloat(winRate) >= 50 ? COLORS.green : COLORS.red },
-                  { label:'평균 수익', value: avgProfit !== '-' ? `${avgProfit}%` : '-', color: parseFloat(avgProfit) >= 0 ? COLORS.green : COLORS.red },
-                ].map((s, si) => (
-                  <div key={si} style={{ textAlign:'center', padding:'6px 4px', background:'rgba(255,255,255,0.02)', borderRadius:6 }}>
-                    <div style={{ fontSize:10, color:COLORS.textDim, marginBottom:2 }}>{s.label}</div>
-                    <div style={{ fontSize:13, fontWeight:700, color:s.color }}>{s.value}</div>
+                    {p.description && (
+                      <span title={p.description} style={{ fontSize:9, color:COLORS.textDim, flexShrink:0 }}>💬</span>
+                    )}
+                    <span style={{ fontSize:9, color:COLORS.textDim, flexShrink:0 }}>{p.created_at ? new Date(p.created_at).toLocaleDateString('ko') : ''}</span>
                   </div>
-                ))}
+                )}
               </div>
 
-              {/* 태그 + 날짜 */}
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:10, fontSize:10, color:COLORS.textDim }}>
-                <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
-                  {(p.tags || []).map((t, ti) => (
-                    <span key={ti} style={{ padding:'2px 8px', borderRadius:10, background:'rgba(139,92,246,0.12)',
-                      border:'1px solid rgba(139,92,246,0.25)', color:'#8b5cf6' }}>{t}</span>
-                  ))}
-                </div>
-                <span>{p.created_at ? new Date(p.created_at).toLocaleDateString('ko') : ''}</span>
+              {/* 미니 등락률 차트 (인라인) */}
+              <div style={{ height:20, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                {p.avg_return_flow?.length > 0 ? (
+                  <svg width={70} height={18} viewBox={`0 0 ${p.avg_return_flow.length} 18`} preserveAspectRatio="none">
+                    {p.avg_return_flow.map((v, i) => {
+                      const maxAbs = Math.max(...p.avg_return_flow.map(Math.abs), 1);
+                      const h = Math.max(1, Math.abs(v) / maxAbs * 8);
+                      return <rect key={i} x={i} y={v >= 0 ? 9-h : 9} width={0.8} height={h}
+                        fill={v >= 0 ? '#ef4444' : '#3b82f6'} opacity={0.8} />;
+                    })}
+                  </svg>
+                ) : <span style={{ color:COLORS.textDim, fontSize:9 }}>-</span>}
+              </div>
+
+              {/* 통계 칼럼들 */}
+              <div style={{ textAlign:'center', fontWeight:700, color:COLORS.red, fontSize:11 }}>
+                {p.avg_rise_pct ? `+${p.avg_rise_pct.toFixed(1)}%` : '-'}
+              </div>
+              <div style={{ textAlign:'center', color:COLORS.text, fontSize:11 }}>
+                {p.avg_rise_days ? `${p.avg_rise_days.toFixed(0)}일` : '-'}
+              </div>
+              <div style={{ textAlign:'center', color:COLORS.accent, fontSize:11 }}>
+                {p.member_count || 0}
+              </div>
+              <div style={{ textAlign:'center', color:'#4fc3f7', fontSize:11 }}>
+                {p.avg_similarity ? `${p.avg_similarity.toFixed(0)}%` : '-'}
+              </div>
+              <div style={{ textAlign:'center', color:'#8b5cf6', fontSize:11 }}>
+                {p.total_trades || 0}
+              </div>
+              <div style={{ textAlign:'center', fontWeight:600, fontSize:11,
+                color: winRate !== '-' && parseFloat(winRate) >= 50 ? COLORS.green : winRate !== '-' ? COLORS.red : COLORS.textDim }}>
+                {winRate !== '-' ? `${winRate}%` : '-'}
+              </div>
+              <div style={{ textAlign:'center', fontWeight:600, fontSize:11,
+                color: avgProfit !== '-' && parseFloat(avgProfit) >= 0 ? COLORS.green : avgProfit !== '-' ? COLORS.red : COLORS.textDim }}>
+                {avgProfit !== '-' ? `${avgProfit}%` : '-'}
+              </div>
+
+              {/* 액션 버튼 */}
+              <div style={{ display:'flex', gap:3, justifyContent:'flex-end' }}>
+                <button onClick={() => onToggleActive(p.id, p.is_active)} title={p.is_active ? '비활성화' : '활성화'}
+                  style={{ padding:'2px 5px', fontSize:10, borderRadius:4, cursor:'pointer', lineHeight:1,
+                    border:`1px solid ${p.is_active ? '#10b981' : '#6b7280'}`,
+                    background: p.is_active ? 'rgba(16,185,129,0.12)' : 'rgba(107,114,128,0.12)',
+                    color: p.is_active ? '#10b981' : '#6b7280' }}>
+                  {p.is_active ? '활성' : '비활성'}
+                </button>
+                <button onClick={() => onScanWithPattern(p.id)} title="스캔"
+                  style={{ padding:'2px 5px', fontSize:10, borderRadius:4, cursor:'pointer', lineHeight:1,
+                    border:'1px solid #3b82f6', background:'rgba(59,130,246,0.12)', color:'#3b82f6' }}>
+                  🔍
+                </button>
+                <button onClick={() => onDelete(p.id)} title="삭제"
+                  style={{ padding:'2px 5px', fontSize:10, borderRadius:4, cursor:'pointer', lineHeight:1,
+                    border:'1px solid #ef4444', background:'rgba(239,68,68,0.08)', color:'#ef4444' }}>
+                  🗑
+                </button>
               </div>
             </div>
           );
