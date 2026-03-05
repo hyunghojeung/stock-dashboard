@@ -542,10 +542,39 @@ export default function App() {
  
   return (
     <div style={{minHeight:"100vh",background:"radial-gradient(ellipse at 30% 20%,rgba(14,24,50,1) 0%,rgba(8,12,24,1) 70%)",fontFamily:"'Noto Sans KR',sans-serif",color:"#e0e6f0",display:"flex"}}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap');*{margin:0;padding:0;box-sizing:border-box;}::-webkit-scrollbar{width:6px;}::-webkit-scrollbar-track{background:rgba(10,18,40,0.5);}::-webkit-scrollbar-thumb{background:rgba(100,140,200,0.3);border-radius:3px;}`}</style>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700&family=JetBrains+Mono:wght@400;600;700&family=Orbitron:wght@400;500;600;700;800;900&display=swap');*{margin:0;padding:0;box-sizing:border-box;}::-webkit-scrollbar{width:6px;}::-webkit-scrollbar-track{background:rgba(10,18,40,0.5);}::-webkit-scrollbar-thumb{background:rgba(100,140,200,0.3);border-radius:3px;}@keyframes arcGlow{0%,100%{opacity:0.6;filter:drop-shadow(0 0 4px rgba(200,50,50,0.4))}50%{opacity:1;filter:drop-shadow(0 0 10px rgba(255,80,60,0.8))}}@keyframes reactorPulse{0%,100%{box-shadow:0 0 8px rgba(100,200,255,0.4),0 0 20px rgba(100,200,255,0.15)}50%{box-shadow:0 0 14px rgba(100,200,255,0.7),0 0 35px rgba(100,200,255,0.3)}}`}</style>
       {/* Sidebar */}
       <div style={{width:sideOpen?200:60,background:"rgba(8,14,30,0.95)",borderRight:"1px solid rgba(100,140,200,0.1)",display:"flex",flexDirection:"column",transition:"width 0.2s",flexShrink:0}}>
-        <div style={{padding:sideOpen?"16px 16px 12px":"16px 8px 12px",cursor:"pointer"}} onClick={()=>setSideOpen(!sideOpen)}>{sideOpen?<span style={{color:"#ffd54f",fontWeight:700,fontSize:15}}>💰 10억 만들기</span>:<span style={{fontSize:20}}>💰</span>}</div>
+        <div style={{padding:sideOpen?"16px 16px 12px":"16px 8px 12px",cursor:"pointer"}} onClick={()=>setSideOpen(!sideOpen)}>
+          {sideOpen ? (
+            <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
+              <div style={{position:'relative',display:'flex',alignItems:'center',justifyContent:'center'}}>
+                {/* Arc reactor glow background */}
+                <div style={{position:'absolute',width:40,height:40,borderRadius:'50%',background:'radial-gradient(circle,rgba(100,200,255,0.15) 0%,transparent 70%)',animation:'reactorPulse 3s ease-in-out infinite'}}/>
+                <svg width="44" height="44" viewBox="0 0 44 44" style={{position:'relative',zIndex:1}}>
+                  <circle cx="22" cy="22" r="18" fill="none" stroke="rgba(200,60,50,0.5)" strokeWidth="1.5" style={{animation:'arcGlow 3s ease-in-out infinite'}}/>
+                  <circle cx="22" cy="22" r="14" fill="none" stroke="rgba(200,60,50,0.3)" strokeWidth="0.8"/>
+                  <circle cx="22" cy="22" r="6" fill="rgba(100,200,255,0.15)" stroke="rgba(100,200,255,0.6)" strokeWidth="1"/>
+                  <circle cx="22" cy="22" r="2.5" fill="rgba(100,200,255,0.8)"/>
+                  {[0,60,120,180,240,300].map((a,i)=><line key={i} x1={22+8*Math.cos(a*Math.PI/180)} y1={22+8*Math.sin(a*Math.PI/180)} x2={22+13*Math.cos(a*Math.PI/180)} y2={22+13*Math.sin(a*Math.PI/180)} stroke="rgba(100,200,255,0.4)" strokeWidth="1.2"/>)}
+                </svg>
+              </div>
+              <div style={{fontFamily:"'Orbitron',sans-serif",fontWeight:800,fontSize:20,letterSpacing:4,background:'linear-gradient(180deg,#ff4444 0%,#cc2200 50%,#881100 100%)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',textShadow:'none',filter:'drop-shadow(0 0 8px rgba(255,60,40,0.4))',lineHeight:1}}>MARK I</div>
+              <div style={{fontFamily:"'Orbitron',sans-serif",fontWeight:400,fontSize:8,letterSpacing:6,color:'rgba(100,200,255,0.6)',textTransform:'uppercase',marginTop:1}}>Ver 1.0</div>
+              <div style={{width:'80%',height:1,background:'linear-gradient(90deg,transparent,rgba(200,60,50,0.4),transparent)',marginTop:4}}/>
+              <div style={{fontFamily:"'Noto Sans KR',sans-serif",fontSize:9,color:'rgba(180,180,200,0.5)',letterSpacing:1,marginTop:2}}>매매 패턴 분석 투자</div>
+            </div>
+          ) : (
+            <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
+              <svg width="28" height="28" viewBox="0 0 44 44">
+                <circle cx="22" cy="22" r="18" fill="none" stroke="rgba(200,60,50,0.5)" strokeWidth="1.5" style={{animation:'arcGlow 3s ease-in-out infinite'}}/>
+                <circle cx="22" cy="22" r="6" fill="rgba(100,200,255,0.15)" stroke="rgba(100,200,255,0.6)" strokeWidth="1"/>
+                <circle cx="22" cy="22" r="2.5" fill="rgba(100,200,255,0.8)"/>
+              </svg>
+              <div style={{fontFamily:"'Orbitron',sans-serif",fontWeight:800,fontSize:7,color:'#cc3322',letterSpacing:1}}>MK I</div>
+            </div>
+          )}
+        </div>
         <div style={{borderBottom:"1px solid rgba(100,140,200,0.1)",margin:"0 8px 8px"}}/>
         {MENU.map(m=><div key={m.id} onClick={()=>{setPage(m.id);if(m.id==='virtual-portfolio')setVpKey(k=>k+1);}} style={{padding:sideOpen?"10px 16px":"10px 0",cursor:"pointer",background:page===m.id?"rgba(26,58,110,0.6)":"transparent",borderRadius:6,margin:"1px 6px",color:page===m.id?"#64b5f6":"#6688aa",fontSize:13,textAlign:sideOpen?"left":"center",transition:"background 0.15s"}}>{m.icon}{sideOpen?` ${m.label}`:""}</div>)}
         <div style={{flex:1}}/>
@@ -556,7 +585,9 @@ export default function App() {
       {/* Main */}
       <div style={{flex:1,display:"flex",flexDirection:"column",minWidth:0}}>
         <div style={{background:"rgba(8,14,30,0.9)",borderBottom:"1px solid rgba(100,140,200,0.1)",padding:"10px 20px",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
-          <div style={{color:"#e0e6f0",fontWeight:600,fontSize:15}}>{MENU.find(m=>m.id===page)?.icon} {MENU.find(m=>m.id===page)?.label}</div>
+          <div style={{display:'flex',alignItems:'center',gap:12}}>
+            <div style={{color:"#e0e6f0",fontWeight:600,fontSize:15}}>{MENU.find(m=>m.id===page)?.icon} {MENU.find(m=>m.id===page)?.label}</div>
+          </div>
           <Clock/>
         </div>
         <div style={{background:"rgba(10,16,32,0.8)",borderBottom:"1px solid rgba(100,140,200,0.1)",padding:"0 20px",display:"flex",gap:0,flexShrink:0}}>
