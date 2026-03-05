@@ -401,6 +401,7 @@ export default function PatternDetector() {
         smart:        { tp:15, sl:12, days:30, trailing:5, grace:7 },
       };
       const p = presetDefs[regPreset] || presetDefs.smart;
+      const filtersPayload = regActiveFilters.map(f => ({ label: f.label, color: f.color }));
       const stocksList = selRecs.map(s => ({
         code: s.code || '', name: s.name || '',
         buy_price: s.current_price || 0, current_price: s.current_price || 0,
@@ -421,6 +422,7 @@ export default function PatternDetector() {
             goal_amount: newCompoundGoal,
             strategy: regPreset,
             stocks: stocksList,
+            filters: filtersPayload,
           }),
         });
         data = await res.json();
@@ -434,6 +436,7 @@ export default function PatternDetector() {
             preset: regPreset,
             take_profit_pct: p.tp, stop_loss_pct: p.sl,
             max_hold_days: p.days, trailing_stop_pct: p.trailing, grace_days: p.grace,
+            filters: filtersPayload,
           }),
         });
         data = await res.json();
@@ -447,6 +450,7 @@ export default function PatternDetector() {
           preset: regPreset,
           take_profit_pct: p.tp, stop_loss_pct: p.sl,
           max_hold_days: p.days, trailing_stop_pct: p.trailing, grace_days: p.grace,
+          filters: filtersPayload,
         };
         const res = await fetch(`${API_BASE}/api/virtual-invest/realtime/start`, {
           method:'POST', headers:{'Content-Type':'application/json'},
@@ -457,13 +461,22 @@ export default function PatternDetector() {
 
       if (data.error) { alert('등록 실패: ' + data.error); }
       else {
+        // ★ 필터 정보를 localStorage에 저장 (포트폴리오 ID 기반)
+        const pfId = data.session_id || data.portfolio_id || null;
+        if (pfId && filtersPayload.length > 0) {
+          try {
+            const saved = JSON.parse(localStorage.getItem('portfolioFilters') || '{}');
+            saved[pfId] = filtersPayload;
+            localStorage.setItem('portfolioFilters', JSON.stringify(saved));
+          } catch(e) { console.log('필터 캐시 저장 실패:', e); }
+        }
         setShowRegModal(false);
         if (regSource === 'patternScan') {
           setSelectedPatternStocks(new Set());
         } else {
           setSelectedRecStocks(new Set());
         }
-        setNewRtSessionId(data.session_id || data.portfolio_id || null);
+        setNewRtSessionId(pfId);
         setActiveTab(3);
         alert(data.message || '등록 완료!');
       }
