@@ -376,7 +376,7 @@ export default function PatternDetector() {
         buy_price: s.current_price || 0, current_price: s.current_price || 0,
         similarity: s.similarity || 0, signal: s.signal || '',
         pattern_id: s.matched_pattern_id || null,
-        pattern_name: s.matched_pattern_name || null,
+        pattern_name: s.matched_pattern_name || s.signal || null,
       }));
 
       let data;
