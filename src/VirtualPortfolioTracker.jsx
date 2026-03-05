@@ -561,6 +561,13 @@ function PortfolioList({ portfolios, loading, onSelect, onRefresh, onRename, onB
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [refreshing, setRefreshing] = useState(false);
   const [refreshProgress, setRefreshProgress] = useState('');
+
+  // ★ 포트폴리오별 필터 정보 로드 (localStorage + API 필드)
+  const [pfFiltersCache] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('portfolioFilters') || '{}'); }
+    catch { return {}; }
+  });
+  const getFilters = (pf) => pf.filters || pfFiltersCache[pf.id] || [];
   if (loading) {
     return (
       <div>
@@ -770,6 +777,17 @@ function PortfolioList({ portfolios, loading, onSelect, onRefresh, onRename, onB
                             }}>📚 {pn}</span>
                           ));
                         })()}
+                        {/* ★ 적용된 필터 뱃지 */}
+                        {(() => {
+                          const filters = getFilters(pf);
+                          return filters.length > 0 ? filters.map((f, fi) => (
+                            <span key={`f${fi}`} style={{
+                              fontSize: 9, padding: '1px 6px', borderRadius: 4, marginLeft: 3,
+                              background: `${f.color}18`, border: `1px solid ${f.color}40`, color: f.color,
+                              fontWeight: 600, verticalAlign: 'middle',
+                            }}>{f.label}</span>
+                          )) : null;
+                        })()}
                       </>
                     )}
                   </div>
@@ -884,6 +902,17 @@ function PortfolioDetail({ detail, updating, onUpdate, onClose, onDelete, onRena
                         background: 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.25)', color: '#8b5cf6',
                         fontWeight: 600,
                       }}>📚 {pn}</span>
+                    ));
+                  })()}
+                  {/* ★ 적용된 필터 뱃지 - 상세 */}
+                  {(() => {
+                    const filters = pf.filters || (() => { try { return JSON.parse(localStorage.getItem('portfolioFilters') || '{}')[pf.id] || []; } catch { return []; } })();
+                    return filters.map((f, fi) => (
+                      <span key={`f${fi}`} style={{
+                        fontSize: 10, padding: '2px 8px', borderRadius: 4, marginLeft: 3,
+                        background: `${f.color}18`, border: `1px solid ${f.color}40`, color: f.color,
+                        fontWeight: 600,
+                      }}>{f.label}</span>
                     ));
                   })()}
                 </>
