@@ -213,6 +213,7 @@ export default function PatternDetector() {
   const [regMode, setRegMode] = useState('portfolio'); // 'portfolio' | 'compound' | 'new-compound'
   const [regPatternId, setRegPatternId] = useState(null);   // 등록 시 선택한 패턴 ID
   const [regPatternName, setRegPatternName] = useState(''); // 등록 시 선택한 패턴명
+  const [regActiveFilters, setRegActiveFilters] = useState([]);  // ★ 등록 모달에 표시할 적용된 필터 목록
 
   // ━━━ ★ 패턴 라이브러리 상태 ━━━
   const [savingPattern, setSavingPattern] = useState(null); // 저장 중 클러스터 인덱스
@@ -349,10 +350,11 @@ export default function PatternDetector() {
     setPatternScanning(false);
   };
 
-  const openRegModal = async (source = 'recommend') => {
+  const openRegModal = async (source = 'recommend', filters = []) => {
     const hasStocks = source === 'patternScan' ? selectedPatternStocks.size > 0 : selectedRecStocks.size > 0;
     if (!hasStocks) return;
     setRegSource(source);
+    setRegActiveFilters(filters);
     const today = new Date();
     const dateStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
     setRegTitle(source === 'patternScan' ? `패턴스캔_${dateStr}` : dateStr);
@@ -1476,6 +1478,26 @@ export default function PatternDetector() {
               </div>
             )}
 
+            {/* ★ 적용된 필터 표시 */}
+            {regActiveFilters.length > 0 && (
+              <div style={{
+                marginBottom:16, padding:'10px 14px', borderRadius:8,
+                background:'rgba(79,195,247,0.06)', border:'1px solid rgba(79,195,247,0.15)',
+              }}>
+                <div style={{ fontSize:11, color:'#4fc3f7', marginBottom:8, fontWeight:600 }}>
+                  🔍 적용된 필터 ({regActiveFilters.length}개)
+                </div>
+                <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+                  {regActiveFilters.map((f, i) => (
+                    <span key={i} style={{
+                      fontSize:10, padding:'3px 10px', borderRadius:6, fontWeight:600,
+                      background:`${f.color}18`, border:`1px solid ${f.color}40`, color:f.color,
+                    }}>{f.label}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* 선택 종목 표시 */}
             {(() => {
               const isPatternScan = regSource === 'patternScan';
@@ -2089,6 +2111,34 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
     }
   };
 
+  // ★ 현재 적용된 필터 정보 수집
+  const getActiveFilters = () => {
+    const filters = [];
+    if (recFilter !== 'all') {
+      const labels = { early: '⚡ 조기진입', auto_buy: '🟢 자동매수', watch: '🟡 감시이상' };
+      filters.push({ label: labels[recFilter] || recFilter, color: recFilter === 'early' ? '#f97316' : recFilter === 'auto_buy' ? '#10b981' : '#f59e0b' });
+    }
+    if (excludeMa5Down) {
+      const cnt = rawRecs.filter(r => candleFilters[r.code]?.ma5Declining).length;
+      filters.push({ label: `MA5 하향 제외 (-${cnt})`, color: '#f59e0b' });
+    }
+    if (requireMa5Above) {
+      const cnt = rawRecs.filter(r => r.ma5_above_ma20 === false).length;
+      filters.push({ label: `MA5>MA20 (-${cnt})`, color: '#a78bfa' });
+    }
+    if (excludeGcExpired) {
+      const cnt = rawRecs.filter(r => r.gc_days >= 5).length;
+      filters.push({ label: `GC 5일 경과 제외 (-${cnt})`, color: '#ef4444' });
+    }
+    if (filterHyunmu) {
+      const cnt = rawRecs.filter(r => candleFilters[r.code]?.hyunmu).length;
+      filters.push({ label: `🐢 현무 (${cnt}개)`, color: '#4fc3f7' });
+    }
+    return filters;
+  };
+
+  const handleRegister = () => onRegister('recommend', getActiveFilters());
+
   // 진입등급 뱃지 렌더러
   const gradeLabel = (grade) => {
     if (grade === 'auto_buy') return { text: '🟢 자동매수', color: '#10b981', bg: 'rgba(16,185,129,0.15)' };
@@ -2219,7 +2269,7 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
           </span>
         </div>
         <button
-          onClick={onRegister}
+          onClick={handleRegister}
           disabled={selectedRecStocks.size === 0}
           style={{
             padding:'8px 20px', fontSize:13, fontWeight:600, borderRadius:8,
@@ -2341,7 +2391,7 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
             return `${r.name}(${g.text.split(' ')[1]||'보류'})`;
           }).join(', ')}
         </div>
-        <button onClick={onRegister} style={{
+        <button onClick={handleRegister} style={{
           padding:'10px 24px', fontSize:14, fontWeight:700, borderRadius:8,
           border:'none', cursor:'pointer', background:COLORS.green, color:COLORS.white,
         }}>💰 가상투자 등록 →</button>
