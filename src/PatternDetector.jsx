@@ -245,12 +245,24 @@ export default function PatternDetector() {
   const saveClusterPattern = async (cluster, clusterIndex) => {
     setSavingPattern(clusterIndex);
     try {
-      // ★ v8: 기존 저장된 패턴에서 최대 번호 추출 → +1 (중복 방지)
+      // ★ v9: 서버에서 최신 패턴 목록을 가져와 최대 번호 추출 → +1 (종목 변경 시에도 번호 계속 증가)
       let maxNum = 0;
-      (savedPatterns || []).forEach(p => {
-        const m = (p.name || '').match(/패턴\s*#(\d+)/);
-        if (m) maxNum = Math.max(maxNum, parseInt(m[1], 10));
-      });
+      try {
+        const freshRes = await fetch(`${API_BASE}/api/pattern/library/list`);
+        const freshData = await freshRes.json();
+        if (freshData.success) {
+          (freshData.patterns || []).forEach(p => {
+            const m = (p.name || '').match(/패턴\s*#(\d+)/);
+            if (m) maxNum = Math.max(maxNum, parseInt(m[1], 10));
+          });
+        }
+      } catch (_) {
+        // 서버 조회 실패 시 로컬 state fallback
+        (savedPatterns || []).forEach(p => {
+          const m = (p.name || '').match(/패턴\s*#(\d+)/);
+          if (m) maxNum = Math.max(maxNum, parseInt(m[1], 10));
+        });
+      }
       const nextNum = maxNum + 1;
 
       const body = {
