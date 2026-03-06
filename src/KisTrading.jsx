@@ -340,10 +340,15 @@ function ConfigPanel({ mode = 'virtual', onConnect }) {
           </div>
         </div>
         <div style={{ marginBottom:12 }}>
-          <label style={S.label}>계좌번호</label>
+          <label style={S.label}>계좌번호 (8자리-2자리, 예: 44044840-01)</label>
           <input style={{ ...S.input, maxWidth:300 }} value={acctNo} onChange={e => setAcctNo(e.target.value)} placeholder="00000000-01" />
+          {acctNo && acctNo.replace(/-/g, "").length < 10 && (
+            <div style={{ color: "#ff9800", fontSize: 11, marginTop: 4 }}>
+              ⚠️ 계좌번호는 10자리 (8자리+상품코드2자리)를 입력해주세요. 예: {acctNo.replace(/-/g, "")}-01
+            </div>
+          )}
         </div>
-        <button onClick={connect} disabled={connecting || !appKey || !appSecret || !acctNo}
+        <button onClick={connect} disabled={connecting || !appKey || !appSecret || !acctNo || acctNo.replace(/-/g, "").length < 10}
           style={{ ...S.btn(isV ? "#1a5a3e" : "#5a1a1a"), padding:"8px 20px", fontSize:12, opacity: connecting ? 0.6 : 1 }}>
           {connecting ? "연결 중..." : hasToken ? "재연결" : "연결하기"}
         </button>
