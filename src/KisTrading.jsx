@@ -22,12 +22,18 @@ function saveKisCredentials(creds) {
 async function kisApi(route, params = {}, options = {}) {
   try {
     const creds = getKisCredentials();
+    console.log("[KIS]", route, "token:", creds.access_token ? "yes" : "NO", "appkey:", creds.app_key ? "yes" : "NO", "creds_keys:", Object.keys(creds));
     const url = new URL("/api/kis", window.location.origin);
-    // Route identifier + extra params as query string
+    // Route + credentials + extra params all as query string
     url.searchParams.set("_route", route);
+    if (creds.app_key) url.searchParams.set("_ak", creds.app_key);
+    if (creds.app_secret) url.searchParams.set("_as", creds.app_secret);
+    if (creds.account_no) url.searchParams.set("_acct", creds.account_no);
+    if (creds.is_virtual !== undefined) url.searchParams.set("_virt", String(creds.is_virtual));
+    if (creds.access_token) url.searchParams.set("_token", creds.access_token);
     Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== "") url.searchParams.set(k, v); });
 
-    // Credentials via headers (not query params - more secure & reliable)
+    // Also send credentials via headers as backup
     const headers = {
       "Content-Type": "application/json",
       ...(creds.app_key && { "x-kis-appkey": creds.app_key }),
@@ -37,7 +43,6 @@ async function kisApi(route, params = {}, options = {}) {
       ...(creds.access_token && { "x-kis-token": creds.access_token }),
       ...options.headers,
     };
-    console.log("[KIS]", route, "token:", creds.access_token ? "yes" : "NO", "appkey:", creds.app_key ? "yes" : "NO");
     const res = await fetch(url.toString(), { ...options, headers });
     const data = await res.json();
     if (!res.ok) {
