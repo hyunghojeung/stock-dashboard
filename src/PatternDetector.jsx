@@ -1378,7 +1378,7 @@ export default function PatternDetector() {
           </div>
           {activeTab===0 && <TabSummary result={result} saveClusterPattern={saveClusterPattern} savingPattern={savingPattern} />}
           {activeTab===1 && <TabChart result={result} />}
-          {activeTab===2 && <TabRecommend result={result} selectedRecStocks={selectedRecStocks} setSelectedRecStocks={setSelectedRecStocks} onRegister={openRegModal} />}
+          {activeTab===2 && <TabRecommend result={result} selectedRecStocks={selectedRecStocks} setSelectedRecStocks={setSelectedRecStocks} onRegister={openRegModal} onKisOrder={openKisOrderModal} />}
           {activeTab===3 && <VirtualInvestTab recommendations={result.recommendations || []} backtestRecommendations={result.backtest_recommendations || []} selectedRecStocks={selectedRecStocks} setSelectedRecStocks={setSelectedRecStocks} newRtSessionId={newRtSessionId} setNewRtSessionId={setNewRtSessionId} />}
           {activeTab===4 && <TabPatternLibrary patterns={savedPatterns} loading={savedPatternsLoading} onRefresh={fetchSavedPatterns} onDelete={deletePattern} onToggleActive={togglePatternActive} editingId={editingPatternId} editingName={editingPatternName} setEditingId={setEditingPatternId} setEditingName={setEditingPatternName} onSaveName={savePatternName} onScanWithPattern={(id) => { setSelectedPatternIds(new Set([id])); setShowPatternScan(true); setPageMode('scanner'); }} />}
         </>)}
@@ -2275,7 +2275,7 @@ function TabChart({ result }) {
   </div>);
 }
 
-function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegister }) {
+function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegister, onKisOrder }) {
   const [recSortKey, setRecSortKey] = useState('composite_score');
   const [recSortDir, setRecSortDir] = useState('desc');
   const [recFilter, setRecFilter] = useState('all');
@@ -2557,13 +2557,13 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
             transition:'all 0.2s',
           }}
         >💰 가상투자 등록 ({selectedRecStocks.size})</button>
-        <button onClick={() => openKisOrderModal('virtual')} disabled={selectedRecStocks.size === 0}
+        <button onClick={() => onKisOrder('virtual')} disabled={selectedRecStocks.size === 0}
           style={{ padding:'8px 16px', fontSize:12, fontWeight:600, borderRadius:8, border:'none', marginLeft:6,
             cursor: selectedRecStocks.size > 0 ? 'pointer' : 'default',
             background: selectedRecStocks.size > 0 ? '#1a6fff' : '#374151',
             color: selectedRecStocks.size > 0 ? 'white' : COLORS.textDim,
           }}>🏦 모의투자</button>
-        <button onClick={() => openKisOrderModal('real')} disabled={selectedRecStocks.size === 0}
+        <button onClick={() => onKisOrder('real')} disabled={selectedRecStocks.size === 0}
           style={{ padding:'8px 16px', fontSize:12, fontWeight:600, borderRadius:8, border:'none', marginLeft:6,
             cursor: selectedRecStocks.size > 0 ? 'pointer' : 'default',
             background: selectedRecStocks.size > 0 ? '#dc2626' : '#374151',
@@ -2686,11 +2686,11 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
             padding:'10px 24px', fontSize:14, fontWeight:700, borderRadius:8,
             border:'none', cursor:'pointer', background:COLORS.green, color:COLORS.white,
           }}>💰 가상투자 등록 →</button>
-          <button onClick={() => openKisOrderModal('virtual')} style={{
+          <button onClick={() => onKisOrder('virtual')} style={{
             padding:'10px 18px', fontSize:13, fontWeight:700, borderRadius:8,
             border:'none', cursor:'pointer', background:'#1a6fff', color:'white',
           }}>🏦 모의투자</button>
-          <button onClick={() => openKisOrderModal('real')} style={{
+          <button onClick={() => onKisOrder('real')} style={{
             padding:'10px 18px', fontSize:13, fontWeight:700, borderRadius:8,
             border:'none', cursor:'pointer', background:'#dc2626', color:'white',
           }}>🔴 실전투자</button>
