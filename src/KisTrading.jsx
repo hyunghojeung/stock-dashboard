@@ -1,16 +1,22 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 
-// KIS credentials stored in localStorage
+// KIS credentials: in-memory cache + localStorage backup
 const KIS_STORAGE_KEY = "kis_credentials";
+let _kisCache = {};
 
 function getKisCredentials() {
+  // In-memory cache takes priority
+  if (_kisCache.access_token) return _kisCache;
   try {
-    return JSON.parse(localStorage.getItem(KIS_STORAGE_KEY) || "{}");
-  } catch { return {}; }
+    const stored = JSON.parse(localStorage.getItem(KIS_STORAGE_KEY) || "{}");
+    if (stored.access_token) _kisCache = stored;
+    return stored;
+  } catch { return _kisCache; }
 }
 
 function saveKisCredentials(creds) {
-  localStorage.setItem(KIS_STORAGE_KEY, JSON.stringify(creds));
+  _kisCache = creds;
+  try { localStorage.setItem(KIS_STORAGE_KEY, JSON.stringify(creds)); } catch {}
 }
 
 async function kisApi(path, options = {}) {
@@ -18,18 +24,25 @@ async function kisApi(path, options = {}) {
     const creds = getKisCredentials();
     const headers = {
       "Content-Type": "application/json",
-      ...(creds.app_key && { "x-kis-appkey": creds.app_key }),
-      ...(creds.app_secret && { "x-kis-appsecret": creds.app_secret }),
-      ...(creds.account_no && { "x-kis-account": creds.account_no }),
-      ...(creds.is_virtual !== undefined && { "x-kis-virtual": String(creds.is_virtual) }),
-      ...(creds.access_token && { "x-kis-token": creds.access_token }),
       ...options.headers,
     };
+    // Always add credentials if available
+    if (creds.app_key) headers["x-kis-appkey"] = creds.app_key;
+    if (creds.app_secret) headers["x-kis-appsecret"] = creds.app_secret;
+    if (creds.account_no) headers["x-kis-account"] = creds.account_no;
+    if (creds.is_virtual !== undefined) headers["x-kis-virtual"] = String(creds.is_virtual);
+    if (creds.access_token) headers["x-kis-token"] = creds.access_token;
+
+    console.log("[KIS API]", path, "token:", creds.access_token ? "yes" : "NO");
     const res = await fetch(path, { ...options, headers });
     const data = await res.json();
-    if (!res.ok) return { success: false, detail: data?.detail || `오류 ${res.status}` };
+    if (!res.ok) {
+      console.warn("[KIS API] Error:", path, data?.detail);
+      return { success: false, detail: data?.detail || `오류 ${res.status}` };
+    }
     return data;
   } catch (e) {
+    console.error("[KIS API] Fetch error:", path, e.message);
     return { success: false, detail: `네트워크 오류: ${e.message}` };
   }
 }
