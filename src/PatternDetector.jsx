@@ -510,11 +510,6 @@ export default function PatternDetector() {
 
   // ━━━ KIS 주문 모달 열기 ━━━
   const openKisOrderModal = (mode) => {
-    const creds = getKisCredentials(mode);
-    if (!creds.access_token) {
-      alert(`${mode === 'virtual' ? '모의투자' : '실전투자'} API가 연결되지 않았습니다.\nKIS 모의투자 > API 설정에서 먼저 연결해주세요.`);
-      return;
-    }
     const hasStocks = selectedRecStocks.size > 0;
     if (!hasStocks) return;
     setKisOrderMode(mode);
@@ -1702,6 +1697,17 @@ export default function PatternDetector() {
                 ⚠️ 실제 계좌에서 매수됩니다. 신중하게 확인 후 주문하세요.
               </div>
             )}
+
+            {/* API 미연결 안내 */}
+            {(() => {
+              const creds = getKisCredentials(kisOrderMode);
+              return !creds.access_token ? (
+                <div style={{ marginBottom:14, padding:12, borderRadius:8, background:'rgba(245,158,11,0.1)', border:'1px solid rgba(245,158,11,0.3)', fontSize:12, color:'#f59e0b' }}>
+                  ⚠️ {kisOrderMode === 'virtual' ? '모의투자' : '실전투자'} API가 아직 연결되지 않았습니다.<br/>
+                  <span style={{ fontSize:11 }}>KIS 모의투자 메뉴 → API 설정에서 먼저 연결해주세요. 아래 종목 정보는 미리 확인할 수 있습니다.</span>
+                </div>
+              ) : null;
+            })()}
 
             {!kisOrderResults ? (<>
               {/* 복리 모드 토글 */}
