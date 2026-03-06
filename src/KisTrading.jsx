@@ -19,28 +19,32 @@ function saveKisCredentials(creds) {
   try { localStorage.setItem(KIS_STORAGE_KEY, JSON.stringify(creds)); } catch {}
 }
 
-async function kisApi(path, options = {}) {
+async function kisApi(route, params = {}, options = {}) {
   try {
     const creds = getKisCredentials();
-    // Build URL with credentials as query params (more reliable than custom headers)
-    const url = new URL(path, window.location.origin);
+    const url = new URL("/api/kis", window.location.origin);
+    // Route identifier
+    url.searchParams.set("_route", route);
+    // Credentials
     if (creds.app_key) url.searchParams.set("_ak", creds.app_key);
     if (creds.app_secret) url.searchParams.set("_as", creds.app_secret);
     if (creds.account_no) url.searchParams.set("_acct", creds.account_no);
     if (creds.is_virtual !== undefined) url.searchParams.set("_virt", String(creds.is_virtual));
     if (creds.access_token) url.searchParams.set("_token", creds.access_token);
+    // Extra params
+    Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== "") url.searchParams.set(k, v); });
 
     const headers = { "Content-Type": "application/json", ...options.headers };
-    console.log("[KIS API]", path, "token:", creds.access_token ? "yes" : "NO");
+    console.log("[KIS]", route, "token:", creds.access_token ? "yes" : "NO");
     const res = await fetch(url.toString(), { ...options, headers });
     const data = await res.json();
     if (!res.ok) {
-      console.warn("[KIS API] Error:", path, data?.detail);
+      console.warn("[KIS] Error:", route, data?.detail);
       return { success: false, detail: data?.detail || `오류 ${res.status}` };
     }
     return data;
   } catch (e) {
-    console.error("[KIS API] Fetch error:", path, e.message);
+    console.error("[KIS] Fetch error:", route, e.message);
     return { success: false, detail: `네트워크 오류: ${e.message}` };
   }
 }
@@ -159,7 +163,7 @@ function ConfigPanel({ onConnect }) {
   const connect = async () => {
     setConnecting(true);
     setResult(null);
-    const r = await kisApi("/api/kis/config", {
+    const r = await kisApi("config", {}, {
       method: "POST",
       body: JSON.stringify({ app_key: appKey, app_secret: appSecret, account_no: accountNo, is_virtual: isVirtual }),
     });
@@ -231,7 +235,7 @@ function BalancePanel() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const r = await kisApi("/api/kis/balance");
+    const r = await kisApi("balance");
     setData(r);
     setLoading(false);
   }, []);
@@ -309,7 +313,7 @@ function OrderPanel() {
 
   const fetchQuote = async () => {
     if (stockCode.length < 6) return;
-    const r = await kisApi(`/api/kis/quote/${stockCode}`);
+    const r = await kisApi("quote", { code: stockCode });
     if (r?.success) {
       setQuoteData(r);
       if (!price) setPrice(String(r.price));
@@ -318,7 +322,7 @@ function OrderPanel() {
 
   const fetchBuyable = async () => {
     if (!stockCode || !price) return;
-    const r = await kisApi(`/api/kis/buyable?stock_code=${stockCode}&price=${price}`);
+    const r = await kisApi("buyable", { stock_code: stockCode, price });
     if (r?.success) setResult({ type: "info", message: `매수 가능: 최대 ${fmt(r.max_qty)}주 (예수금: ${fmt(r.deposit)}원)` });
   };
 
@@ -327,8 +331,8 @@ function OrderPanel() {
     setSubmitting(true);
     setResult(null);
 
-    const endpoint = side === "buy" ? "/api/kis/order/buy" : "/api/kis/order/sell";
-    const r = await kisApi(endpoint, {
+    const orderRoute = side === "buy" ? "order/buy" : "order/sell";
+    const r = await kisApi(orderRoute, {}, {
       method: "POST",
       body: JSON.stringify({
         stock_code: stockCode,
@@ -490,7 +494,7 @@ function OrderHistoryPanel() {
 
   useEffect(() => {
     (async () => {
-      const r = await kisApi("/api/kis/orders");
+      const r = await kisApi("orders");
       if (r?.success) setOrders(r.orders);
       setLoading(false);
     })();
@@ -502,7 +506,7 @@ function OrderHistoryPanel() {
     <div style={S.panel}>
       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
         <div style={S.title}>오늘의 체결내역</div>
-        <button onClick={async () => { setLoading(true); const r = await kisApi("/api/kis/orders"); if (r?.success) setOrders(r.orders); setLoading(false); }}
+        <button onClick={async () => { setLoading(true); const r = await kisApi("orders"); if (r?.success) setOrders(r.orders); setLoading(false); }}
           style={{ ...S.btn(), padding: "6px 14px", fontSize: 11 }}>새로고침</button>
       </div>
       {orders.length === 0 ? (
@@ -547,8 +551,8 @@ function QuotePanel() {
     if (!code) return;
     setLoading(true);
     const [q, c] = await Promise.all([
-      kisApi(`/api/kis/quote/${code}`),
-      kisApi(`/api/kis/chart/${code}?period=${period}`),
+      kisApi("quote", { code }),
+      kisApi("chart", { code, period }),
     ]);
     if (q?.success) setQuote(q);
     if (c?.success) setChartData(c.candles);
@@ -619,7 +623,7 @@ function AskingPanel() {
   const search = async () => {
     if (!code) return;
     setLoading(true);
-    const r = await kisApi(`/api/kis/asking/${code}`);
+    const r = await kisApi("asking", { code });
     if (r?.success) setData(r);
     setLoading(false);
   };
@@ -682,7 +686,7 @@ function FinancePanel() {
   const search = async () => {
     if (!code) return;
     setLoading(true);
-    const r = await kisApi(`/api/kis/finance/${code}`);
+    const r = await kisApi("finance", { code });
     if (r?.success) setData(r);
     setLoading(false);
   };

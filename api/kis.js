@@ -71,10 +71,13 @@ export default async function handler(req, res) {
 
   // Parse route and query params from URL directly (req.query unreliable for catch-all)
   const fullUrl = new URL(req.url, `http://${req.headers.host || "localhost"}`);
-  const urlPath = fullUrl.pathname;
-  const route = urlPath.replace(/^\/api\/kis\/?/, "");
-  const pathSegments = route.split("/").filter(Boolean);
   const qp = Object.fromEntries(fullUrl.searchParams);
+
+  // Route: prefer _route query param, fall back to URL path segments
+  const urlPath = fullUrl.pathname.replace(/^\/api\/kis\/?/, "");
+  const pathSegments = urlPath.split("/").filter(Boolean);
+  const routeName = qp._route || pathSegments[0] || "";
+  const routeSub = pathSegments[1] || "";
 
   // Read credentials from query params (primary) or headers (fallback)
   const appKey = qp._ak || req.headers["x-kis-appkey"] || "";
@@ -89,12 +92,12 @@ export default async function handler(req, res) {
 
   try {
     // ── debug (GET): show routing info ──
-    if (route === "debug") {
-      return res.json({ url: req.url, route, pathSegments, method: req.method, hasAppKey: !!appKey, hasToken: !!token, qp });
+    if (routeName === "debug") {
+      return res.json({ url: req.url, routeName, pathSegments, method: req.method, hasAppKey: !!appKey, hasToken: !!token, qp });
     }
 
     // ── config (POST): authenticate ──
-    if (pathSegments[0] === "config" && req.method === "POST") {
+    if (routeName === "config" && req.method === "POST") {
       const body = req.body || {};
       const ak = body.app_key;
       const as = body.app_secret;
@@ -129,7 +132,7 @@ export default async function handler(req, res) {
     }
 
     // ── status (GET) ──
-    if (pathSegments[0] === "status") {
+    if (routeName === "status") {
       return res.json({
         configured: !!(appKey && appSecret && accountNo),
         token_valid: !!token,
@@ -148,7 +151,7 @@ export default async function handler(req, res) {
     }
 
     // ── balance (GET) ──
-    if (pathSegments[0] === "balance" && pathSegments.length === 1) {
+    if (routeName === "balance") {
       const trId = isVirtual ? "VTTC8434R" : "TTTC8434R";
       const result = await kisGet(
         baseUrl,
@@ -202,7 +205,7 @@ export default async function handler(req, res) {
     }
 
     // ── orders (GET): execution history ──
-    if (pathSegments[0] === "orders" && pathSegments.length === 1) {
+    if (routeName === "orders") {
       const startDate = qp.start_date || today();
       const endDate = qp.end_date || startDate;
       const trId = isVirtual ? "VTTC8001R" : "TTTC8001R";
@@ -249,11 +252,11 @@ export default async function handler(req, res) {
 
     // ── order/buy, order/sell (POST) ──
     if (
-      pathSegments[0] === "order" &&
-      (pathSegments[1] === "buy" || pathSegments[1] === "sell") &&
+      (routeName === "order/buy" || routeName === "order/sell" ||
+       (routeName === "order" && (routeSub === "buy" || routeSub === "sell"))) &&
       req.method === "POST"
     ) {
-      const isBuy = pathSegments[1] === "buy";
+      const isBuy = routeName === "order/buy" || routeSub === "buy";
       const body = req.body || {};
       const trId = isVirtual
         ? isBuy
@@ -290,7 +293,7 @@ export default async function handler(req, res) {
     }
 
     // ── order/cancel (POST) ──
-    if (pathSegments[0] === "order" && pathSegments[1] === "cancel" && req.method === "POST") {
+    if ((routeName === "order/cancel" || (routeName === "order" && routeSub === "cancel")) && req.method === "POST") {
       const body = req.body || {};
       const trId = isVirtual ? "VTTC0803U" : "TTTC0803U";
       const result = await kisPost(
@@ -320,7 +323,7 @@ export default async function handler(req, res) {
     }
 
     // ── buyable (GET) ──
-    if (pathSegments[0] === "buyable") {
+    if (routeName === "buyable") {
       const trId = isVirtual ? "VTTC8908R" : "TTTC8908R";
       const result = await kisGet(
         baseUrl,
@@ -349,8 +352,8 @@ export default async function handler(req, res) {
     }
 
     // ── quote/:code (GET) ──
-    if (pathSegments[0] === "quote" && pathSegments[1]) {
-      const code = pathSegments[1];
+    if (routeName === "quote" && (qp.code || pathSegments[1])) {
+      const code = qp.code || pathSegments[1];
       const result = await kisGet(
         baseUrl,
         "/uapi/domestic-stock/v1/quotations/inquire-price",
@@ -385,8 +388,8 @@ export default async function handler(req, res) {
     }
 
     // ── chart/:code (GET) ──
-    if (pathSegments[0] === "chart" && pathSegments[1]) {
-      const code = pathSegments[1];
+    if (routeName === "chart" && (qp.code || pathSegments[1])) {
+      const code = qp.code || pathSegments[1];
       const period = qp.period || "D";
       const endDate = qp.end_date || today();
       const d = new Date();
@@ -430,8 +433,8 @@ export default async function handler(req, res) {
     }
 
     // ── asking/:code (GET) ──
-    if (pathSegments[0] === "asking" && pathSegments[1]) {
-      const code = pathSegments[1];
+    if (routeName === "asking" && (qp.code || pathSegments[1])) {
+      const code = qp.code || pathSegments[1];
       const result = await kisGet(
         baseUrl,
         "/uapi/domestic-stock/v1/quotations/inquire-asking-price-exp-ccn",
@@ -464,8 +467,8 @@ export default async function handler(req, res) {
     }
 
     // ── finance/:code (GET) ──
-    if (pathSegments[0] === "finance" && pathSegments[1] && pathSegments.length === 2) {
-      const code = pathSegments[1];
+    if (routeName === "finance" && (qp.code || pathSegments[1])) {
+      const code = qp.code || pathSegments[1];
       const [ratio, income, growth] = await Promise.all([
         kisGet(
           baseUrl,
@@ -504,7 +507,7 @@ export default async function handler(req, res) {
     }
 
     // ── ranking/volume (GET) ──
-    if (pathSegments[0] === "ranking" && pathSegments[1] === "volume") {
+    if (routeName === "ranking/volume" || (routeName === "ranking" && routeSub === "volume")) {
       const market = qp.market || "J";
       const result = await kisGet(
         baseUrl,
@@ -542,7 +545,7 @@ export default async function handler(req, res) {
     }
 
     // ── ranking/fluctuation (GET) ──
-    if (pathSegments[0] === "ranking" && pathSegments[1] === "fluctuation") {
+    if (routeName === "ranking/fluctuation" || (routeName === "ranking" && routeSub === "fluctuation")) {
       const market = qp.market || "J";
       const sort = qp.sort || "0";
       const result = await kisGet(
@@ -583,7 +586,7 @@ export default async function handler(req, res) {
     }
 
     // ── index (GET): KOSPI/KOSDAQ ──
-    if (pathSegments[0] === "index") {
+    if (routeName === "index") {
       const [kospi, kosdaq] = await Promise.all([
         kisGet(
           baseUrl,
@@ -623,7 +626,7 @@ export default async function handler(req, res) {
     }
 
     // ── token (POST): refresh ──
-    if (pathSegments[0] === "token" && req.method === "POST") {
+    if (routeName === "token" && req.method === "POST") {
       const tokenResp = await fetch(`${baseUrl}/oauth2/tokenP`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
