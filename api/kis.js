@@ -469,47 +469,46 @@ export default async function handler(req, res) {
     // ── finance/:code (GET) ──
     if (routeName === "finance" && (qp.code || pathSegments[1])) {
       const code = qp.code || pathSegments[1];
-      // Finance data is reference data - always use real server
-      const financeBase = REAL_BASE;
       try {
         const [ratio, income, growth] = await Promise.all([
           kisGet(
-            financeBase,
+            baseUrl,
             "/uapi/domestic-stock/v1/finance/financial-ratio",
             "FHKST66430300",
             { FID_COND_MRKT_DIV_CODE: "J", FID_INPUT_ISCD: code },
-            token,
-            appKey,
-            appSecret
-          ).catch(e => ({ error: e.message })),
+            token, appKey, appSecret
+          ).catch(e => ({ _err: e.message })),
           kisGet(
-            financeBase,
+            baseUrl,
             "/uapi/domestic-stock/v1/finance/income-statement",
             "FHKST66430200",
             { FID_COND_MRKT_DIV_CODE: "J", FID_INPUT_ISCD: code },
-            token,
-            appKey,
-            appSecret
-          ).catch(e => ({ error: e.message })),
+            token, appKey, appSecret
+          ).catch(e => ({ _err: e.message })),
           kisGet(
-            financeBase,
+            baseUrl,
             "/uapi/domestic-stock/v1/finance/growth-ratio",
             "FHKST66430800",
             { FID_COND_MRKT_DIV_CODE: "J", FID_INPUT_ISCD: code },
-            token,
-            appKey,
-            appSecret
-          ).catch(e => ({ error: e.message })),
+            token, appKey, appSecret
+          ).catch(e => ({ _err: e.message })),
         ]);
-        // Check if all failed
-        if (ratio.error && income.error && growth.error) {
-          return res.status(502).json({ success: false, detail: `KIS 재무정보 API 오류: ${ratio.error}` });
+        // Debug: include raw response info
+        const debug = {
+          ratio_keys: Object.keys(ratio || {}),
+          ratio_msg: ratio?.msg1 || ratio?.rt_cd || ratio?._err || null,
+          income_msg: income?.msg1 || income?.rt_cd || income?._err || null,
+          growth_msg: growth?.msg1 || growth?.rt_cd || growth?._err || null,
+        };
+        if (ratio._err && income._err && growth._err) {
+          return res.status(502).json({ success: false, detail: `KIS 재무정보 API 오류: ${ratio._err}`, debug });
         }
         return res.json({
           success: true,
           financial_ratio: ratio.output || [],
           income_statement: income.output || [],
           growth_ratio: growth.output || [],
+          debug,
         });
       } catch (e) {
         return res.status(502).json({ success: false, detail: `재무정보 조회 실패: ${e.message}` });

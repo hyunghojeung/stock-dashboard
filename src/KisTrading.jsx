@@ -683,11 +683,23 @@ function FinancePanel() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
 
+  const [error, setError] = useState(null);
+
   const search = async () => {
     if (!code) return;
     setLoading(true);
+    setError(null);
+    setData(null);
     const r = await kisApi("finance", { code });
-    if (r?.success) setData(r);
+    console.log("[KIS] finance response:", JSON.stringify(r));
+    if (r?.success) {
+      setData(r);
+      if (!r.financial_ratio?.length && !r.income_statement?.length && !r.growth_ratio?.length) {
+        setError("재무정보 데이터가 비어 있습니다." + (r.debug ? ` (ratio: ${r.debug.ratio_msg}, income: ${r.debug.income_msg})` : ""));
+      }
+    } else {
+      setError(r?.detail || "재무정보 조회 실패");
+    }
     setLoading(false);
   };
 
@@ -701,6 +713,7 @@ function FinancePanel() {
             {loading ? "조회 중..." : "재무정보 조회"}
           </button>
         </div>
+        {error && <div style={{ marginTop: 8, padding: 10, background: "rgba(255,76,76,0.1)", border: "1px solid rgba(255,76,76,0.3)", borderRadius: 8, color: "#ff4c4c", fontSize: 12 }}>{error}</div>}
       </div>
 
       {data && (
