@@ -144,20 +144,18 @@ function DashboardPage() {
   const mkt=getMarketStatus(new Date());
   const iv=mkt.isOpen?30000:0;
   const {data:trades,loading:tL}=useApi("/api/trades/today",iv);
-  const {data:holdings,loading:hL}=useApi("/api/portfolio/holdings",iv);
+  const {data:holdingsData,loading:hL}=useApi("/api/trading/holdings",iv);
   const {data:watchlist,loading:wL}=useApi("/api/watchlist/",mkt.isOpen?60000:0);
-  const {data:assetHistory}=useApi("/api/portfolio/asset-history",0);
-  const {data:summary}=useApi("/api/portfolio/summary",iv);
+  const {data:accountData}=useApi("/api/trading/account",iv);
   const {data:strategies}=useApi("/api/strategy/",0);
 
-  const tList=trades||[],hList=holdings||[],wList=watchlist||[];
-  const hist=(assetHistory||[]).sort((a,b)=>a.record_date?.localeCompare(b.record_date));
+  const tList=trades||[],hList=(holdingsData?.holdings||holdingsData||[]),wList=watchlist||[];
   const sells=tList.filter(t=>t.trade_type==="sell");
   const todayProfit=sells.reduce((s,t)=>s+(t.net_profit||0),0);
   const wins=sells.filter(t=>(t.net_profit||0)>0).length,losses=sells.filter(t=>(t.net_profit||0)<=0).length;
-  const totalUnrealized=hList.reduce((s,h)=>s+(h.unrealized_profit||0),0);
+  const totalUnrealized=hList.reduce?.((s,h)=>s+(h.unrealized_profit||0),0)||0;
   const initCap=strategies?.[0]?.initial_capital||1000000;
-  const totalAsset=hist.length?hist[hist.length-1]?.total_asset:null;
+  const totalAsset=accountData?.total_eval||null;
   const cumRet=totalAsset?((totalAsset-initCap)/initCap*100):0;
   const tgtPct=totalAsset?(totalAsset/1e9*100):0;
   const chartStock=hList[0]||wList[0]||null;
@@ -270,9 +268,9 @@ function WatchlistPage() {
 }
 
 function PortfolioPage() {
-  const {data,loading}=useApi("/api/portfolio/holdings",30000);
+  const {data,loading}=useApi("/api/trading/holdings",30000);
   if(loading) return <Loader t="보유종목 로딩..."/>;
-  const hl=data||[];
+  const hl=(data?.holdings||data||[]);
   const total=hl.reduce((s,h)=>s+(h.unrealized_profit||0),0);
   return (
     <div style={{background:"linear-gradient(135deg,rgba(25,35,65,0.9),rgba(15,22,48,0.95))",border:"1px solid rgba(100,140,200,0.15)",borderRadius:12,padding:16}}>
@@ -287,16 +285,20 @@ function PortfolioPage() {
 }
 
 function PerformancePage() {
-  const {data:reports,loading:rL}=useApi("/api/portfolio/daily-report",0);
-  const {data:summary}=useApi("/api/portfolio/summary",0);
+  const {data:histData,loading:rL}=useApi("/api/trading/history",0);
+  const {data:accountData}=useApi("/api/trading/account",0);
   if(rL) return <Loader t="수익 분석 로딩..."/>;
-  const rl=reports||[];
+  const rl=(histData?.trades||histData||[]);
+  const totalTrades=rl.length;
+  const wins=rl.filter(t=>(t.net_profit||0)>0).length;
+  const winRate=totalTrades>0?Math.round(wins/totalTrades*100):0;
+  const totalProfit=accountData?.total_profit||0;
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
       <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
-        <Card icon="📊" title="총 매매 횟수" value={summary?.total_trades?`${summary.total_trades}회`:"—"} color="#64b5f6"/>
-        <Card icon="🏆" title="승률" value={summary?.win_rate?`${summary.win_rate}%`:"—"} color="#ffd54f"/>
-        <Card icon="💰" title="총 수익" value={summary?.total_profit!=null?fmtWon(summary.total_profit):"—"} color={clr(summary?.total_profit)}/>
+        <Card icon="📊" title="총 매매 횟수" value={totalTrades?`${totalTrades}회`:"—"} color="#64b5f6"/>
+        <Card icon="🏆" title="승률" value={totalTrades?`${winRate}%`:"—"} color="#ffd54f"/>
+        <Card icon="💰" title="총 수익" value={totalProfit!=null?fmtWon(totalProfit):"—"} color={clr(totalProfit)}/>
       </div>
       <div style={{background:"linear-gradient(135deg,rgba(25,35,65,0.9),rgba(15,22,48,0.95))",border:"1px solid rgba(100,140,200,0.15)",borderRadius:12,padding:16}}>
         <div style={{color:"#e0e6f0",fontWeight:600,fontSize:15,marginBottom:12}}>📈 일별 수익 리포트</div>
@@ -311,12 +313,12 @@ function PerformancePage() {
 }
 
 function GrowthPage() {
-  const {data:ah,loading}=useApi("/api/portfolio/asset-history",0);
+  const {data:accountData,loading}=useApi("/api/trading/account",0);
   const {data:st}=useApi("/api/strategy/",0);
   if(loading) return <Loader t="성장 여정 로딩..."/>;
-  const hist=(ah||[]).sort((a,b)=>a.record_date?.localeCompare(b.record_date));
+  const hist=[];
   const ic=st?.[0]?.initial_capital||1000000;
-  const la=hist.length?hist[hist.length-1]?.total_asset:ic;
+  const la=accountData?.total_eval||ic;
   const tp=la/1e9*100;
   return (
     <div style={{background:"linear-gradient(135deg,rgba(25,35,65,0.9),rgba(15,22,48,0.95))",border:"1px solid rgba(100,140,200,0.15)",borderRadius:12,padding:24}}>
@@ -502,9 +504,8 @@ export default function App() {
   const [vpKey,setVpKey]=useState(0);
   const [sideOpen,setSideOpen]=useState(true);
   const {data:st}=useApi("/api/strategy/",0);
-  const {data:ah}=useApi("/api/portfolio/asset-history",60000);
-  const hist=(ah||[]).sort((a,b)=>a.record_date?.localeCompare(b.record_date));
-  const ta=hist.length?hist[hist.length-1]?.total_asset:null;
+  const {data:appAccount}=useApi("/api/trading/account",60000);
+  const ta=appAccount?.total_eval||null;
   const tp=ta?(ta/1e9*100):0;
 
   const doLogin=async()=>{
