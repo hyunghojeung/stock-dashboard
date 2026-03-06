@@ -88,7 +88,7 @@ export default async function handler(req, res) {
   try {
     // ── debug (GET): show routing info ──
     if (route === "debug") {
-      return res.json({ url: req.url, route, pathSegments, method: req.method, hasAppKey: !!appKey, hasToken: !!token, appKeySource: req.headers["x-kis-appkey"] ? "header" : req.query._ak ? "query" : "none", tokenSource: req.headers["x-kis-token"] ? "header" : req.query._token ? "query" : "none" });
+      return res.json({ url: req.url, route, pathSegments, method: req.method, hasAppKey: !!appKey, hasToken: !!token, query: req.query, headers_keys: Object.keys(req.headers).filter(k => k.startsWith("x-")) });
     }
 
     // ── config (POST): authenticate ──
