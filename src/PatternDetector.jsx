@@ -2557,31 +2557,29 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
               : '종목을 선택하여 가상투자에 등록하세요'}
           </span>
         </div>
-        <div style={{ display:'flex', gap:6, alignItems:'center' }}>
-          <button
-            onClick={handleRegister}
-            disabled={selectedRecStocks.size === 0}
-            style={{
-              padding:'8px 20px', fontSize:13, fontWeight:600, borderRadius:8,
-              border:'none', cursor: selectedRecStocks.size > 0 ? 'pointer' : 'default',
-              background: selectedRecStocks.size > 0 ? COLORS.green : '#374151',
-              color: selectedRecStocks.size > 0 ? COLORS.white : COLORS.textDim,
-              transition:'all 0.2s',
-            }}
-          >💰 가상투자 등록 ({selectedRecStocks.size})</button>
-          <button onClick={() => onKisOrder('virtual')} disabled={selectedRecStocks.size === 0}
-            style={{ padding:'8px 16px', fontSize:12, fontWeight:600, borderRadius:8, border:'none',
-              cursor: selectedRecStocks.size > 0 ? 'pointer' : 'default',
-              background: selectedRecStocks.size > 0 ? '#1a6fff' : '#374151',
-              color: selectedRecStocks.size > 0 ? 'white' : COLORS.textDim,
-            }}>🏦 모의투자</button>
-          <button onClick={() => onKisOrder('real')} disabled={selectedRecStocks.size === 0}
-            style={{ padding:'8px 16px', fontSize:12, fontWeight:600, borderRadius:8, border:'none',
-              cursor: selectedRecStocks.size > 0 ? 'pointer' : 'default',
-              background: selectedRecStocks.size > 0 ? '#dc2626' : '#374151',
-              color: selectedRecStocks.size > 0 ? 'white' : COLORS.textDim,
-            }}>🔴 실전투자</button>
-        </div>
+        <button
+          onClick={handleRegister}
+          disabled={selectedRecStocks.size === 0}
+          style={{
+            padding:'8px 20px', fontSize:13, fontWeight:600, borderRadius:8,
+            border:'none', cursor: selectedRecStocks.size > 0 ? 'pointer' : 'default',
+            background: selectedRecStocks.size > 0 ? COLORS.green : '#374151',
+            color: selectedRecStocks.size > 0 ? COLORS.white : COLORS.textDim,
+            transition:'all 0.2s',
+          }}
+        >💰 가상투자 등록 ({selectedRecStocks.size})</button>
+        <button onClick={() => onKisOrder('virtual')} disabled={selectedRecStocks.size === 0}
+          style={{ padding:'8px 16px', fontSize:12, fontWeight:600, borderRadius:8, border:'none', marginLeft:6,
+            cursor: selectedRecStocks.size > 0 ? 'pointer' : 'default',
+            background: selectedRecStocks.size > 0 ? '#1a6fff' : '#374151',
+            color: selectedRecStocks.size > 0 ? 'white' : COLORS.textDim,
+          }}>🏦 모의투자</button>
+        <button onClick={() => onKisOrder('real')} disabled={selectedRecStocks.size === 0}
+          style={{ padding:'8px 16px', fontSize:12, fontWeight:600, borderRadius:8, border:'none', marginLeft:6,
+            cursor: selectedRecStocks.size > 0 ? 'pointer' : 'default',
+            background: selectedRecStocks.size > 0 ? '#dc2626' : '#374151',
+            color: selectedRecStocks.size > 0 ? 'white' : COLORS.textDim,
+          }}>🔴 실전투자</button>
       </div>
     )}
 
