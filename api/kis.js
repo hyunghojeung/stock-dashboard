@@ -525,11 +525,11 @@ export default async function handler(req, res) {
       }
     }
 
-    // ── ranking/volume (GET) ──
+    // ── ranking/volume (GET) ── (시세 데이터는 항상 실전서버 사용)
     if (routeName === "ranking/volume" || (routeName === "ranking" && routeSub === "volume")) {
       const market = qp.market || "J";
       const result = await kisGet(
-        baseUrl,
+        REAL_BASE,
         "/uapi/domestic-stock/v1/quotations/volume-rank",
         "FHPST01710000",
         {
@@ -563,12 +563,12 @@ export default async function handler(req, res) {
       return res.json({ success: true, items });
     }
 
-    // ── ranking/fluctuation (GET) ──
+    // ── ranking/fluctuation (GET) ── (시세 데이터는 항상 실전서버 사용)
     if (routeName === "ranking/fluctuation" || (routeName === "ranking" && routeSub === "fluctuation")) {
       const market = qp.market || "J";
       const sort = qp.sort || "0";
       const result = await kisGet(
-        baseUrl,
+        REAL_BASE,
         "/uapi/domestic-stock/v1/quotations/fluctuation",
         "FHPST01740000",
         {
@@ -604,11 +604,11 @@ export default async function handler(req, res) {
       return res.json({ success: true, items });
     }
 
-    // ── index (GET): KOSPI/KOSDAQ ──
+    // ── index (GET): KOSPI/KOSDAQ ── (시세 데이터는 항상 실전서버 사용)
     if (routeName === "index") {
       const [kospi, kosdaq] = await Promise.all([
         kisGet(
-          baseUrl,
+          REAL_BASE,
           "/uapi/domestic-stock/v1/quotations/inquire-index-price",
           "FHPUP02100000",
           { FID_COND_MRKT_DIV_CODE: "U", FID_INPUT_ISCD: "0001" },
@@ -617,7 +617,7 @@ export default async function handler(req, res) {
           appSecret
         ),
         kisGet(
-          baseUrl,
+          REAL_BASE,
           "/uapi/domestic-stock/v1/quotations/inquire-index-price",
           "FHPUP02100000",
           { FID_COND_MRKT_DIV_CODE: "U", FID_INPUT_ISCD: "1001" },

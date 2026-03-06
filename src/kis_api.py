@@ -117,11 +117,12 @@ class KISClient:
             h.update(extra)
         return h
 
-    async def _get(self, path: str, tr_id: str, params: dict = None) -> dict:
-        """GET 요청"""
+    async def _get(self, path: str, tr_id: str, params: dict = None, use_real: bool = False) -> dict:
+        """GET 요청 (use_real=True면 모의투자여도 실전서버로 시세 조회)"""
         headers = await self._headers(tr_id)
+        base = REAL_BASE if use_real else self.base_url
         async with httpx.AsyncClient(verify=False, timeout=30.0) as client:
-            resp = await client.get(f"{self.base_url}{path}", headers=headers, params=params or {})
+            resp = await client.get(f"{base}{path}", headers=headers, params=params or {})
             return resp.json()
 
     async def _post(self, path: str, tr_id: str, body: dict = None) -> dict:
@@ -350,7 +351,7 @@ class KISClient:
             "FID_VOL_CNT": "",
             "FID_INPUT_DATE_1": "",
         }
-        return await self._get("/uapi/domestic-stock/v1/quotations/volume-rank", tr_id, params)
+        return await self._get("/uapi/domestic-stock/v1/quotations/volume-rank", tr_id, params, use_real=True)
 
     async def get_fluctuation_rank(self, market: str = "J", sort: str = "0") -> dict:
         """등락률 순위
@@ -373,7 +374,7 @@ class KISClient:
             "FID_RSFL_RATE1": "",
             "FID_RSFL_RATE2": "",
         }
-        return await self._get("/uapi/domestic-stock/v1/quotations/fluctuation", tr_id, params)
+        return await self._get("/uapi/domestic-stock/v1/quotations/fluctuation", tr_id, params, use_real=True)
 
     async def get_foreign_institution(self, stock_code: str) -> dict:
         """외인/기관 매매 집계"""
@@ -382,7 +383,7 @@ class KISClient:
             "FID_COND_MRKT_DIV_CODE": "J",
             "FID_INPUT_ISCD": stock_code,
         }
-        return await self._get("/uapi/domestic-stock/v1/quotations/inquire-daily-trade", tr_id, params)
+        return await self._get("/uapi/domestic-stock/v1/quotations/inquire-daily-trade", tr_id, params, use_real=True)
 
     async def get_market_index(self, index_code: str = "0001") -> dict:
         """시장 지수 (0001=코스피, 1001=코스닥)"""
@@ -391,7 +392,7 @@ class KISClient:
             "FID_COND_MRKT_DIV_CODE": "U",
             "FID_INPUT_ISCD": index_code,
         }
-        return await self._get("/uapi/domestic-stock/v1/quotations/inquire-index-price", tr_id, params)
+        return await self._get("/uapi/domestic-stock/v1/quotations/inquire-index-price", tr_id, params, use_real=True)
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # 재무제표

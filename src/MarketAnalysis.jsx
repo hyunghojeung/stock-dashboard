@@ -1,10 +1,35 @@
 import { useState, useEffect, useCallback } from "react";
 
-const API_BASE = "https://web-production-139e9.up.railway.app";
-
-async function kisApi(path) {
+// KIS credentials: localStorage에서 읽기 (KisTrading과 동일)
+const KIS_STORAGE_KEY = "kis_credentials";
+function getKisCredentials() {
   try {
-    const res = await fetch(`${API_BASE}${path}`);
+    return JSON.parse(localStorage.getItem(KIS_STORAGE_KEY) || "{}");
+  } catch { return {}; }
+}
+
+async function kisApi(route, params = {}) {
+  try {
+    const creds = getKisCredentials();
+    const url = new URL("/api/kis", window.location.origin);
+    url.searchParams.set("_route", route);
+    if (creds.app_key) url.searchParams.set("_ak", creds.app_key);
+    if (creds.app_secret) url.searchParams.set("_as", creds.app_secret);
+    if (creds.account_no) url.searchParams.set("_acct", creds.account_no);
+    if (creds.is_virtual !== undefined) url.searchParams.set("_virt", String(creds.is_virtual));
+    if (creds.access_token) url.searchParams.set("_token", creds.access_token);
+    Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== "") url.searchParams.set(k, v); });
+
+    const res = await fetch(url.toString(), {
+      headers: {
+        "Content-Type": "application/json",
+        ...(creds.app_key && { "x-kis-appkey": creds.app_key }),
+        ...(creds.app_secret && { "x-kis-appsecret": creds.app_secret }),
+        ...(creds.account_no && { "x-kis-account": creds.account_no }),
+        ...(creds.is_virtual !== undefined && { "x-kis-virtual": String(creds.is_virtual) }),
+        ...(creds.access_token && { "x-kis-token": creds.access_token }),
+      },
+    });
     if (!res.ok) return null;
     return await res.json();
   } catch {
@@ -71,7 +96,7 @@ function MarketIndexPanel() {
 
   useEffect(() => {
     (async () => {
-      const r = await kisApi("/api/kis/index");
+      const r = await kisApi("index");
       if (r?.success) setData(r);
       setLoading(false);
     })();
@@ -123,7 +148,7 @@ function VolumeRankPanel() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const r = await kisApi(`/api/kis/ranking/volume?market=${market}`);
+    const r = await kisApi("ranking/volume", { market });
     if (r?.success) setData(r.items);
     setLoading(false);
   }, [market]);
@@ -177,7 +202,7 @@ function FluctuationPanel({ sort, title }) {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const r = await kisApi(`/api/kis/ranking/fluctuation?market=${market}&sort=${sort}`);
+    const r = await kisApi("ranking/fluctuation", { market, sort });
     if (r?.success) setData(r.items);
     setLoading(false);
   }, [market, sort]);
@@ -244,8 +269,8 @@ function InvestorPanel() {
     if (!code) return;
     setLoading(true);
     const [inv, q] = await Promise.all([
-      kisApi(`/api/kis/investor/${code}`),
-      kisApi(`/api/kis/quote/${code}`),
+      kisApi(`investor/${code}`),
+      kisApi(`quote/${code}`),
     ]);
     if (inv?.success) setData(inv.data);
     if (q?.success) setQuote(q);
