@@ -14,7 +14,7 @@ const REAL_BASE = "https://openapi.koreainvestment.com:9443";
 async function kisGet(baseUrl, path, trId, params, token, appKey, appSecret) {
   const url = new URL(`${baseUrl}${path}`);
   Object.entries(params).forEach(([k, v]) => {
-    if (v !== undefined && v !== null && v !== "") url.searchParams.set(k, v);
+    if (v !== undefined && v !== null) url.searchParams.set(k, v);
   });
   const resp = await fetch(url.toString(), {
     headers: {
@@ -25,7 +25,9 @@ async function kisGet(baseUrl, path, trId, params, token, appKey, appSecret) {
       tr_id: trId,
     },
   });
-  return resp.json();
+  const text = await resp.text();
+  if (!text) return { rt_cd: "-1", msg1: `Empty response (HTTP ${resp.status})` };
+  try { return JSON.parse(text); } catch { return { rt_cd: "-1", msg1: `Invalid JSON: ${text.slice(0, 200)}` }; }
 }
 
 async function kisPost(baseUrl, path, trId, body, token, appKey, appSecret) {
