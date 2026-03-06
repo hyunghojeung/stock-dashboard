@@ -485,21 +485,21 @@ export default async function handler(req, res) {
             baseUrl,
             "/uapi/domestic-stock/v1/finance/financial-ratio",
             "FHKST66430300",
-            { FID_COND_MRKT_DIV_CODE: "J", FID_INPUT_ISCD: code },
+            { FID_COND_MRKT_DIV_CODE: "J", FID_INPUT_ISCD: code, FID_DIV_CLS_CODE: "0" },
             token, appKey, appSecret
           ).catch(e => ({ _err: e.message })),
           kisGet(
             baseUrl,
             "/uapi/domestic-stock/v1/finance/income-statement",
             "FHKST66430200",
-            { FID_COND_MRKT_DIV_CODE: "J", FID_INPUT_ISCD: code },
+            { FID_COND_MRKT_DIV_CODE: "J", FID_INPUT_ISCD: code, FID_DIV_CLS_CODE: "0" },
             token, appKey, appSecret
           ).catch(e => ({ _err: e.message })),
           kisGet(
             baseUrl,
             "/uapi/domestic-stock/v1/finance/growth-ratio",
             "FHKST66430800",
-            { FID_COND_MRKT_DIV_CODE: "J", FID_INPUT_ISCD: code },
+            { FID_COND_MRKT_DIV_CODE: "J", FID_INPUT_ISCD: code, FID_DIV_CLS_CODE: "0" },
             token, appKey, appSecret
           ).catch(e => ({ _err: e.message })),
         ]);
