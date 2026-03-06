@@ -381,7 +381,7 @@ export default async function handler(req, res) {
       return res.json({
         success: true,
         stock_code: code,
-        name: o.rprs_mrkt_kor_name || o.hts_kor_isnm || "",
+        name: o.hts_kor_isnm || o.rprs_mrkt_kor_name || "",
         price: safeInt(o.stck_prpr),
         change: safeInt(o.prdy_vrss),
         change_rate: safeFloat(o.prdy_ctrt),
