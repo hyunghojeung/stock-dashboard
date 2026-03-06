@@ -56,6 +56,21 @@ async function kisApi(route, params = {}, options = {}) {
   }
 }
 
+// 종목명(한글) → 종목코드 변환 (숫자면 그대로 반환)
+async function resolveStockCode(input) {
+  const v = (input || "").trim();
+  if (!v) return "";
+  if (/^\d{1,6}$/.test(v)) return v;
+  try {
+    const url = new URL("/api/kis", window.location.origin);
+    url.searchParams.set("_route", "search");
+    url.searchParams.set("keyword", v);
+    const r = await fetch(url).then(r => r.json());
+    if (r.results?.length) return r.results[0].code;
+  } catch {}
+  return v;
+}
+
 const fmt = (n) => n?.toLocaleString("ko-KR") ?? "—";
 const fmtWon = (n) => n != null ? `${n >= 0 ? "+" : ""}${n.toLocaleString("ko-KR")}원` : "—";
 const fmtPct = (n) => n != null ? `${n >= 0 ? "+" : ""}${n.toFixed(2)}%` : "—";
@@ -559,30 +574,55 @@ function StockSearchInput({ value, onChange, onSelect, placeholder }) {
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
+  const searchByKeyword = async (keyword) => {
+    try {
+      const url = new URL("/api/kis", window.location.origin);
+      url.searchParams.set("_route", "search");
+      url.searchParams.set("keyword", keyword);
+      const r = await fetch(url).then(r => r.json());
+      return r.results || [];
+    } catch { return []; }
+  };
+
   const handleChange = (e) => {
     const v = e.target.value;
     onChange(v);
     clearTimeout(timerRef.current);
     if (v.trim() && !/^\d{1,6}$/.test(v.trim())) {
       timerRef.current = setTimeout(async () => {
-        try {
-          const url = new URL("/api/kis", window.location.origin);
-          url.searchParams.set("_route", "search");
-          url.searchParams.set("keyword", v.trim());
-          const r = await fetch(url).then(r => r.json());
-          if (r.results?.length) { setSuggestions(r.results); setShowSugg(true); }
-          else setShowSugg(false);
-        } catch { setShowSugg(false); }
+        const results = await searchByKeyword(v.trim());
+        if (results.length) { setSuggestions(results); setShowSugg(true); }
+        else setShowSugg(false);
       }, 300);
     } else {
       setShowSugg(false);
     }
   };
 
+  const handleEnter = async () => {
+    setShowSugg(false);
+    const v = (value || "").trim();
+    if (!v) return;
+    // 숫자(종목코드)면 바로 조회
+    if (/^\d{1,6}$/.test(v)) { onSelect(v); return; }
+    // 드롭다운에 결과가 있으면 첫 번째 항목 사용
+    if (suggestions.length > 0) {
+      onChange(suggestions[0].code);
+      onSelect(suggestions[0].code);
+      return;
+    }
+    // 없으면 검색 후 첫 번째 결과 사용
+    const results = await searchByKeyword(v);
+    if (results.length > 0) {
+      onChange(results[0].code);
+      onSelect(results[0].code);
+    }
+  };
+
   return (
     <div ref={wrapRef} style={{ position: "relative", flex: 1, maxWidth: 260 }}>
       <input style={{ ...S.input, width: "100%" }} value={value} onChange={handleChange}
-        onKeyDown={e => { if (e.key === "Enter") { setShowSugg(false); onSelect(); } }}
+        onKeyDown={e => { if (e.key === "Enter") handleEnter(); }}
         placeholder={placeholder || "종목코드 또는 종목명"} />
       {showSugg && suggestions.length > 0 && (
         <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 100, background: "#1a2332", border: "1px solid rgba(100,140,200,0.2)", borderRadius: 6, maxHeight: 200, overflowY: "auto", marginTop: 2 }}>
@@ -609,10 +649,11 @@ function QuotePanel() {
   const [loading, setLoading] = useState(false);
 
   const search = async (overrideCode) => {
-    const stockCode = (overrideCode || code || "").trim();
-    if (!stockCode) return;
-    if (overrideCode) setCode(overrideCode);
+    const raw = (overrideCode || code || "").trim();
+    if (!raw) return;
     setLoading(true);
+    const stockCode = await resolveStockCode(raw);
+    if (stockCode !== raw) setCode(stockCode);
     const [q, c] = await Promise.all([
       kisApi("quote", { code: stockCode }),
       kisApi("chart", { code: stockCode, period }),
@@ -693,10 +734,11 @@ function AskingPanel() {
   const [loading, setLoading] = useState(false);
 
   const search = async (overrideCode) => {
-    const stockCode = (overrideCode || code || "").trim();
-    if (!stockCode) return;
-    if (overrideCode) setCode(overrideCode);
+    const raw = (overrideCode || code || "").trim();
+    if (!raw) return;
     setLoading(true);
+    const stockCode = await resolveStockCode(raw);
+    if (stockCode !== raw) setCode(stockCode);
     const r = await kisApi("asking", { code: stockCode });
     if (r?.success) setData(r);
     setLoading(false);
@@ -759,12 +801,13 @@ function FinancePanel() {
   const [error, setError] = useState(null);
 
   const search = async (overrideCode) => {
-    const stockCode = (overrideCode || code || "").trim();
-    if (!stockCode) return;
-    if (overrideCode) setCode(overrideCode);
+    const raw = (overrideCode || code || "").trim();
+    if (!raw) return;
     setLoading(true);
     setError(null);
     setData(null);
+    const stockCode = await resolveStockCode(raw);
+    if (stockCode !== raw) setCode(stockCode);
     const r = await kisApi("finance", { code: stockCode });
     console.log("[KIS] finance response:", JSON.stringify(r));
     if (r?.success) {
