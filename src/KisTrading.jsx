@@ -1,13 +1,31 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 
-const API_BASE = "https://web-production-139e9.up.railway.app";
+// KIS credentials stored in localStorage
+const KIS_STORAGE_KEY = "kis_credentials";
+
+function getKisCredentials() {
+  try {
+    return JSON.parse(localStorage.getItem(KIS_STORAGE_KEY) || "{}");
+  } catch { return {}; }
+}
+
+function saveKisCredentials(creds) {
+  localStorage.setItem(KIS_STORAGE_KEY, JSON.stringify(creds));
+}
 
 async function kisApi(path, options = {}) {
   try {
-    const res = await fetch(`${API_BASE}${path}`, {
-      headers: { "Content-Type": "application/json" },
-      ...options,
-    });
+    const creds = getKisCredentials();
+    const headers = {
+      "Content-Type": "application/json",
+      ...(creds.app_key && { "x-kis-appkey": creds.app_key }),
+      ...(creds.app_secret && { "x-kis-appsecret": creds.app_secret }),
+      ...(creds.account_no && { "x-kis-account": creds.account_no }),
+      ...(creds.is_virtual !== undefined && { "x-kis-virtual": String(creds.is_virtual) }),
+      ...(creds.access_token && { "x-kis-token": creds.access_token }),
+      ...options.headers,
+    };
+    const res = await fetch(path, { ...options, headers });
     const data = await res.json();
     if (!res.ok) return { success: false, detail: data?.detail || `오류 ${res.status}` };
     return data;
@@ -42,14 +60,20 @@ export default function KisTrading() {
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Load KIS status
+  // Load KIS status from localStorage
   useEffect(() => {
-    (async () => {
-      const s = await kisApi("/api/kis/status");
-      setStatus(s);
-      setLoading(false);
-      if (s?.configured && s?.token_valid) setTab("balance");
-    })();
+    const creds = getKisCredentials();
+    const configured = !!(creds.app_key && creds.app_secret && creds.account_no);
+    const tokenValid = !!creds.access_token;
+    const s = {
+      configured,
+      token_valid: tokenValid,
+      is_virtual: creds.is_virtual !== false,
+      account_no: creds.account_no ? creds.account_no.replace(/-/g, "").slice(0, 4) + "****" + creds.account_no.replace(/-/g, "").slice(-2) : "",
+    };
+    setStatus(s);
+    setLoading(false);
+    if (configured && tokenValid) setTab("balance");
   }, []);
 
   const tabs = [
@@ -95,7 +119,10 @@ export default function KisTrading() {
       </div>
 
       {/* Tab Content */}
-      {tab === "config" && <ConfigPanel onConnect={() => kisApi("/api/kis/status").then(setStatus)} />}
+      {tab === "config" && <ConfigPanel onConnect={() => {
+        const creds = getKisCredentials();
+        setStatus({ configured: true, token_valid: !!creds.access_token, is_virtual: creds.is_virtual !== false, account_no: creds.account_no ? creds.account_no.replace(/-/g, "").slice(0, 4) + "****" + creds.account_no.replace(/-/g, "").slice(-2) : "" });
+      }} />}
       {tab === "balance" && <BalancePanel />}
       {tab === "order" && <OrderPanel />}
       {tab === "orders" && <OrderHistoryPanel />}
@@ -110,10 +137,11 @@ export default function KisTrading() {
 // Config Panel
 // ============================================================
 function ConfigPanel({ onConnect }) {
-  const [appKey, setAppKey] = useState("");
-  const [appSecret, setAppSecret] = useState("");
-  const [accountNo, setAccountNo] = useState("");
-  const [isVirtual, setIsVirtual] = useState(true);
+  const saved = getKisCredentials();
+  const [appKey, setAppKey] = useState(saved.app_key || "");
+  const [appSecret, setAppSecret] = useState(saved.app_secret || "");
+  const [accountNo, setAccountNo] = useState(saved.account_no || "");
+  const [isVirtual, setIsVirtual] = useState(saved.is_virtual !== false);
   const [result, setResult] = useState(null);
   const [connecting, setConnecting] = useState(false);
 
@@ -126,7 +154,10 @@ function ConfigPanel({ onConnect }) {
     });
     setResult(r);
     setConnecting(false);
-    if (r?.success) onConnect?.();
+    if (r?.success && r.access_token) {
+      saveKisCredentials({ app_key: appKey, app_secret: appSecret, account_no: accountNo, is_virtual: isVirtual, access_token: r.access_token });
+      onConnect?.();
+    }
   };
 
   return (
