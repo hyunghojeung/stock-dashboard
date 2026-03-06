@@ -561,7 +561,14 @@ function QuotePanel() {
       kisApi("quote", { code }),
       kisApi("chart", { code, period }),
     ]);
-    if (q?.success) setQuote(q);
+    if (q?.success) {
+      // inquire-price에 종목명 필드가 없으므로 chart output1에서 가져옴
+      if (c?.success && c.info) {
+        const chartName = c.info.hts_kor_isnm || c.info.stck_shrn_iscd || "";
+        if (chartName) q.name = chartName;
+      }
+      setQuote(q);
+    }
     if (c?.success) setChartData(c.candles);
     setLoading(false);
   };
