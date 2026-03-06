@@ -74,11 +74,12 @@ export default async function handler(req, res) {
   const route = urlPath.replace(/^\/api\/kis\/?/, "");
   const pathSegments = route.split("/").filter(Boolean);
 
-  const appKey = req.headers["x-kis-appkey"] || "";
-  const appSecret = req.headers["x-kis-appsecret"] || "";
-  const accountNo = (req.headers["x-kis-account"] || "").replace(/-/g, "");
-  const isVirtual = req.headers["x-kis-virtual"] !== "false";
-  const token = req.headers["x-kis-token"] || "";
+  // Read credentials from headers OR query params (fallback)
+  const appKey = req.headers["x-kis-appkey"] || req.query._ak || "";
+  const appSecret = req.headers["x-kis-appsecret"] || req.query._as || "";
+  const accountNo = (req.headers["x-kis-account"] || req.query._acct || "").replace(/-/g, "");
+  const isVirtual = (req.headers["x-kis-virtual"] || req.query._virt || "true") !== "false";
+  const token = req.headers["x-kis-token"] || req.query._token || "";
 
   const baseUrl = isVirtual ? VIRT_BASE : REAL_BASE;
   const cano = accountNo.slice(0, 8);
@@ -87,7 +88,7 @@ export default async function handler(req, res) {
   try {
     // ── debug (GET): show routing info ──
     if (route === "debug") {
-      return res.json({ url: req.url, route, pathSegments, method: req.method, hasAppKey: !!appKey, hasToken: !!token });
+      return res.json({ url: req.url, route, pathSegments, method: req.method, hasAppKey: !!appKey, hasToken: !!token, appKeySource: req.headers["x-kis-appkey"] ? "header" : req.query._ak ? "query" : "none", tokenSource: req.headers["x-kis-token"] ? "header" : req.query._token ? "query" : "none" });
     }
 
     // ── config (POST): authenticate ──
