@@ -582,43 +582,50 @@ export default async function handler(req, res) {
 
     // ── ranking/fluctuation (GET) ── (시세 데이터는 항상 실전서버 사용)
     if (routeName === "ranking" && routeSub === "fluctuation") {
-      const market = qp.market || "J";
-      const sort = qp.sort || "0";
-      const result = await kisGet(
-        REAL_BASE,
-        "/uapi/domestic-stock/v1/quotations/fluctuation",
-        "FHPST01740000",
-        {
-          FID_COND_MRKT_DIV_CODE: market,
-          FID_COND_SCR_DIV_CODE: "20174",
-          FID_INPUT_ISCD: "0000",
-          FID_RANK_SORT_CLS_CODE: sort,
-          FID_INPUT_CNT_1: "0",
-          FID_PRC_CLS_CODE: "0",
-          FID_INPUT_PRICE_1: "",
-          FID_INPUT_PRICE_2: "",
-          FID_VOL_CNT: "",
-          FID_TRGT_CLS_CODE: "0",
-          FID_TRGT_EXLS_CLS_CODE: "0",
-          FID_DIV_CLS_CODE: "0",
-          FID_RSFL_RATE1: "",
-          FID_RSFL_RATE2: "",
-        },
-        token,
-        appKey,
-        appSecret
-      );
-      const items = (result.output || []).slice(0, 30).map((item) => ({
-        rank: safeInt(item.data_rank),
-        stock_code: item.mksc_shrn_iscd || item.stck_shrn_iscd || "",
-        stock_name: item.hts_kor_isnm || "",
-        price: safeInt(item.stck_prpr),
-        change: safeInt(item.prdy_vrss),
-        change_rate: safeFloat(item.prdy_ctrt),
-        volume: safeInt(item.acml_vol),
-        change_sign: item.prdy_vrss_sign || "",
-      }));
-      return res.json({ success: true, items });
+      try {
+        const market = qp.market || "J";
+        const sort = qp.sort || "0";
+        const result = await kisGet(
+          REAL_BASE,
+          "/uapi/domestic-stock/v1/quotations/fluctuation",
+          "FHPST01740000",
+          {
+            FID_COND_MRKT_DIV_CODE: market,
+            FID_COND_SCR_DIV_CODE: "20174",
+            FID_INPUT_ISCD: "0000",
+            FID_RANK_SORT_CLS_CODE: sort,
+            FID_INPUT_CNT_1: "0",
+            FID_PRC_CLS_CODE: "0",
+            FID_INPUT_PRICE_1: "",
+            FID_INPUT_PRICE_2: "",
+            FID_VOL_CNT: "",
+            FID_TRGT_CLS_CODE: "0",
+            FID_TRGT_EXLS_CLS_CODE: "0",
+            FID_DIV_CLS_CODE: "0",
+            FID_RSFL_RATE1: "",
+            FID_RSFL_RATE2: "",
+          },
+          token,
+          appKey,
+          appSecret
+        );
+        if (result.rt_cd && result.rt_cd !== "0") {
+          return res.json({ success: false, detail: result.msg1 || "KIS API 오류", msg_cd: result.msg_cd, raw: result });
+        }
+        const items = (result.output || []).slice(0, 30).map((item) => ({
+          rank: safeInt(item.data_rank),
+          stock_code: item.mksc_shrn_iscd || item.stck_shrn_iscd || "",
+          stock_name: item.hts_kor_isnm || "",
+          price: safeInt(item.stck_prpr),
+          change: safeInt(item.prdy_vrss),
+          change_rate: safeFloat(item.prdy_ctrt),
+          volume: safeInt(item.acml_vol),
+          change_sign: item.prdy_vrss_sign || "",
+        }));
+        return res.json({ success: true, items });
+      } catch (e) {
+        return res.json({ success: false, detail: `등락률 조회 실패: ${e.message}` });
+      }
     }
 
     // ── index (GET): KOSPI/KOSDAQ ── (시세 데이터는 항상 실전서버 사용)
