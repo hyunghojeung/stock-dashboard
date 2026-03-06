@@ -87,7 +87,9 @@ export default async function handler(req, res) {
   const appKey = qp._ak || req.headers["x-kis-appkey"] || "";
   const appSecret = qp._as || req.headers["x-kis-appsecret"] || "";
   const accountNo = (qp._acct || req.headers["x-kis-account"] || "").replace(/-/g, "");
-  const isVirtual = (qp._virt || req.headers["x-kis-virtual"] || "true") !== "false";
+  // _virt 값: "true"=모의, "false"=실전 (프론트엔드가 항상 전송)
+  const virtParam = qp._virt ?? req.headers["x-kis-virtual"] ?? "true";
+  const isVirtual = virtParam !== "false";
   const token = qp._token || req.headers["x-kis-token"] || "";
 
   const baseUrl = isVirtual ? VIRT_BASE : REAL_BASE;

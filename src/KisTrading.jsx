@@ -41,6 +41,8 @@ function saveKisCredentials(creds) {
 // 특정 모드의 크레덴셜을 활성화
 export function activateKisMode(mode) {
   const creds = getKisCredentials(mode);
+  // is_virtual 플래그를 모드에 맞게 강제 설정 (누락 방지)
+  creds.is_virtual = mode === 'virtual';
   // 항상 해당 모드의 크레덴셜로 전환 (토큰 없어도 모드 전환)
   _kisCache = creds;
   try { localStorage.setItem(KIS_STORAGE_KEY, JSON.stringify(creds)); } catch {}
@@ -75,14 +77,18 @@ export async function refreshKisToken(mode) {
 export async function kisApi(route, params = {}, options = {}) {
   try {
     const creds = getKisCredentials();
-    console.log("[KIS]", route, "token:", creds.access_token ? "yes" : "NO", "appkey:", creds.app_key ? "yes" : "NO", "creds_keys:", Object.keys(creds));
+    // is_virtual이 undefined이면 활성 모드에서 결정
+    const activeMode = getKisActiveMode();
+    const isVirtual = creds.is_virtual !== undefined ? creds.is_virtual : (activeMode === 'virtual');
+    console.log("[KIS]", route, "mode:", isVirtual ? "virtual" : "REAL", "token:", creds.access_token ? "yes" : "NO", "appkey:", creds.app_key ? "yes" : "NO");
     const url = new URL("/api/kis", window.location.origin);
     // Route + credentials + extra params all as query string
     url.searchParams.set("_route", route);
     if (creds.app_key) url.searchParams.set("_ak", creds.app_key);
     if (creds.app_secret) url.searchParams.set("_as", creds.app_secret);
     if (creds.account_no) url.searchParams.set("_acct", creds.account_no);
-    if (creds.is_virtual !== undefined) url.searchParams.set("_virt", String(creds.is_virtual));
+    // 항상 _virt 플래그 전송 (누락 시 백엔드가 모의투자로 기본 처리하는 문제 방지)
+    url.searchParams.set("_virt", String(isVirtual));
     if (creds.access_token) url.searchParams.set("_token", creds.access_token);
     Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== "") url.searchParams.set(k, v); });
 
@@ -92,7 +98,7 @@ export async function kisApi(route, params = {}, options = {}) {
       ...(creds.app_key && { "x-kis-appkey": creds.app_key }),
       ...(creds.app_secret && { "x-kis-appsecret": creds.app_secret }),
       ...(creds.account_no && { "x-kis-account": creds.account_no }),
-      ...(creds.is_virtual !== undefined && { "x-kis-virtual": String(creds.is_virtual) }),
+      "x-kis-virtual": String(isVirtual),
       ...(creds.access_token && { "x-kis-token": creds.access_token }),
       ...options.headers,
     };
@@ -340,10 +346,15 @@ function ConfigPanel({ mode = 'virtual', onConnect }) {
           </div>
         </div>
         <div style={{ marginBottom:12 }}>
-          <label style={S.label}>계좌번호</label>
+          <label style={S.label}>계좌번호 (8자리-2자리, 예: 44044840-01)</label>
           <input style={{ ...S.input, maxWidth:300 }} value={acctNo} onChange={e => setAcctNo(e.target.value)} placeholder="00000000-01" />
+          {acctNo && acctNo.replace(/-/g, "").length < 10 && (
+            <div style={{ color: "#ff9800", fontSize: 11, marginTop: 4 }}>
+              ⚠️ 계좌번호는 10자리 (8자리+상품코드2자리)를 입력해주세요. 예: {acctNo.replace(/-/g, "")}-01
+            </div>
+          )}
         </div>
-        <button onClick={connect} disabled={connecting || !appKey || !appSecret || !acctNo}
+        <button onClick={connect} disabled={connecting || !appKey || !appSecret || !acctNo || acctNo.replace(/-/g, "").length < 10}
           style={{ ...S.btn(isV ? "#1a5a3e" : "#5a1a1a"), padding:"8px 20px", fontSize:12, opacity: connecting ? 0.6 : 1 }}>
           {connecting ? "연결 중..." : hasToken ? "재연결" : "연결하기"}
         </button>
@@ -815,9 +826,9 @@ function QuotePanel() {
 
       {quote && (
         <div style={{ ...S.panel, padding: "14px 16px" }}>
-          <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
-            {/* Price Info - compact */}
-            <div style={{ minWidth: 220, flexShrink: 0 }}>
+          {/* 종목 정보 헤더 */}
+          <div style={{ display: "flex", gap: 20, alignItems: "flex-start", marginBottom: 14, flexWrap: "wrap" }}>
+            <div>
               <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 2 }}>
                 <span style={{ fontSize: 17, fontWeight: 700, color: "#e0e6f0" }}>{quote.name}</span>
                 <span style={{ fontSize: 11, color: "#6688aa" }}>{quote.stock_code}</span>
@@ -825,26 +836,26 @@ function QuotePanel() {
               <div style={{ fontSize: 28, fontWeight: 700, color: clr(quote.change), fontFamily: "'JetBrains Mono',monospace", lineHeight: 1.2 }}>
                 {fmt(quote.price)}<span style={{ fontSize: 13, color: "#6688aa" }}>원</span>
               </div>
-              <div style={{ color: clr(quote.change), fontSize: 13, fontFamily: "monospace", marginTop: 2, marginBottom: 10 }}>
+              <div style={{ color: clr(quote.change), fontSize: 13, fontFamily: "monospace", marginTop: 2 }}>
                 {quote.change > 0 ? "▲" : quote.change < 0 ? "▼" : "—"} {fmt(Math.abs(quote.change))}원 ({fmtPct(quote.change_rate)})
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
-                {[["시가", quote.open], ["고가", quote.high], ["저가", quote.low], ["거래량", quote.volume], ["PER", quote.per?.toFixed(1)], ["PBR", quote.pbr?.toFixed(2)]].map(([l, v]) => (
-                  <div key={l}><div style={{ color: "#556677", fontSize: 9 }}>{l}</div><div style={{ color: "#e0e6f0", fontSize: 12, fontFamily: "monospace" }}>{typeof v === "number" ? fmt(v) : v || "—"}</div></div>
-                ))}
-              </div>
             </div>
-
-            {/* Chart - fills remaining space */}
-            {chartData && chartData.length > 0 && (
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 11, color: "#6688aa", marginBottom: 4 }}>
-                  {{ D: "일봉", W: "주봉", M: "월봉" }[period]} ({chartData.length}개)
-                </div>
-                <MiniCandleChart candles={chartData.slice(0, 100)} width={580} height={220} />
-              </div>
-            )}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, alignSelf: "center" }}>
+              {[["시가", quote.open], ["고가", quote.high], ["저가", quote.low], ["거래량", quote.volume], ["PER", quote.per?.toFixed(1)], ["PBR", quote.pbr?.toFixed(2)]].map(([l, v]) => (
+                <div key={l}><div style={{ color: "#556677", fontSize: 9 }}>{l}</div><div style={{ color: "#e0e6f0", fontSize: 12, fontFamily: "monospace" }}>{typeof v === "number" ? fmt(v) : v || "—"}</div></div>
+              ))}
+            </div>
           </div>
+
+          {/* 차트 - 전체 너비 */}
+          {chartData && chartData.length > 0 && (
+            <div>
+              <div style={{ fontSize: 11, color: "#6688aa", marginBottom: 6 }}>
+                {{ D: "일봉", W: "주봉", M: "월봉" }[period]} ({chartData.length}개)
+              </div>
+              <StockChart candles={chartData.slice(0, 100)} height={420} />
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -1026,39 +1037,193 @@ function FinancePanel() {
 // ============================================================
 // Mini Candle Chart (for KIS chart data)
 // ============================================================
-function MiniCandleChart({ candles, width = 600, height = 250 }) {
+function StockChart({ candles, height = 400 }) {
+  const containerRef = useRef(null);
+  const [containerWidth, setContainerWidth] = useState(700);
+  const [hoverIdx, setHoverIdx] = useState(null);
+  const [showMA, setShowMA] = useState({ ma5: true, ma20: true, ma60: true });
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const obs = new ResizeObserver(entries => {
+      for (const e of entries) setContainerWidth(e.contentRect.width);
+    });
+    obs.observe(containerRef.current);
+    return () => obs.disconnect();
+  }, []);
+
   if (!candles || candles.length === 0) return null;
 
   const dc = candles.slice().reverse();
+  const width = containerWidth;
+  const padL = 55, padR = 10, padT = 10, padB = 20;
+  const chartH = Math.round(height * 0.70); // 캔들 영역
+  const volH = Math.round(height * 0.20); // 거래량 영역
+  const volTop = chartH + 10;
+
+  // 이동평균 계산
+  const calcMA = (data, n) => data.map((_, i) => {
+    if (i < n - 1) return null;
+    let sum = 0;
+    for (let j = i - n + 1; j <= i; j++) sum += data[j].close;
+    return sum / n;
+  });
+  const ma5 = calcMA(dc, 5);
+  const ma20 = calcMA(dc, 20);
+  const ma60 = calcMA(dc, 60);
+
+  // 가격 범위
   const prices = dc.flatMap(c => [c.high, c.low]);
   const mn = Math.min(...prices), mx = Math.max(...prices);
   const rg = mx - mn || 1;
-  const cw = (width - 50) / dc.length;
-  const toY = (p) => 20 + (1 - (p - mn) / rg) * (height - 50);
+  const margin = rg * 0.05;
+  const pMin = mn - margin, pMax = mx + margin, pRg = pMax - pMin;
+
+  // 거래량 범위
+  const volumes = dc.map(c => c.volume || 0);
+  const maxVol = Math.max(...volumes) || 1;
+
+  const cw = (width - padL - padR) / dc.length;
+  const toY = (p) => padT + (1 - (p - pMin) / pRg) * (chartH - padT - 5);
+  const toVolY = (v) => volTop + volH - (v / maxVol) * volH;
+
+  // MA 라인 path
+  const maPath = (maData) => {
+    let d = "";
+    maData.forEach((v, i) => {
+      if (v === null) return;
+      const x = padL + i * cw + cw / 2;
+      const y = toY(v);
+      d += d ? `L${x},${y}` : `M${x},${y}`;
+    });
+    return d;
+  };
+
+  // 가격 그리드 (5단계)
+  const gridLines = [0, 0.2, 0.4, 0.6, 0.8, 1.0].map(p => ({
+    y: toY(pMin + pRg * p),
+    label: Math.round(pMin + pRg * p),
+  }));
+
+  // 날짜 라벨 (적절한 간격)
+  const dateInterval = Math.max(Math.floor(dc.length / 6), 1);
+  const dateLabels = dc.map((c, i) => i % dateInterval === 0 ? { x: padL + i * cw + cw / 2, label: c.date ? `${c.date.slice(4,6)}/${c.date.slice(6,8)}` : "" } : null).filter(Boolean);
+
+  // 호버 데이터
+  const hd = hoverIdx !== null ? dc[hoverIdx] : null;
+
+  const handleMouseMove = (e) => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const mx = e.clientX - rect.left - padL;
+    const idx = Math.floor(mx / cw);
+    if (idx >= 0 && idx < dc.length) setHoverIdx(idx);
+    else setHoverIdx(null);
+  };
+
+  const maColors = { ma5: "#ffd54f", ma20: "#ff7043", ma60: "#ab47bc" };
 
   return (
-    <svg width={width} height={height} style={{ display: "block" }}>
-      <rect x="0" y="0" width={width} height={height} fill="rgba(8,15,30,0.8)" rx="4" />
-      {[0.25, 0.5, 0.75].map(p => (
-        <g key={p}>
-          <line x1="40" y1={toY(mn + rg * p)} x2={width - 10} y2={toY(mn + rg * p)} stroke="rgba(50,70,100,0.3)" strokeDasharray="3,3" />
-          <text x="2" y={toY(mn + rg * p) + 4} fill="#445566" fontSize="9" fontFamily="monospace">{fmt(Math.round(mn + rg * p))}</text>
-        </g>
-      ))}
-      {dc.map((c, i) => {
-        const x = 45 + i * cw;
-        const up = c.close >= c.open;
-        const co = up ? "#ff4444" : "#4488ff";
-        const bt = toY(Math.max(c.open, c.close));
-        const bb = toY(Math.min(c.open, c.close));
-        const bh = Math.max(bb - bt, 1);
-        return (
+    <div ref={containerRef} style={{ width: "100%", position: "relative" }}>
+      {/* MA 토글 + 호버 정보 */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4, flexWrap: "wrap", gap: 4 }}>
+        <div style={{ display: "flex", gap: 8 }}>
+          {[["ma5", "MA5"], ["ma20", "MA20"], ["ma60", "MA60"]].map(([k, label]) => (
+            <button key={k} onClick={() => setShowMA(prev => ({ ...prev, [k]: !prev[k] }))}
+              style={{ padding: "2px 8px", fontSize: 10, fontWeight: 600, borderRadius: 4, cursor: "pointer", border: "1px solid",
+                background: showMA[k] ? `${maColors[k]}20` : "transparent",
+                color: showMA[k] ? maColors[k] : "#556677",
+                borderColor: showMA[k] ? `${maColors[k]}40` : "rgba(80,100,130,0.3)" }}>
+              {label}
+            </button>
+          ))}
+        </div>
+        {hd && (
+          <div style={{ display: "flex", gap: 10, fontSize: 10, fontFamily: "monospace" }}>
+            <span style={{ color: "#8899aa" }}>{hd.date ? `${hd.date.slice(0,4)}.${hd.date.slice(4,6)}.${hd.date.slice(6,8)}` : ""}</span>
+            <span style={{ color: "#e0e6f0" }}>시{fmt(hd.open)}</span>
+            <span style={{ color: "#ff4444" }}>고{fmt(hd.high)}</span>
+            <span style={{ color: "#4488ff" }}>저{fmt(hd.low)}</span>
+            <span style={{ color: hd.close >= hd.open ? "#ff4444" : "#4488ff" }}>종{fmt(hd.close)}</span>
+            <span style={{ color: "#8899aa" }}>량{fmt(hd.volume)}</span>
+          </div>
+        )}
+      </div>
+
+      <svg width={width} height={height} style={{ display: "block", cursor: "crosshair" }}
+        onMouseMove={handleMouseMove} onMouseLeave={() => setHoverIdx(null)}>
+        {/* 배경 */}
+        <rect x="0" y="0" width={width} height={height} fill="rgba(8,15,30,0.9)" rx="6" />
+
+        {/* 가격 그리드 */}
+        {gridLines.map((g, i) => (
           <g key={i}>
-            <line x1={x + cw / 2} y1={toY(c.high)} x2={x + cw / 2} y2={toY(c.low)} stroke={co} strokeWidth="1" />
-            <rect x={x + 1} y={bt} width={Math.max(cw - 2, 1)} height={bh} fill={co} rx="1" />
+            <line x1={padL} y1={g.y} x2={width - padR} y2={g.y} stroke="rgba(50,70,100,0.25)" strokeDasharray="2,4" />
+            <text x={padL - 4} y={g.y + 3} fill="#445566" fontSize="9" fontFamily="monospace" textAnchor="end">{fmt(g.label)}</text>
           </g>
-        );
-      })}
-    </svg>
+        ))}
+
+        {/* 거래량 영역 구분선 */}
+        <line x1={padL} y1={volTop - 3} x2={width - padR} y2={volTop - 3} stroke="rgba(80,110,160,0.2)" />
+        <text x={padL - 4} y={volTop + 10} fill="#445566" fontSize="8" fontFamily="monospace" textAnchor="end">Vol</text>
+
+        {/* 거래량 바 */}
+        {dc.map((c, i) => {
+          const x = padL + i * cw;
+          const up = c.close >= c.open;
+          const vH = (c.volume / maxVol) * volH;
+          return (
+            <rect key={`v${i}`} x={x + 1} y={volTop + volH - vH} width={Math.max(cw - 2, 1)} height={vH}
+              fill={up ? "rgba(255,68,68,0.35)" : "rgba(68,136,255,0.35)"} rx="0.5" />
+          );
+        })}
+
+        {/* 이동평균선 */}
+        {showMA.ma5 && <path d={maPath(ma5)} fill="none" stroke={maColors.ma5} strokeWidth="1.2" opacity="0.8" />}
+        {showMA.ma20 && <path d={maPath(ma20)} fill="none" stroke={maColors.ma20} strokeWidth="1.2" opacity="0.8" />}
+        {showMA.ma60 && <path d={maPath(ma60)} fill="none" stroke={maColors.ma60} strokeWidth="1.2" opacity="0.7" />}
+
+        {/* 캔들스틱 */}
+        {dc.map((c, i) => {
+          const x = padL + i * cw;
+          const up = c.close >= c.open;
+          const co = up ? "#ff4444" : "#4488ff";
+          const bt = toY(Math.max(c.open, c.close));
+          const bb = toY(Math.min(c.open, c.close));
+          const bh = Math.max(bb - bt, 1);
+          return (
+            <g key={i} opacity={hoverIdx === i ? 1 : 0.9}>
+              <line x1={x + cw / 2} y1={toY(c.high)} x2={x + cw / 2} y2={toY(c.low)} stroke={co} strokeWidth="1" />
+              <rect x={x + 1} y={bt} width={Math.max(cw - 2, 1)} height={bh} fill={up ? co : co} stroke={co} strokeWidth="0.5" rx="0.5" />
+            </g>
+          );
+        })}
+
+        {/* 호버 크로스헤어 */}
+        {hoverIdx !== null && (() => {
+          const x = padL + hoverIdx * cw + cw / 2;
+          const c = dc[hoverIdx];
+          return (
+            <g>
+              <line x1={x} y1={padT} x2={x} y2={volTop + volH} stroke="rgba(200,220,255,0.3)" strokeWidth="1" strokeDasharray="3,3" />
+              <line x1={padL} y1={toY(c.close)} x2={width - padR} y2={toY(c.close)} stroke="rgba(200,220,255,0.3)" strokeWidth="1" strokeDasharray="3,3" />
+              {/* 가격 라벨 */}
+              <rect x={0} y={toY(c.close) - 8} width={padL - 2} height={16} fill="rgba(30,50,80,0.9)" rx="3" />
+              <text x={padL - 5} y={toY(c.close) + 4} fill="#e0e6f0" fontSize="9" fontFamily="monospace" textAnchor="end">{fmt(c.close)}</text>
+            </g>
+          );
+        })()}
+
+        {/* 날짜 라벨 */}
+        {dateLabels.map((d, i) => (
+          <text key={i} x={d.x} y={height - 3} fill="#445566" fontSize="8" fontFamily="monospace" textAnchor="middle">{d.label}</text>
+        ))}
+      </svg>
+    </div>
   );
+}
+
+// 레거시 호환
+function MiniCandleChart({ candles, width = 600, height = 250 }) {
+  return <StockChart candles={candles} height={height} />;
 }
