@@ -149,11 +149,11 @@ function DashboardPage() {
   const {data:accountData}=useApi("/api/trading/account",iv);
   const {data:strategies}=useApi("/api/strategy/",0);
 
-  const tList=trades||[],hList=(holdingsData?.holdings||holdingsData||[]),wList=watchlist||[];
+  const tList=trades||[],hList=Array.isArray(holdingsData?.holdings)?holdingsData.holdings:Array.isArray(holdingsData)?holdingsData:[],wList=watchlist||[];
   const sells=tList.filter(t=>t.trade_type==="sell");
   const todayProfit=sells.reduce((s,t)=>s+(t.net_profit||0),0);
   const wins=sells.filter(t=>(t.net_profit||0)>0).length,losses=sells.filter(t=>(t.net_profit||0)<=0).length;
-  const totalUnrealized=hList.reduce?.((s,h)=>s+(h.unrealized_profit||0),0)||0;
+  const totalUnrealized=hList.reduce((s,h)=>s+(h.unrealized_profit||0),0);
   const initCap=strategies?.[0]?.initial_capital||1000000;
   const totalAsset=accountData?.total_eval||null;
   const cumRet=totalAsset?((totalAsset-initCap)/initCap*100):0;
@@ -270,7 +270,7 @@ function WatchlistPage() {
 function PortfolioPage() {
   const {data,loading}=useApi("/api/trading/holdings",30000);
   if(loading) return <Loader t="보유종목 로딩..."/>;
-  const hl=(data?.holdings||data||[]);
+  const hl=Array.isArray(data?.holdings)?data.holdings:Array.isArray(data)?data:[];
   const total=hl.reduce((s,h)=>s+(h.unrealized_profit||0),0);
   return (
     <div style={{background:"linear-gradient(135deg,rgba(25,35,65,0.9),rgba(15,22,48,0.95))",border:"1px solid rgba(100,140,200,0.15)",borderRadius:12,padding:16}}>
@@ -288,7 +288,7 @@ function PerformancePage() {
   const {data:histData,loading:rL}=useApi("/api/trading/history",0);
   const {data:accountData}=useApi("/api/trading/account",0);
   if(rL) return <Loader t="수익 분석 로딩..."/>;
-  const rl=(histData?.trades||histData||[]);
+  const rl=Array.isArray(histData?.trades)?histData.trades:Array.isArray(histData)?histData:[];
   const totalTrades=rl.length;
   const wins=rl.filter(t=>(t.net_profit||0)>0).length;
   const winRate=totalTrades>0?Math.round(wins/totalTrades*100):0;
