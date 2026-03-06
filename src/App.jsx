@@ -543,8 +543,8 @@ export default function App() {
       case "backup": return <DatabaseBackup/>;
       case "pattern": return <PatternDetector/>;
       case "virtual-portfolio": return <VirtualPortfolioTracker key={vpKey}/>;
-      case "kis-trading": return <KisTrading mode="virtual" />;
-      case "kis-real": return <KisTrading mode="real" />;
+      case "kis-trading": return <KisTrading key="virtual" mode="virtual" />;
+      case "kis-real": return <KisTrading key="real" mode="real" />;
       case "market-analysis": return <MarketAnalysis/>;
       default: return <DashboardPage/>;
     }

@@ -41,12 +41,34 @@ function saveKisCredentials(creds) {
 // 특정 모드의 크레덴셜을 활성화
 export function activateKisMode(mode) {
   const creds = getKisCredentials(mode);
-  if (creds.access_token) {
-    _kisCache = creds;
-    try { localStorage.setItem(KIS_STORAGE_KEY, JSON.stringify(creds)); } catch {}
-    try { localStorage.setItem(KIS_ACTIVE_MODE_KEY, mode); } catch {}
-    return true;
-  }
+  // 항상 해당 모드의 크레덴셜로 전환 (토큰 없어도 모드 전환)
+  _kisCache = creds;
+  try { localStorage.setItem(KIS_STORAGE_KEY, JSON.stringify(creds)); } catch {}
+  try { localStorage.setItem(KIS_ACTIVE_MODE_KEY, mode); } catch {}
+  return !!creds.access_token;
+}
+
+// 토큰 자동 갱신 (app_key/app_secret이 저장되어 있으면 새 토큰 발급)
+export async function refreshKisToken(mode) {
+  const creds = getKisCredentials(mode);
+  if (!creds.app_key || !creds.app_secret || !creds.account_no) return false;
+  try {
+    const isV = mode === 'virtual';
+    const r = await kisApi("config", {}, {
+      method: "POST",
+      body: JSON.stringify({ app_key: creds.app_key, app_secret: creds.app_secret, account_no: creds.account_no, is_virtual: isV }),
+    });
+    if (r?.success && r.access_token) {
+      const updated = { ...creds, access_token: r.access_token, is_virtual: isV };
+      _kisCache = updated;
+      try { localStorage.setItem(KIS_STORAGE_KEY, JSON.stringify(updated)); } catch {}
+      const modeKey = isV ? KIS_VIRTUAL_KEY : KIS_REAL_KEY;
+      try { localStorage.setItem(modeKey, JSON.stringify(updated)); } catch {}
+      try { localStorage.setItem(KIS_ACTIVE_MODE_KEY, mode); } catch {}
+      console.log(`[KIS] Token refreshed for ${mode} mode`);
+      return true;
+    }
+  } catch (e) { console.warn("[KIS] Token refresh failed:", e.message); }
   return false;
 }
 
@@ -163,21 +185,39 @@ export default function KisTrading({ mode = "virtual" }) {
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Load KIS status from localStorage for the given mode
+  // Load KIS status from localStorage for the given mode + auto-refresh token
   useEffect(() => {
     activateKisMode(mode);
     const creds = getKisCredentials(mode);
     const configured = !!(creds.app_key && creds.app_secret && creds.account_no);
     const tokenValid = !!creds.access_token;
-    const s = {
-      configured,
-      token_valid: tokenValid,
-      is_virtual: isVirtual,
-      account_no: creds.account_no ? creds.account_no.replace(/-/g, "").slice(0, 4) + "****" + creds.account_no.replace(/-/g, "").slice(-2) : "",
+
+    const updateStatus = (c) => {
+      const conf = !!(c.app_key && c.app_secret && c.account_no);
+      const tok = !!c.access_token;
+      setStatus({
+        configured: conf, token_valid: tok, is_virtual: isVirtual,
+        account_no: c.account_no ? c.account_no.replace(/-/g, "").slice(0, 4) + "****" + c.account_no.replace(/-/g, "").slice(-2) : "",
+      });
+      if (conf && tok) setTab(prev => prev === "config" ? "balance" : prev);
     };
-    setStatus(s);
+
+    updateStatus(creds);
     setLoading(false);
-    if (configured && tokenValid) setTab("balance");
+
+    // 크레덴셜이 있지만 토큰이 없거나 만료되었을 수 있으면 자동 갱신
+    if (configured && !tokenValid) {
+      refreshKisToken(mode).then(ok => {
+        if (ok) updateStatus(getKisCredentials(mode));
+      });
+    }
+    // 토큰이 있어도 페이지 진입 시 갱신 시도 (만료 방지)
+    else if (configured && tokenValid) {
+      setTab("balance");
+      refreshKisToken(mode).then(ok => {
+        if (ok) updateStatus(getKisCredentials(mode));
+      });
+    }
   }, [mode]);
 
   const tabs = [
@@ -189,6 +229,9 @@ export default function KisTrading({ mode = "virtual" }) {
     { id: "asking", label: "호가", icon: "📊" },
     { id: "finance", label: "재무정보", icon: "📑" },
   ];
+
+  // 렌더 직전 항상 해당 모드 크레덴셜 활성화 (하위 패널이 올바른 데이터 사용)
+  activateKisMode(mode);
 
   const titleLabel = isVirtual ? "KIS 모의투자" : "KIS 실전투자";
   const titleIcon = isVirtual ? "🏦" : "🔴";
@@ -232,12 +275,12 @@ export default function KisTrading({ mode = "virtual" }) {
         const creds = getKisCredentials(mode);
         setStatus({ configured: true, token_valid: !!creds.access_token, is_virtual: isVirtual, account_no: creds.account_no ? creds.account_no.replace(/-/g, "").slice(0, 4) + "****" + creds.account_no.replace(/-/g, "").slice(-2) : "" });
       }} />}
-      {tab === "balance" && <BalancePanel />}
-      {tab === "order" && <OrderPanel />}
-      {tab === "orders" && <OrderHistoryPanel />}
-      {tab === "quote" && <QuotePanel />}
-      {tab === "asking" && <AskingPanel />}
-      {tab === "finance" && <FinancePanel />}
+      {tab === "balance" && <BalancePanel key={mode} />}
+      {tab === "order" && <OrderPanel key={mode} />}
+      {tab === "orders" && <OrderHistoryPanel key={mode} />}
+      {tab === "quote" && <QuotePanel key={mode} />}
+      {tab === "asking" && <AskingPanel key={mode} />}
+      {tab === "finance" && <FinancePanel key={mode} />}
     </div>
   );
 }
