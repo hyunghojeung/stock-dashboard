@@ -1,8 +1,11 @@
 """FastAPI 메인 앱"""
-from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBasic
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from contextlib import asynccontextmanager
+import os
 from app.core.config import config, KST
 from app.core.scheduler import setup_scheduler
 from app.api import stock_routes, trade_routes, portfolio_routes, watchlist_routes, strategy_routes, kakao_routes
@@ -70,8 +73,8 @@ app.include_router(pattern_router)
 app.include_router(virtual_invest_router)
 app.include_router(kis_router)
 
-@app.get("/")
-async def root():
+@app.get("/api/health")
+async def health():
     now = datetime.now(KST)
     return {"name": "10억 만들기", "status": "running", "market": get_market_status(now)}
 
@@ -158,6 +161,32 @@ async def collect_patterns_status():
         "started_at": _pattern_collect_state["started_at"],
         "result": _pattern_collect_state["result"],
     }
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# ★ 프론트엔드 정적 파일 서빙 (SPA)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DIST_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "dist")
+if not os.path.isdir(DIST_DIR):
+    DIST_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dist")
+
+if os.path.isdir(DIST_DIR):
+    # /assets 등 정적 파일 서빙
+    app.mount("/assets", StaticFiles(directory=os.path.join(DIST_DIR, "assets")), name="static-assets")
+
+    @app.get("/{full_path:path}")
+    async def serve_spa(request: Request, full_path: str):
+        """SPA 라우팅: API가 아닌 모든 경로는 index.html 반환"""
+        # 정적 파일 존재하면 직접 서빙
+        file_path = os.path.join(DIST_DIR, full_path)
+        if full_path and os.path.isfile(file_path):
+            return FileResponse(file_path)
+        # 그 외 모든 경로 → index.html (React Router)
+        return FileResponse(os.path.join(DIST_DIR, "index.html"))
+else:
+    @app.get("/")
+    async def root():
+        now = datetime.now(KST)
+        return {"name": "10억 만들기", "status": "running", "market": get_market_status(now), "note": "프론트엔드 빌드 파일(dist/)이 없습니다. npm run build 를 실행하세요."}
 
 if __name__ == "__main__":
     import uvicorn
