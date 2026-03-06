@@ -1715,7 +1715,7 @@ export default function PatternDetector() {
               return !creds.access_token ? (
                 <div style={{ marginBottom:14, padding:12, borderRadius:8, background:'rgba(245,158,11,0.1)', border:'1px solid rgba(245,158,11,0.3)', fontSize:12, color:'#f59e0b' }}>
                   ⚠️ {kisOrderMode === 'virtual' ? '모의투자' : '실전투자'} API가 아직 연결되지 않았습니다.<br/>
-                  <span style={{ fontSize:11 }}>KIS 모의투자 메뉴 → API 설정에서 먼저 연결해주세요. 아래 종목 정보는 미리 확인할 수 있습니다.</span>
+                  <span style={{ fontSize:11 }}>{kisOrderMode === 'virtual' ? 'KIS 모의투자' : 'KIS 실전투자'} 메뉴 → API 설정에서 먼저 연결해주세요. 아래 종목 정보는 미리 확인할 수 있습니다.</span>
                 </div>
               ) : null;
             })()}
@@ -1825,7 +1825,7 @@ export default function PatternDetector() {
                   </div>
                 ))}
                 <div style={{ marginTop:12, padding:10, borderRadius:8, background:'rgba(255,213,79,0.08)', border:'1px solid rgba(255,213,79,0.2)', fontSize:11, color:'#ffd54f' }}>
-                  💡 체결 확인은 KIS 모의투자 {'>'} 체결내역에서 확인하세요.
+                  💡 체결 확인은 {kisOrderMode === 'virtual' ? 'KIS 모의투자' : 'KIS 실전투자'} {'>'} 체결내역에서 확인하세요.
                   {kisUseCompound && ' 복리 풀이 업데이트되었습니다.'}
                 </div>
                 <div style={{ display:'flex', justifyContent:'flex-end', marginTop:12 }}>
