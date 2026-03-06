@@ -76,8 +76,10 @@ export default async function handler(req, res) {
   // Route: prefer _route query param, fall back to URL path segments
   const urlPath = fullUrl.pathname.replace(/^\/api\/kis\/?/, "");
   const pathSegments = urlPath.split("/").filter(Boolean);
-  const routeName = qp._route || pathSegments[0] || "";
-  const routeSub = pathSegments[1] || "";
+  const rawRoute = qp._route || "";
+  const routeParts = rawRoute.split("/").filter(Boolean);
+  const routeName = routeParts[0] || pathSegments[0] || "";
+  const routeSub = routeParts[1] || pathSegments[1] || "";
 
   // Read credentials from query params (primary) or headers (fallback)
   const appKey = qp._ak || req.headers["x-kis-appkey"] || "";
@@ -362,8 +364,8 @@ export default async function handler(req, res) {
     }
 
     // ── quote/:code (GET) ──
-    if (routeName === "quote" && (qp.code || pathSegments[1])) {
-      const code = qp.code || pathSegments[1];
+    if (routeName === "quote" && (qp.code || routeSub)) {
+      const code = qp.code || routeSub;
       const result = await kisGet(
         baseUrl,
         "/uapi/domestic-stock/v1/quotations/inquire-price",
@@ -398,8 +400,8 @@ export default async function handler(req, res) {
     }
 
     // ── chart/:code (GET) ──
-    if (routeName === "chart" && (qp.code || pathSegments[1])) {
-      const code = qp.code || pathSegments[1];
+    if (routeName === "chart" && (qp.code || routeSub)) {
+      const code = qp.code || routeSub;
       const period = qp.period || "D";
       const endDate = qp.end_date || today();
       const d = new Date();
@@ -443,8 +445,8 @@ export default async function handler(req, res) {
     }
 
     // ── asking/:code (GET) ──
-    if (routeName === "asking" && (qp.code || pathSegments[1])) {
-      const code = qp.code || pathSegments[1];
+    if (routeName === "asking" && (qp.code || routeSub)) {
+      const code = qp.code || routeSub;
       const result = await kisGet(
         baseUrl,
         "/uapi/domestic-stock/v1/quotations/inquire-asking-price-exp-ccn",
@@ -477,8 +479,8 @@ export default async function handler(req, res) {
     }
 
     // ── finance/:code (GET) ──
-    if (routeName === "finance" && (qp.code || pathSegments[1])) {
-      const code = qp.code || pathSegments[1];
+    if (routeName === "finance" && (qp.code || routeSub)) {
+      const code = qp.code || routeSub;
       try {
         const [ratio, income, growth] = await Promise.all([
           kisGet(
@@ -525,8 +527,23 @@ export default async function handler(req, res) {
       }
     }
 
+    // ── investor/:code (GET): 투자자별 매매동향 ──
+    if (routeName === "investor" && (qp.code || routeSub)) {
+      const code = qp.code || routeSub;
+      const result = await kisGet(
+        REAL_BASE,
+        "/uapi/domestic-stock/v1/quotations/inquire-investor",
+        "FHKST01010900",
+        { FID_COND_MRKT_DIV_CODE: "J", FID_INPUT_ISCD: code },
+        token,
+        appKey,
+        appSecret
+      );
+      return res.json({ success: true, data: result.output || [] });
+    }
+
     // ── ranking/volume (GET) ── (시세 데이터는 항상 실전서버 사용)
-    if (routeName === "ranking/volume" || (routeName === "ranking" && routeSub === "volume")) {
+    if (routeName === "ranking" && routeSub === "volume") {
       const market = qp.market || "J";
       const result = await kisGet(
         REAL_BASE,
@@ -564,7 +581,7 @@ export default async function handler(req, res) {
     }
 
     // ── ranking/fluctuation (GET) ── (시세 데이터는 항상 실전서버 사용)
-    if (routeName === "ranking/fluctuation" || (routeName === "ranking" && routeSub === "fluctuation")) {
+    if (routeName === "ranking" && routeSub === "fluctuation") {
       const market = qp.market || "J";
       const sort = qp.sort || "0";
       const result = await kisGet(
