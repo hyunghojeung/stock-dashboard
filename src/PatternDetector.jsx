@@ -11,6 +11,21 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import VirtualInvestTab from "./VirtualInvestTab";
+import { kisApi, getKisCredentials, activateKisMode } from "./KisTrading";
+
+// ── 복리 투자 풀 관리 (localStorage) ──
+const COMPOUND_POOL_KEY = 'kis_compound_pool';
+function getCompoundPool(mode) {
+  try { return JSON.parse(localStorage.getItem(`${COMPOUND_POOL_KEY}_${mode}`) || 'null'); } catch { return null; }
+}
+function saveCompoundPool(mode, pool) {
+  try { localStorage.setItem(`${COMPOUND_POOL_KEY}_${mode}`, JSON.stringify(pool)); } catch {}
+}
+function initCompoundPool(mode, capital) {
+  const pool = { initial_capital: capital, current_capital: capital, total_invested: 0, total_returned: 0, round: 1, history: [], created_at: new Date().toISOString() };
+  saveCompoundPool(mode, pool);
+  return pool;
+}
 
 const API_BASE = "https://web-production-139e9.up.railway.app";
 
@@ -231,6 +246,15 @@ export default function PatternDetector() {
   const [regSource, setRegSource] = useState('recommend'); // 'recommend' | 'patternScan'
   const [patternSortKey, setPatternSortKey] = useState('similarity'); // 정렬 키
   const [patternSortDir, setPatternSortDir] = useState('desc'); // 'asc' | 'desc'
+
+  // ━━━ KIS 실전/모의 주문 모달 상태 ━━━
+  const [showKisOrderModal, setShowKisOrderModal] = useState(false);
+  const [kisOrderMode, setKisOrderMode] = useState('virtual'); // 'virtual' | 'real'
+  const [kisOrderCapital, setKisOrderCapital] = useState(1000000);
+  const [kisOrderType, setKisOrderType] = useState('01'); // '00'=지정가, '01'=시장가
+  const [kisOrderLoading, setKisOrderLoading] = useState(false);
+  const [kisOrderResults, setKisOrderResults] = useState(null);
+  const [kisUseCompound, setKisUseCompound] = useState(true); // 복리 모드
 
   // ━━━ ★ 패턴 라이브러리 함수 ━━━
   const fetchSavedPatterns = useCallback(async () => {
@@ -482,6 +506,101 @@ export default function PatternDetector() {
       }
     } catch(e) { alert('등록 실패: ' + e.message); }
     finally { setRegLoading(false); }
+  };
+
+  // ━━━ KIS 주문 모달 열기 ━━━
+  const openKisOrderModal = (mode) => {
+    const creds = getKisCredentials(mode);
+    if (!creds.access_token) {
+      alert(`${mode === 'virtual' ? '모의투자' : '실전투자'} API가 연결되지 않았습니다.\nKIS 모의투자 > API 설정에서 먼저 연결해주세요.`);
+      return;
+    }
+    const hasStocks = selectedRecStocks.size > 0;
+    if (!hasStocks) return;
+    setKisOrderMode(mode);
+    setKisOrderResults(null);
+    // 복리 풀에서 현재 자금 로드
+    const pool = getCompoundPool(mode);
+    if (pool && kisUseCompound) {
+      setKisOrderCapital(pool.current_capital);
+    }
+    setShowKisOrderModal(true);
+  };
+
+  // ━━━ KIS 주문 실행 (매수) ━━━
+  const executeKisOrders = async () => {
+    const recs = result?.recommendations || [];
+    const selStocks = recs.filter(r => selectedRecStocks.has(r.code));
+    if (selStocks.length === 0) return;
+
+    const isVirtual = kisOrderMode === 'virtual';
+    // 해당 모드의 크레덴셜 활성화
+    if (!activateKisMode(kisOrderMode)) {
+      alert(`${isVirtual ? '모의투자' : '실전투자'} API가 연결되지 않았습니다.\nKIS 모의투자 > API 설정에서 먼저 연결해주세요.`);
+      return;
+    }
+    const confirmMsg = isVirtual
+      ? `🏦 모의투자 주문\n\n${selStocks.length}개 종목에 총 ${kisOrderCapital.toLocaleString()}원 매수합니다.\n(종목당 ${Math.floor(kisOrderCapital / selStocks.length).toLocaleString()}원)\n\n진행하시겠습니까?`
+      : `🔴 실전투자 주문\n\n⚠️ 실제 계좌에서 매수됩니다!\n${selStocks.length}개 종목에 총 ${kisOrderCapital.toLocaleString()}원\n\n정말 진행하시겠습니까?`;
+    if (!confirm(confirmMsg)) return;
+
+    setKisOrderLoading(true);
+    const perStock = Math.floor(kisOrderCapital / selStocks.length);
+    const results = [];
+
+    for (const stock of selStocks) {
+      const price = stock.current_price || 0;
+      if (price <= 0) {
+        results.push({ code: stock.code, name: stock.name, success: false, message: '현재가 없음' });
+        continue;
+      }
+      const qty = Math.floor(perStock / price);
+      if (qty <= 0) {
+        results.push({ code: stock.code, name: stock.name, success: false, message: '수량 부족 (1주 미만)' });
+        continue;
+      }
+
+      try {
+        // KIS API 주문 요청 (is_virtual 파라미터는 localStorage creds에서 자동 처리)
+        const orderParams = {
+          stock_code: stock.code,
+          qty: qty,
+          order_type: kisOrderType,
+        };
+        if (kisOrderType === '00') orderParams.price = price; // 지정가
+        const r = await kisApi("order/buy", {}, {
+          method: 'POST',
+          body: JSON.stringify(orderParams),
+        });
+        results.push({
+          code: stock.code, name: stock.name,
+          success: r.success, message: r.message || (r.success ? '주문 완료' : '주문 실패'),
+          order_no: r.order_no || '', qty, price,
+        });
+      } catch (e) {
+        results.push({ code: stock.code, name: stock.name, success: false, message: e.message });
+      }
+    }
+
+    // 복리 풀 업데이트
+    if (kisUseCompound) {
+      const totalOrdered = results.filter(r => r.success).reduce((sum, r) => sum + (r.qty * r.price), 0);
+      let pool = getCompoundPool(kisOrderMode) || initCompoundPool(kisOrderMode, kisOrderCapital);
+      pool.current_capital -= totalOrdered;
+      pool.total_invested += totalOrdered;
+      pool.history.push({
+        round: pool.round,
+        date: new Date().toISOString(),
+        action: 'buy',
+        stocks: results.filter(r => r.success).map(r => ({ code: r.code, name: r.name, qty: r.qty, price: r.price })),
+        amount: totalOrdered,
+      });
+      pool.round++;
+      saveCompoundPool(kisOrderMode, pool);
+    }
+
+    setKisOrderResults(results);
+    setKisOrderLoading(false);
   };
 
   // ━━━ 이전 분석 결과 상태 ━━━
@@ -1562,6 +1681,146 @@ export default function PatternDetector() {
           </div>
         </div>
       )}
+
+      {/* ━━━ KIS 주문 모달 (모의투자 / 실전투자) ━━━ */}
+      {showKisOrderModal && (
+        <div style={{
+          position:'fixed', top:0, left:0, right:0, bottom:0,
+          background:'rgba(0,0,0,0.7)', zIndex:9999,
+          display:'flex', alignItems:'center', justifyContent:'center',
+        }} onClick={() => !kisOrderLoading && setShowKisOrderModal(false)}>
+          <div style={{
+            background:'#1a2234', border:`2px solid ${kisOrderMode === 'real' ? '#dc2626' : '#1a6fff'}`,
+            borderRadius:16, padding:28, width:520, maxWidth:'92vw',
+            boxShadow:'0 20px 60px rgba(0,0,0,0.5)',
+          }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize:18, fontWeight:700, marginBottom:6, color: kisOrderMode === 'real' ? '#ef4444' : '#60a5fa' }}>
+              {kisOrderMode === 'real' ? '🔴 실전투자 주문' : '🏦 모의투자 주문'}
+            </div>
+            {kisOrderMode === 'real' && (
+              <div style={{ marginBottom:14, padding:10, borderRadius:8, background:'rgba(220,38,38,0.1)', border:'1px solid rgba(220,38,38,0.3)', fontSize:12, color:'#ef4444' }}>
+                ⚠️ 실제 계좌에서 매수됩니다. 신중하게 확인 후 주문하세요.
+              </div>
+            )}
+
+            {!kisOrderResults ? (<>
+              {/* 복리 모드 토글 */}
+              <div style={{ marginBottom:14, display:'flex', alignItems:'center', gap:10 }}>
+                <label style={{ display:'flex', alignItems:'center', gap:6, cursor:'pointer', fontSize:12, color: kisUseCompound ? '#ffd54f' : '#9ca3af' }}>
+                  <input type="checkbox" checked={kisUseCompound} onChange={e => {
+                    setKisUseCompound(e.target.checked);
+                    if (e.target.checked) {
+                      const pool = getCompoundPool(kisOrderMode);
+                      if (pool) setKisOrderCapital(pool.current_capital);
+                    }
+                  }} style={{ accentColor:'#ffd54f' }} />
+                  🔄 복리 모드 (수익금 재투자)
+                </label>
+                {kisUseCompound && (() => {
+                  const pool = getCompoundPool(kisOrderMode);
+                  return pool ? (
+                    <span style={{ fontSize:10, color:'#ffd54f' }}>
+                      {pool.round}회차 · 누적수익: {(pool.total_returned - pool.total_invested).toLocaleString()}원
+                    </span>
+                  ) : <span style={{ fontSize:10, color:'#9ca3af' }}>첫 투자 (새 풀 생성)</span>;
+                })()}
+              </div>
+
+              {/* 투자금액 */}
+              <div style={{ marginBottom:14 }}>
+                <div style={{ fontSize:12, color:'#9ca3af', marginBottom:6 }}>투자금액</div>
+                <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+                  {[100000, 500000, 1000000, 3000000, 5000000, 10000000].map(v => (
+                    <button key={v} onClick={() => setKisOrderCapital(v)} style={{
+                      padding:'7px 12px', borderRadius:6, cursor:'pointer', fontSize:11, fontFamily:'inherit',
+                      border: kisOrderCapital===v ? '1px solid #60a5fa' : '1px solid #1e293b',
+                      background: kisOrderCapital===v ? 'rgba(96,165,250,0.15)' : 'transparent',
+                      color: kisOrderCapital===v ? '#60a5fa' : '#9ca3af',
+                    }}>{(v/10000).toLocaleString()}만</button>
+                  ))}
+                </div>
+                <input type="number" value={kisOrderCapital} onChange={e => setKisOrderCapital(Number(e.target.value))}
+                  style={{ width:'100%', marginTop:8, padding:'8px 12px', fontSize:13, fontFamily:'monospace',
+                    background:'#0d1321', border:'1px solid #1e293b', borderRadius:6, color:'#e5e7eb', outline:'none' }} />
+              </div>
+
+              {/* 주문 유형 */}
+              <div style={{ marginBottom:14 }}>
+                <div style={{ fontSize:12, color:'#9ca3af', marginBottom:6 }}>주문 유형</div>
+                <div style={{ display:'flex', gap:8 }}>
+                  {[{ key:'01', label:'시장가', desc:'즉시 체결' }, { key:'00', label:'지정가', desc:'현재가 기준' }].map(t => (
+                    <button key={t.key} onClick={() => setKisOrderType(t.key)} style={{
+                      flex:1, padding:'10px', borderRadius:8, cursor:'pointer', textAlign:'center',
+                      border: kisOrderType===t.key ? '2px solid #60a5fa' : '1px solid #1e293b',
+                      background: kisOrderType===t.key ? 'rgba(96,165,250,0.12)' : 'transparent',
+                      color: kisOrderType===t.key ? '#60a5fa' : '#9ca3af', fontSize:12, fontFamily:'inherit',
+                    }}>
+                      <div style={{ fontWeight:600 }}>{t.label}</div>
+                      <div style={{ fontSize:10, opacity:0.7 }}>{t.desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 선택 종목 + 예상 수량 */}
+              <div style={{ marginBottom:16, padding:10, borderRadius:8, background:'rgba(96,165,250,0.06)', border:'1px solid rgba(96,165,250,0.15)' }}>
+                <div style={{ fontSize:11, color:'#60a5fa', marginBottom:6 }}>📋 주문 종목 ({selectedRecStocks.size}개) · 종목당 {Math.floor(kisOrderCapital / Math.max(selectedRecStocks.size, 1)).toLocaleString()}원</div>
+                {(result?.recommendations || []).filter(r => selectedRecStocks.has(r.code)).map(r => {
+                  const perStock = Math.floor(kisOrderCapital / selectedRecStocks.size);
+                  const qty = r.current_price > 0 ? Math.floor(perStock / r.current_price) : 0;
+                  return (
+                    <div key={r.code} style={{ display:'flex', justifyContent:'space-between', padding:'4px 0', fontSize:12 }}>
+                      <span style={{ color:'#e5e7eb' }}>{r.name} <span style={{ color:'#6b7280' }}>{r.code}</span></span>
+                      <span style={{ color:'#9ca3af', fontFamily:'monospace' }}>{r.current_price?.toLocaleString()}원 × {qty}주 = {(qty * (r.current_price || 0)).toLocaleString()}원</span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* 버튼 */}
+              <div style={{ display:'flex', gap:10, justifyContent:'flex-end' }}>
+                <button onClick={() => setShowKisOrderModal(false)} disabled={kisOrderLoading}
+                  style={{ padding:'10px 20px', borderRadius:8, cursor:'pointer', fontSize:13, fontFamily:'inherit',
+                    background:'transparent', border:'1px solid #374151', color:'#9ca3af' }}>취소</button>
+                <button onClick={executeKisOrders} disabled={kisOrderLoading}
+                  style={{
+                    padding:'10px 28px', borderRadius:8, cursor:'pointer', fontSize:14, fontWeight:700, fontFamily:'inherit',
+                    background: kisOrderLoading ? '#374151' : kisOrderMode === 'real' ? '#dc2626' : '#1a6fff',
+                    border:'none', color:'white',
+                  }}>{kisOrderLoading ? '⏳ 주문 중...' : `${kisOrderMode === 'real' ? '🔴 실전' : '🏦 모의'} 매수 주문 실행`}</button>
+              </div>
+            </>) : (
+              /* 주문 결과 */
+              <div>
+                <div style={{ fontSize:14, fontWeight:600, color:'#e5e7eb', marginBottom:12 }}>📋 주문 결과</div>
+                {kisOrderResults.map((r, i) => (
+                  <div key={i} style={{
+                    display:'flex', justifyContent:'space-between', padding:'8px 10px', marginBottom:4, borderRadius:6,
+                    background: r.success ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)',
+                    border: `1px solid ${r.success ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'}`,
+                  }}>
+                    <span style={{ color: r.success ? '#10b981' : '#ef4444', fontSize:12 }}>
+                      {r.success ? '✅' : '❌'} {r.name} ({r.code})
+                    </span>
+                    <span style={{ color:'#9ca3af', fontSize:11 }}>
+                      {r.success ? `${r.qty}주 · 주문번호: ${r.order_no}` : r.message}
+                    </span>
+                  </div>
+                ))}
+                <div style={{ marginTop:12, padding:10, borderRadius:8, background:'rgba(255,213,79,0.08)', border:'1px solid rgba(255,213,79,0.2)', fontSize:11, color:'#ffd54f' }}>
+                  💡 체결 확인은 KIS 모의투자 {'>'} 체결내역에서 확인하세요.
+                  {kisUseCompound && ' 복리 풀이 업데이트되었습니다.'}
+                </div>
+                <div style={{ display:'flex', justifyContent:'flex-end', marginTop:12 }}>
+                  <button onClick={() => { setShowKisOrderModal(false); setSelectedRecStocks(new Set()); }}
+                    style={{ padding:'10px 24px', borderRadius:8, cursor:'pointer', fontSize:13, fontWeight:600, fontFamily:'inherit',
+                      background:'#1a6fff', border:'none', color:'white' }}>확인</button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -2292,6 +2551,18 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
             transition:'all 0.2s',
           }}
         >💰 가상투자 등록 ({selectedRecStocks.size})</button>
+        <button onClick={() => openKisOrderModal('virtual')} disabled={selectedRecStocks.size === 0}
+          style={{ padding:'8px 16px', fontSize:12, fontWeight:600, borderRadius:8, border:'none', marginLeft:6,
+            cursor: selectedRecStocks.size > 0 ? 'pointer' : 'default',
+            background: selectedRecStocks.size > 0 ? '#1a6fff' : '#374151',
+            color: selectedRecStocks.size > 0 ? 'white' : COLORS.textDim,
+          }}>🏦 모의투자</button>
+        <button onClick={() => openKisOrderModal('real')} disabled={selectedRecStocks.size === 0}
+          style={{ padding:'8px 16px', fontSize:12, fontWeight:600, borderRadius:8, border:'none', marginLeft:6,
+            cursor: selectedRecStocks.size > 0 ? 'pointer' : 'default',
+            background: selectedRecStocks.size > 0 ? '#dc2626' : '#374151',
+            color: selectedRecStocks.size > 0 ? 'white' : COLORS.textDim,
+          }}>🔴 실전투자</button>
       </div>
     )}
 
@@ -2404,10 +2675,20 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
             return `${r.name}(${g.text.split(' ')[1]||'보류'})`;
           }).join(', ')}
         </div>
-        <button onClick={handleRegister} style={{
-          padding:'10px 24px', fontSize:14, fontWeight:700, borderRadius:8,
-          border:'none', cursor:'pointer', background:COLORS.green, color:COLORS.white,
-        }}>💰 가상투자 등록 →</button>
+        <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+          <button onClick={handleRegister} style={{
+            padding:'10px 24px', fontSize:14, fontWeight:700, borderRadius:8,
+            border:'none', cursor:'pointer', background:COLORS.green, color:COLORS.white,
+          }}>💰 가상투자 등록 →</button>
+          <button onClick={() => openKisOrderModal('virtual')} style={{
+            padding:'10px 18px', fontSize:13, fontWeight:700, borderRadius:8,
+            border:'none', cursor:'pointer', background:'#1a6fff', color:'white',
+          }}>🏦 모의투자</button>
+          <button onClick={() => openKisOrderModal('real')} style={{
+            padding:'10px 18px', fontSize:13, fontWeight:700, borderRadius:8,
+            border:'none', cursor:'pointer', background:'#dc2626', color:'white',
+          }}>🔴 실전투자</button>
+        </div>
       </div>
     )}
 
