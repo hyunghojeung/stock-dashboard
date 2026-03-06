@@ -11,7 +11,7 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import VirtualInvestTab from "./VirtualInvestTab";
-import { kisApi, getKisCredentials, activateKisMode } from "./KisTrading";
+import { kisApi, getKisCredentials, activateKisMode, refreshKisToken } from "./KisTrading";
 
 // ── 복리 투자 풀 관리 (localStorage) ──
 const COMPOUND_POOL_KEY = 'kis_compound_pool';
@@ -531,7 +531,18 @@ export default function PatternDetector() {
     const isVirtual = kisOrderMode === 'virtual';
     // 해당 모드의 크레덴셜 활성화
     if (!activateKisMode(kisOrderMode)) {
-      alert(`${isVirtual ? '모의투자' : '실전투자'} API가 연결되지 않았습니다.\nKIS 모의투자 > API 설정에서 먼저 연결해주세요.`);
+      // 토큰이 없으면 자동 갱신 시도
+      const refreshed = await refreshKisToken(kisOrderMode);
+      if (!refreshed) {
+        alert(`${isVirtual ? '모의투자' : '실전투자'} API가 연결되지 않았습니다.\n${isVirtual ? 'KIS 모의투자' : 'KIS 실전투자'} > API 설정에서 먼저 연결해주세요.`);
+        return;
+      }
+    }
+    // 계좌번호 유효성 검증
+    const activeCreds = getKisCredentials();
+    const acctNo = (activeCreds.account_no || "").replace(/-/g, "");
+    if (!acctNo || acctNo.length < 10) {
+      alert(`${isVirtual ? '모의투자' : '실전투자'} 계좌번호가 설정되지 않았습니다.\n${isVirtual ? 'KIS 모의투자' : 'KIS 실전투자'} > API 설정에서 계좌번호를 입력해주세요.\n\n현재 계좌번호: ${acctNo || '(없음)'}`);
       return;
     }
     const confirmMsg = isVirtual
