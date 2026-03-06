@@ -41,6 +41,8 @@ function saveKisCredentials(creds) {
 // 특정 모드의 크레덴셜을 활성화
 export function activateKisMode(mode) {
   const creds = getKisCredentials(mode);
+  // is_virtual 플래그를 모드에 맞게 강제 설정 (누락 방지)
+  creds.is_virtual = mode === 'virtual';
   // 항상 해당 모드의 크레덴셜로 전환 (토큰 없어도 모드 전환)
   _kisCache = creds;
   try { localStorage.setItem(KIS_STORAGE_KEY, JSON.stringify(creds)); } catch {}
@@ -75,14 +77,18 @@ export async function refreshKisToken(mode) {
 export async function kisApi(route, params = {}, options = {}) {
   try {
     const creds = getKisCredentials();
-    console.log("[KIS]", route, "token:", creds.access_token ? "yes" : "NO", "appkey:", creds.app_key ? "yes" : "NO", "creds_keys:", Object.keys(creds));
+    // is_virtual이 undefined이면 활성 모드에서 결정
+    const activeMode = getKisActiveMode();
+    const isVirtual = creds.is_virtual !== undefined ? creds.is_virtual : (activeMode === 'virtual');
+    console.log("[KIS]", route, "mode:", isVirtual ? "virtual" : "REAL", "token:", creds.access_token ? "yes" : "NO", "appkey:", creds.app_key ? "yes" : "NO");
     const url = new URL("/api/kis", window.location.origin);
     // Route + credentials + extra params all as query string
     url.searchParams.set("_route", route);
     if (creds.app_key) url.searchParams.set("_ak", creds.app_key);
     if (creds.app_secret) url.searchParams.set("_as", creds.app_secret);
     if (creds.account_no) url.searchParams.set("_acct", creds.account_no);
-    if (creds.is_virtual !== undefined) url.searchParams.set("_virt", String(creds.is_virtual));
+    // 항상 _virt 플래그 전송 (누락 시 백엔드가 모의투자로 기본 처리하는 문제 방지)
+    url.searchParams.set("_virt", String(isVirtual));
     if (creds.access_token) url.searchParams.set("_token", creds.access_token);
     Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== "") url.searchParams.set(k, v); });
 
@@ -92,7 +98,7 @@ export async function kisApi(route, params = {}, options = {}) {
       ...(creds.app_key && { "x-kis-appkey": creds.app_key }),
       ...(creds.app_secret && { "x-kis-appsecret": creds.app_secret }),
       ...(creds.account_no && { "x-kis-account": creds.account_no }),
-      ...(creds.is_virtual !== undefined && { "x-kis-virtual": String(creds.is_virtual) }),
+      "x-kis-virtual": String(isVirtual),
       ...(creds.access_token && { "x-kis-token": creds.access_token }),
       ...options.headers,
     };
