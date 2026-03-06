@@ -56,11 +56,45 @@ async function kisApi(route, params = {}, options = {}) {
   }
 }
 
+// 주요 종목 매핑 (프론트엔드 내장 — 서버 검색 실패 시 폴백)
+const STOCK_MAP = [
+  ["005930","삼성전자"],["000660","SK하이닉스"],["373220","LG에너지솔루션"],["207940","삼성바이오로직스"],
+  ["005935","삼성전자우"],["006400","삼성SDI"],["051910","LG화학"],["005490","POSCO홀딩스"],
+  ["035420","NAVER"],["000270","기아"],["005380","현대차"],["068270","셀트리온"],
+  ["035720","카카오"],["003550","LG"],["105560","KB금융"],["055550","신한지주"],
+  ["028260","삼성물산"],["012330","현대모비스"],["066570","LG전자"],["032830","삼성생명"],
+  ["316140","우리금융지주"],["003670","포스코퓨처엠"],["086790","하나금융지주"],["034730","SK"],
+  ["018260","삼성에스디에스"],["015760","한국전력"],["138040","메리츠금융지주"],["009150","삼성전기"],
+  ["033780","KT&G"],["030200","KT"],["011200","HMM"],["017670","SK텔레콤"],
+  ["010130","고려아연"],["034020","두산에너빌리티"],["010950","S-Oil"],["259960","크래프톤"],
+  ["036570","엔씨소프트"],["003490","대한항공"],["000810","삼성화재"],["329180","현대중공업"],
+  ["047050","포스코인터내셔널"],["090430","아모레퍼시픽"],["011170","롯데케미칼"],["096770","SK이노베이션"],
+  ["352820","하이브"],["000720","현대건설"],["180640","한진칼"],["004020","현대제철"],
+  ["323410","카카오뱅크"],["377300","카카오페이"],["263750","펄어비스"],["302440","SK바이오사이언스"],
+  ["247540","에코프로비엠"],["086520","에코프로"],["010140","삼성중공업"],["009540","한국조선해양"],
+  ["042700","한미반도체"],["041510","에스엠"],["035900","JYP Ent."],["122870","와이지엔터테인먼트"],
+  ["028050","삼성엔지니어링"],["002790","아모레G"],["069500","KODEX 200"],["252670","KODEX 200선물인버스2X"],
+  ["251340","KODEX 코스닥150레버리지"],["114800","KODEX 인버스"],["229200","KODEX 코스닥150"],
+  ["005830","DB손해보험"],["011790","SKC"],["006800","미래에셋증권"],["024110","기업은행"],
+  ["161390","한국타이어앤테크놀로지"],["267250","HD현대"],["004490","세방전지"],["009830","한화솔루션"],
+  ["272210","한화시스템"],["042660","한화오션"],["000880","한화"],["012450","한화에어로스페이스"],
+];
+
+function localStockSearch(keyword) {
+  const kw = keyword.toLowerCase();
+  return STOCK_MAP.filter(([, name]) => name.toLowerCase().includes(kw))
+    .map(([code, name]) => ({ code, name }));
+}
+
 // 종목명(한글) → 종목코드 변환 (숫자면 그대로 반환)
 async function resolveStockCode(input) {
   const v = (input || "").trim();
   if (!v) return "";
   if (/^\d{1,6}$/.test(v)) return v;
+  // 1차: 로컬 매핑에서 검색
+  const local = localStockSearch(v);
+  if (local.length > 0) return local[0].code;
+  // 2차: 서버 API 검색 (KRX)
   try {
     const url = new URL("/api/kis", window.location.origin);
     url.searchParams.set("_route", "search");
@@ -589,11 +623,17 @@ function StockSearchInput({ value, onChange, onSelect, placeholder }) {
     onChange(v);
     clearTimeout(timerRef.current);
     if (v.trim() && !/^\d{1,6}$/.test(v.trim())) {
-      timerRef.current = setTimeout(async () => {
-        const results = await searchByKeyword(v.trim());
-        if (results.length) { setSuggestions(results); setShowSugg(true); }
-        else setShowSugg(false);
-      }, 300);
+      // 즉시 로컬 매핑에서 검색
+      const local = localStockSearch(v.trim());
+      if (local.length) { setSuggestions(local); setShowSugg(true); }
+      else {
+        // 로컬에 없으면 서버 검색
+        timerRef.current = setTimeout(async () => {
+          const results = await searchByKeyword(v.trim());
+          if (results.length) { setSuggestions(results); setShowSugg(true); }
+          else setShowSugg(false);
+        }, 300);
+      }
     } else {
       setShowSugg(false);
     }

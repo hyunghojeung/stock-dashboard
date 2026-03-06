@@ -100,19 +100,20 @@ export default async function handler(req, res) {
       return res.json({ url: req.url, routeName, pathSegments, method: req.method, hasAppKey: !!appKey, hasToken: !!token, qp });
     }
 
-    // ── search (GET): 종목명/코드 검색 (네이버 자동완성) ──
+    // ── search (GET): 종목명/코드 검색 (KRX 종목검색) ──
     if (routeName === "search") {
       const keyword = (qp.keyword || "").trim();
       if (!keyword) return res.json({ results: [] });
       try {
-        const encoded = encodeURIComponent(keyword);
-        const naverUrl = `https://ac.finance.naver.com/ac?q=${encoded}&q_enc=utf-8&t_koreng=1&st=111&r_lt=111&frm=stock&r_format=json&r_enc=utf-8&r_unicode=0&r_query=1`;
-        const resp = await fetch(naverUrl);
+        const resp = await fetch("http://data.krx.co.kr/comm/bldAttendant/getJsonData.cmd", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" },
+          body: `bld=dbms/comm/finder/finder_stkisu&name=${encodeURIComponent(keyword)}&mktsel=ALL`,
+        });
         const data = await resp.json();
-        const items = (data.items && data.items[0]) || [];
-        const results = items.map(item => ({
-          code: (item[0] || [])[0] || "",
-          name: (item[1] || [])[0] || "",
+        const results = (data.block1 || []).slice(0, 20).map(item => ({
+          code: (item.short_code || "").replace(/^A/, ""),
+          name: item.codeName || "",
         })).filter(r => r.code && r.name);
         return res.json({ results });
       } catch (e) {
