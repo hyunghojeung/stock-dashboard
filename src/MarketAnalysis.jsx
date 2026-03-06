@@ -198,12 +198,19 @@ function VolumeRankPanel() {
 function FluctuationPanel({ sort, title }) {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [market, setMarket] = useState("J");
 
   const load = useCallback(async () => {
     setLoading(true);
+    setError(null);
     const r = await kisApi("ranking/fluctuation", { market, sort });
-    if (r?.success) setData(r.items);
+    console.log("[MarketAnalysis] fluctuation response:", r);
+    if (r?.success && r.items) {
+      setData(r.items);
+    } else {
+      setError(r?.detail || r?.msg1 || JSON.stringify(r) || "응답 없음");
+    }
     setLoading(false);
   }, [market, sort]);
 
@@ -221,7 +228,11 @@ function FluctuationPanel({ sort, title }) {
         </div>
       </div>
 
-      {loading ? <div style={{ textAlign: "center", padding: 40, color: "#6688aa" }}>조회 중...</div> : (
+      {loading ? <div style={{ textAlign: "center", padding: 40, color: "#6688aa" }}>조회 중...</div> : error ? (
+        <div style={{ textAlign: "center", padding: 40, color: "#ff9800" }}>등락률 조회 실패: {error}</div>
+      ) : data.length === 0 ? (
+        <div style={{ textAlign: "center", padding: 40, color: "#6688aa" }}>데이터가 없습니다</div>
+      ) : (
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr>{["순위", "종목명", "종목코드", "현재가", "전일대비", "등락률", "거래량"].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
