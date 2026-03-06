@@ -469,41 +469,51 @@ export default async function handler(req, res) {
     // ── finance/:code (GET) ──
     if (routeName === "finance" && (qp.code || pathSegments[1])) {
       const code = qp.code || pathSegments[1];
-      const [ratio, income, growth] = await Promise.all([
-        kisGet(
-          baseUrl,
-          "/uapi/domestic-stock/v1/finance/financial-ratio",
-          "FHKST66430300",
-          { FID_COND_MRKT_DIV_CODE: "J", FID_INPUT_ISCD: code },
-          token,
-          appKey,
-          appSecret
-        ),
-        kisGet(
-          baseUrl,
-          "/uapi/domestic-stock/v1/finance/income-statement",
-          "FHKST66430200",
-          { FID_COND_MRKT_DIV_CODE: "J", FID_INPUT_ISCD: code },
-          token,
-          appKey,
-          appSecret
-        ),
-        kisGet(
-          baseUrl,
-          "/uapi/domestic-stock/v1/finance/growth-ratio",
-          "FHKST66430800",
-          { FID_COND_MRKT_DIV_CODE: "J", FID_INPUT_ISCD: code },
-          token,
-          appKey,
-          appSecret
-        ),
-      ]);
-      return res.json({
-        success: true,
-        financial_ratio: ratio.output || [],
-        income_statement: income.output || [],
-        growth_ratio: growth.output || [],
-      });
+      // Finance data is reference data - always use real server
+      const financeBase = REAL_BASE;
+      try {
+        const [ratio, income, growth] = await Promise.all([
+          kisGet(
+            financeBase,
+            "/uapi/domestic-stock/v1/finance/financial-ratio",
+            "FHKST66430300",
+            { FID_COND_MRKT_DIV_CODE: "J", FID_INPUT_ISCD: code },
+            token,
+            appKey,
+            appSecret
+          ).catch(e => ({ error: e.message })),
+          kisGet(
+            financeBase,
+            "/uapi/domestic-stock/v1/finance/income-statement",
+            "FHKST66430200",
+            { FID_COND_MRKT_DIV_CODE: "J", FID_INPUT_ISCD: code },
+            token,
+            appKey,
+            appSecret
+          ).catch(e => ({ error: e.message })),
+          kisGet(
+            financeBase,
+            "/uapi/domestic-stock/v1/finance/growth-ratio",
+            "FHKST66430800",
+            { FID_COND_MRKT_DIV_CODE: "J", FID_INPUT_ISCD: code },
+            token,
+            appKey,
+            appSecret
+          ).catch(e => ({ error: e.message })),
+        ]);
+        // Check if all failed
+        if (ratio.error && income.error && growth.error) {
+          return res.status(502).json({ success: false, detail: `KIS 재무정보 API 오류: ${ratio.error}` });
+        }
+        return res.json({
+          success: true,
+          financial_ratio: ratio.output || [],
+          income_statement: income.output || [],
+          growth_ratio: growth.output || [],
+        });
+      } catch (e) {
+        return res.status(502).json({ success: false, detail: `재무정보 조회 실패: ${e.message}` });
+      }
     }
 
     // ── ranking/volume (GET) ──
