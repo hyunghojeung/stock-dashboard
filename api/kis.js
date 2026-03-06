@@ -147,7 +147,17 @@ export default async function handler(req, res) {
     if (!token || !appKey) {
       return res
         .status(400)
-        .json({ success: false, detail: "KIS API 키가 설정되지 않았습니다" });
+        .json({
+          success: false,
+          detail: "KIS API 키가 설정되지 않았습니다",
+          _debug: {
+            hasToken: !!token, hasAppKey: !!appKey,
+            hasQpAk: !!qp._ak, hasQpToken: !!qp._token,
+            hasHeaderKey: !!req.headers["x-kis-appkey"],
+            hasHeaderToken: !!req.headers["x-kis-token"],
+            routeName,
+          },
+        });
     }
 
     // ── balance (GET) ──
