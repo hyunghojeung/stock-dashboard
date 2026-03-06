@@ -853,7 +853,7 @@ function QuotePanel() {
               <div style={{ fontSize: 11, color: "#6688aa", marginBottom: 6 }}>
                 {{ D: "일봉", W: "주봉", M: "월봉" }[period]} ({chartData.length}개)
               </div>
-              <StockChart candles={chartData.slice(0, 100)} height={420} />
+              <StockChart candles={chartData.slice(0, 100)} />
             </div>
           )}
         </div>
