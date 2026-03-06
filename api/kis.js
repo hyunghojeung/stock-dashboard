@@ -589,7 +589,7 @@ export default async function handler(req, res) {
         const sort = qp.sort || "0";
         const result = await kisGet(
           REAL_BASE,
-          "/uapi/domestic-stock/v1/quotations/fluctuation",
+          "/uapi/domestic-stock/v1/ranking/fluctuation",
           "FHPST01740000",
           {
             FID_COND_MRKT_DIV_CODE: market,
