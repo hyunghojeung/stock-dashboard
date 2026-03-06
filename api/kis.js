@@ -100,6 +100,26 @@ export default async function handler(req, res) {
       return res.json({ url: req.url, routeName, pathSegments, method: req.method, hasAppKey: !!appKey, hasToken: !!token, qp });
     }
 
+    // ── search (GET): 종목명/코드 검색 (네이버 자동완성) ──
+    if (routeName === "search") {
+      const keyword = (qp.keyword || "").trim();
+      if (!keyword) return res.json({ results: [] });
+      try {
+        const encoded = encodeURIComponent(keyword);
+        const naverUrl = `https://ac.finance.naver.com/ac?q=${encoded}&q_enc=utf-8&t_koreng=1&st=111&r_lt=111&frm=stock&r_format=json&r_enc=utf-8&r_unicode=0&r_query=1`;
+        const resp = await fetch(naverUrl);
+        const data = await resp.json();
+        const items = (data.items && data.items[0]) || [];
+        const results = items.map(item => ({
+          code: (item[0] || [])[0] || "",
+          name: (item[1] || [])[0] || "",
+        })).filter(r => r.code && r.name);
+        return res.json({ results });
+      } catch (e) {
+        return res.json({ results: [], error: e.message });
+      }
+    }
+
     // ── config (POST): authenticate ──
     if (routeName === "config" && req.method === "POST") {
       const body = req.body || {};
@@ -381,7 +401,7 @@ export default async function handler(req, res) {
       return res.json({
         success: true,
         stock_code: code,
-        name: o.hts_kor_isnm || o.bstp_kor_isnm || "",
+        name: o.hts_kor_isnm || "",
         price: safeInt(o.stck_prpr),
         change: safeInt(o.prdy_vrss),
         change_rate: safeFloat(o.prdy_ctrt),
@@ -486,21 +506,21 @@ export default async function handler(req, res) {
       try {
         const [ratio, income, growth] = await Promise.all([
           kisGet(
-            baseUrl,
+            REAL_BASE,
             "/uapi/domestic-stock/v1/finance/financial-ratio",
             "FHKST66430300",
             { FID_COND_MRKT_DIV_CODE: "J", FID_INPUT_ISCD: code, FID_DIV_CLS_CODE: "0" },
             token, appKey, appSecret
           ).catch(e => ({ _err: e.message })),
           kisGet(
-            baseUrl,
+            REAL_BASE,
             "/uapi/domestic-stock/v1/finance/income-statement",
             "FHKST66430200",
             { FID_COND_MRKT_DIV_CODE: "J", FID_INPUT_ISCD: code, FID_DIV_CLS_CODE: "0" },
             token, appKey, appSecret
           ).catch(e => ({ _err: e.message })),
           kisGet(
-            baseUrl,
+            REAL_BASE,
             "/uapi/domestic-stock/v1/finance/growth-ratio",
             "FHKST66430800",
             { FID_COND_MRKT_DIV_CODE: "J", FID_INPUT_ISCD: code, FID_DIV_CLS_CODE: "0" },

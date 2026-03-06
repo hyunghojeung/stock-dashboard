@@ -547,6 +547,60 @@ function OrderHistoryPanel() {
 // ============================================================
 // Quote Panel
 // ============================================================
+function StockSearchInput({ value, onChange, onSelect, placeholder }) {
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSugg, setShowSugg] = useState(false);
+  const timerRef = useRef(null);
+  const wrapRef = useRef(null);
+
+  useEffect(() => {
+    const handleClick = (e) => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setShowSugg(false); };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  const handleChange = (e) => {
+    const v = e.target.value;
+    onChange(v);
+    clearTimeout(timerRef.current);
+    if (v.trim() && !/^\d{1,6}$/.test(v.trim())) {
+      timerRef.current = setTimeout(async () => {
+        try {
+          const url = new URL("/api/kis", window.location.origin);
+          url.searchParams.set("_route", "search");
+          url.searchParams.set("keyword", v.trim());
+          const r = await fetch(url).then(r => r.json());
+          if (r.results?.length) { setSuggestions(r.results); setShowSugg(true); }
+          else setShowSugg(false);
+        } catch { setShowSugg(false); }
+      }, 300);
+    } else {
+      setShowSugg(false);
+    }
+  };
+
+  return (
+    <div ref={wrapRef} style={{ position: "relative", flex: 1, maxWidth: 260 }}>
+      <input style={{ ...S.input, width: "100%" }} value={value} onChange={handleChange}
+        onKeyDown={e => { if (e.key === "Enter") { setShowSugg(false); onSelect(); } }}
+        placeholder={placeholder || "종목코드 또는 종목명"} />
+      {showSugg && suggestions.length > 0 && (
+        <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 100, background: "#1a2332", border: "1px solid rgba(100,140,200,0.2)", borderRadius: 6, maxHeight: 200, overflowY: "auto", marginTop: 2 }}>
+          {suggestions.map((s, i) => (
+            <div key={i} onClick={() => { onChange(s.code); onSelect(s.code); setShowSugg(false); }}
+              style={{ padding: "8px 12px", cursor: "pointer", borderBottom: "1px solid rgba(100,140,200,0.1)", fontSize: 12, display: "flex", justifyContent: "space-between" }}
+              onMouseEnter={e => e.currentTarget.style.background = "rgba(100,181,246,0.1)"}
+              onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+              <span style={{ color: "#e0e6f0" }}>{s.name}</span>
+              <span style={{ color: "#6688aa", fontFamily: "monospace" }}>{s.code}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function QuotePanel() {
   const [code, setCode] = useState("");
   const [quote, setQuote] = useState(null);
@@ -554,65 +608,76 @@ function QuotePanel() {
   const [period, setPeriod] = useState("D");
   const [loading, setLoading] = useState(false);
 
-  const search = async () => {
-    if (!code) return;
+  const search = async (overrideCode) => {
+    const stockCode = (overrideCode || code || "").trim();
+    if (!stockCode) return;
+    if (overrideCode) setCode(overrideCode);
     setLoading(true);
     const [q, c] = await Promise.all([
-      kisApi("quote", { code }),
-      kisApi("chart", { code, period }),
+      kisApi("quote", { code: stockCode }),
+      kisApi("chart", { code: stockCode, period }),
     ]);
-    if (q?.success) setQuote(q);
+    if (q?.success) {
+      if (c?.success && c.info) {
+        const chartName = c.info.hts_kor_isnm || c.info.stck_shrn_iscd || "";
+        if (chartName) q.name = chartName;
+      }
+      setQuote(q);
+    }
     if (c?.success) setChartData(c.candles);
     setLoading(false);
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       {/* Search */}
-      <div style={{ ...S.panel, padding: "12px 16px" }}>
+      <div style={{ ...S.panel, padding: "10px 14px" }}>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <input style={{ ...S.input, flex: 1, maxWidth: 200 }} value={code} onChange={e => setCode(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && search()} placeholder="종목코드 (예: 005930)" />
+          <StockSearchInput value={code} onChange={setCode} onSelect={(c) => search(c)} placeholder="종목코드 또는 종목명 (예: 삼성전자)" />
           {["D", "W", "M"].map(p => (
-            <button key={p} onClick={() => { setPeriod(p); if (code) setTimeout(search, 0); }}
+            <button key={p} onClick={() => { setPeriod(p); if (code) setTimeout(() => search(), 0); }}
               style={{ padding: "8px 12px", background: period === p ? "rgba(100,181,246,0.2)" : "transparent", color: period === p ? "#64b5f6" : "#6688aa", border: period === p ? "1px solid rgba(100,181,246,0.3)" : "1px solid transparent", borderRadius: 6, fontSize: 11, cursor: "pointer" }}>
               {{ D: "일봉", W: "주봉", M: "월봉" }[p]}
             </button>
           ))}
-          <button onClick={search} disabled={loading} style={{ ...S.btn(), padding: "8px 16px", fontSize: 12 }}>
+          <button onClick={() => search()} disabled={loading} style={{ ...S.btn(), padding: "8px 16px", fontSize: 12 }}>
             {loading ? "조회 중..." : "조회"}
           </button>
         </div>
       </div>
 
       {quote && (
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-          {/* Price Card */}
-          <div style={{ ...S.panel, flex: "1 1 300px" }}>
-            <div style={{ fontSize: 18, fontWeight: 700, color: "#e0e6f0", marginBottom: 4 }}>{quote.name}</div>
-            <div style={{ fontSize: 11, color: "#6688aa", marginBottom: 12 }}>{quote.stock_code}</div>
-            <div style={{ fontSize: 32, fontWeight: 700, color: clr(quote.change), fontFamily: "'JetBrains Mono',monospace" }}>
-              {fmt(quote.price)}<span style={{ fontSize: 14, color: "#6688aa" }}>원</span>
-            </div>
-            <div style={{ color: clr(quote.change), fontSize: 14, fontFamily: "monospace", marginTop: 4 }}>
-              {quote.change > 0 ? "▲" : quote.change < 0 ? "▼" : "—"} {fmt(Math.abs(quote.change))}원 ({fmtPct(quote.change_rate)})
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginTop: 16 }}>
-              {[["시가", quote.open], ["고가", quote.high], ["저가", quote.low], ["거래량", quote.volume], ["PER", quote.per?.toFixed(1)], ["PBR", quote.pbr?.toFixed(2)]].map(([l, v]) => (
-                <div key={l}><div style={{ color: "#556677", fontSize: 10 }}>{l}</div><div style={{ color: "#e0e6f0", fontSize: 13, fontFamily: "monospace" }}>{typeof v === "number" ? fmt(v) : v || "—"}</div></div>
-              ))}
-            </div>
-          </div>
-
-          {/* Chart */}
-          {chartData && chartData.length > 0 && (
-            <div style={{ ...S.panel, flex: "2 1 500px" }}>
-              <div style={{ ...S.title, marginBottom: 8 }}>
-                {{ D: "일봉", W: "주봉", M: "월봉" }[period]} 차트 ({chartData.length}개)
+        <div style={{ ...S.panel, padding: "14px 16px" }}>
+          <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
+            {/* Price Info - compact */}
+            <div style={{ minWidth: 220, flexShrink: 0 }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 2 }}>
+                <span style={{ fontSize: 17, fontWeight: 700, color: "#e0e6f0" }}>{quote.name}</span>
+                <span style={{ fontSize: 11, color: "#6688aa" }}>{quote.stock_code}</span>
               </div>
-              <MiniCandleChart candles={chartData.slice(0, 60)} width={600} height={250} />
+              <div style={{ fontSize: 28, fontWeight: 700, color: clr(quote.change), fontFamily: "'JetBrains Mono',monospace", lineHeight: 1.2 }}>
+                {fmt(quote.price)}<span style={{ fontSize: 13, color: "#6688aa" }}>원</span>
+              </div>
+              <div style={{ color: clr(quote.change), fontSize: 13, fontFamily: "monospace", marginTop: 2, marginBottom: 10 }}>
+                {quote.change > 0 ? "▲" : quote.change < 0 ? "▼" : "—"} {fmt(Math.abs(quote.change))}원 ({fmtPct(quote.change_rate)})
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
+                {[["시가", quote.open], ["고가", quote.high], ["저가", quote.low], ["거래량", quote.volume], ["PER", quote.per?.toFixed(1)], ["PBR", quote.pbr?.toFixed(2)]].map(([l, v]) => (
+                  <div key={l}><div style={{ color: "#556677", fontSize: 9 }}>{l}</div><div style={{ color: "#e0e6f0", fontSize: 12, fontFamily: "monospace" }}>{typeof v === "number" ? fmt(v) : v || "—"}</div></div>
+                ))}
+              </div>
             </div>
-          )}
+
+            {/* Chart - fills remaining space */}
+            {chartData && chartData.length > 0 && (
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 11, color: "#6688aa", marginBottom: 4 }}>
+                  {{ D: "일봉", W: "주봉", M: "월봉" }[period]} ({chartData.length}개)
+                </div>
+                <MiniCandleChart candles={chartData.slice(0, 100)} width={580} height={220} />
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -627,10 +692,12 @@ function AskingPanel() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  const search = async () => {
-    if (!code) return;
+  const search = async (overrideCode) => {
+    const stockCode = (overrideCode || code || "").trim();
+    if (!stockCode) return;
+    if (overrideCode) setCode(overrideCode);
     setLoading(true);
-    const r = await kisApi("asking", { code });
+    const r = await kisApi("asking", { code: stockCode });
     if (r?.success) setData(r);
     setLoading(false);
   };
@@ -639,9 +706,8 @@ function AskingPanel() {
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div style={{ ...S.panel, padding: "12px 16px" }}>
         <div style={{ display: "flex", gap: 8 }}>
-          <input style={{ ...S.input, maxWidth: 200 }} value={code} onChange={e => setCode(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && search()} placeholder="종목코드" />
-          <button onClick={search} disabled={loading} style={{ ...S.btn(), padding: "8px 16px", fontSize: 12 }}>
+          <StockSearchInput value={code} onChange={setCode} onSelect={(c) => search(c)} placeholder="종목코드 또는 종목명" />
+          <button onClick={() => search()} disabled={loading} style={{ ...S.btn(), padding: "8px 16px", fontSize: 12 }}>
             {loading ? "조회 중..." : "호가 조회"}
           </button>
         </div>
@@ -692,12 +758,14 @@ function FinancePanel() {
 
   const [error, setError] = useState(null);
 
-  const search = async () => {
-    if (!code) return;
+  const search = async (overrideCode) => {
+    const stockCode = (overrideCode || code || "").trim();
+    if (!stockCode) return;
+    if (overrideCode) setCode(overrideCode);
     setLoading(true);
     setError(null);
     setData(null);
-    const r = await kisApi("finance", { code });
+    const r = await kisApi("finance", { code: stockCode });
     console.log("[KIS] finance response:", JSON.stringify(r));
     if (r?.success) {
       setData(r);
@@ -714,9 +782,8 @@ function FinancePanel() {
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div style={{ ...S.panel, padding: "12px 16px" }}>
         <div style={{ display: "flex", gap: 8 }}>
-          <input style={{ ...S.input, maxWidth: 200 }} value={code} onChange={e => setCode(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && search()} placeholder="종목코드" />
-          <button onClick={search} disabled={loading} style={{ ...S.btn(), padding: "8px 16px", fontSize: 12 }}>
+          <StockSearchInput value={code} onChange={setCode} onSelect={(c) => search(c)} placeholder="종목코드 또는 종목명" />
+          <button onClick={() => search()} disabled={loading} style={{ ...S.btn(), padding: "8px 16px", fontSize: 12 }}>
             {loading ? "조회 중..." : "재무정보 조회"}
           </button>
         </div>
