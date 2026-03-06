@@ -69,16 +69,19 @@ export default async function handler(req, res) {
   );
   if (req.method === "OPTIONS") return res.status(200).end();
 
-  // Parse route from URL (more reliable than req.query.path)
-  const urlPath = (req.url || "").split("?")[0];
+  // Parse route and query params from URL directly (req.query unreliable for catch-all)
+  const fullUrl = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+  const urlPath = fullUrl.pathname;
   const route = urlPath.replace(/^\/api\/kis\/?/, "");
   const pathSegments = route.split("/").filter(Boolean);
+  const qp = Object.fromEntries(fullUrl.searchParams);
 
-  const appKey = req.headers["x-kis-appkey"] || "";
-  const appSecret = req.headers["x-kis-appsecret"] || "";
-  const accountNo = (req.headers["x-kis-account"] || "").replace(/-/g, "");
-  const isVirtual = req.headers["x-kis-virtual"] !== "false";
-  const token = req.headers["x-kis-token"] || "";
+  // Read credentials from query params (primary) or headers (fallback)
+  const appKey = qp._ak || req.headers["x-kis-appkey"] || "";
+  const appSecret = qp._as || req.headers["x-kis-appsecret"] || "";
+  const accountNo = (qp._acct || req.headers["x-kis-account"] || "").replace(/-/g, "");
+  const isVirtual = (qp._virt || req.headers["x-kis-virtual"] || "true") !== "false";
+  const token = qp._token || req.headers["x-kis-token"] || "";
 
   const baseUrl = isVirtual ? VIRT_BASE : REAL_BASE;
   const cano = accountNo.slice(0, 8);
@@ -87,7 +90,7 @@ export default async function handler(req, res) {
   try {
     // ── debug (GET): show routing info ──
     if (route === "debug") {
-      return res.json({ url: req.url, route, pathSegments, method: req.method, hasAppKey: !!appKey, hasToken: !!token });
+      return res.json({ url: req.url, route, pathSegments, method: req.method, hasAppKey: !!appKey, hasToken: !!token, qp });
     }
 
     // ── config (POST): authenticate ──
@@ -200,8 +203,8 @@ export default async function handler(req, res) {
 
     // ── orders (GET): execution history ──
     if (pathSegments[0] === "orders" && pathSegments.length === 1) {
-      const startDate = req.query.start_date || today();
-      const endDate = req.query.end_date || startDate;
+      const startDate = qp.start_date || today();
+      const endDate = qp.end_date || startDate;
       const trId = isVirtual ? "VTTC8001R" : "TTTC8001R";
       const result = await kisGet(
         baseUrl,
@@ -326,8 +329,8 @@ export default async function handler(req, res) {
         {
           CANO: cano,
           ACNT_PRDT_CD: acntPrdtCd,
-          PDNO: req.query.stock_code,
-          ORD_UNPR: String(req.query.price),
+          PDNO: qp.stock_code,
+          ORD_UNPR: String(qp.price),
           ORD_DVSN: "00",
           CMA_EVLU_AMT_ICLD_YN: "Y",
           OVRS_ICLD_YN: "Y",
@@ -384,12 +387,12 @@ export default async function handler(req, res) {
     // ── chart/:code (GET) ──
     if (pathSegments[0] === "chart" && pathSegments[1]) {
       const code = pathSegments[1];
-      const period = req.query.period || "D";
-      const endDate = req.query.end_date || today();
+      const period = qp.period || "D";
+      const endDate = qp.end_date || today();
       const d = new Date();
       d.setFullYear(d.getFullYear() - 1);
       const startDate =
-        req.query.start_date || d.toISOString().slice(0, 10).replace(/-/g, "");
+        qp.start_date || d.toISOString().slice(0, 10).replace(/-/g, "");
 
       const result = await kisGet(
         baseUrl,
@@ -502,7 +505,7 @@ export default async function handler(req, res) {
 
     // ── ranking/volume (GET) ──
     if (pathSegments[0] === "ranking" && pathSegments[1] === "volume") {
-      const market = req.query.market || "J";
+      const market = qp.market || "J";
       const result = await kisGet(
         baseUrl,
         "/uapi/domestic-stock/v1/quotations/volume-rank",
@@ -540,8 +543,8 @@ export default async function handler(req, res) {
 
     // ── ranking/fluctuation (GET) ──
     if (pathSegments[0] === "ranking" && pathSegments[1] === "fluctuation") {
-      const market = req.query.market || "J";
-      const sort = req.query.sort || "0";
+      const market = qp.market || "J";
+      const sort = qp.sort || "0";
       const result = await kisGet(
         baseUrl,
         "/uapi/domestic-stock/v1/quotations/fluctuation",

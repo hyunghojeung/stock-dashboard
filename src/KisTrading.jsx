@@ -22,19 +22,17 @@ function saveKisCredentials(creds) {
 async function kisApi(path, options = {}) {
   try {
     const creds = getKisCredentials();
-    const headers = {
-      "Content-Type": "application/json",
-      ...options.headers,
-    };
-    // Always add credentials if available
-    if (creds.app_key) headers["x-kis-appkey"] = creds.app_key;
-    if (creds.app_secret) headers["x-kis-appsecret"] = creds.app_secret;
-    if (creds.account_no) headers["x-kis-account"] = creds.account_no;
-    if (creds.is_virtual !== undefined) headers["x-kis-virtual"] = String(creds.is_virtual);
-    if (creds.access_token) headers["x-kis-token"] = creds.access_token;
+    // Build URL with credentials as query params (more reliable than custom headers)
+    const url = new URL(path, window.location.origin);
+    if (creds.app_key) url.searchParams.set("_ak", creds.app_key);
+    if (creds.app_secret) url.searchParams.set("_as", creds.app_secret);
+    if (creds.account_no) url.searchParams.set("_acct", creds.account_no);
+    if (creds.is_virtual !== undefined) url.searchParams.set("_virt", String(creds.is_virtual));
+    if (creds.access_token) url.searchParams.set("_token", creds.access_token);
 
+    const headers = { "Content-Type": "application/json", ...options.headers };
     console.log("[KIS API]", path, "token:", creds.access_token ? "yes" : "NO");
-    const res = await fetch(path, { ...options, headers });
+    const res = await fetch(url.toString(), { ...options, headers });
     const data = await res.json();
     if (!res.ok) {
       console.warn("[KIS API] Error:", path, data?.detail);
