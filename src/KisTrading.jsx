@@ -1,27 +1,45 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { encryptCredentials, decryptCredentials } from "./kisCrypto";
 
-// KIS credentials: in-memory cache + localStorage backup
+// KIS credentials: in-memory cache + localStorage (AES-GCM 암호화)
 // 모의투자/실전투자 각각 별도 저장
 const KIS_STORAGE_KEY = "kis_credentials";
 const KIS_VIRTUAL_KEY = "kis_credentials_virtual";
 const KIS_REAL_KEY = "kis_credentials_real";
 const KIS_ACTIVE_MODE_KEY = "kis_active_mode"; // 'virtual' | 'real'
 let _kisCache = {};
+let _decryptPromise = null; // 비동기 복호화 중복 방지
 
+// 동기 버전: 캐시에서만 읽기 (이미 복호화된 상태)
 export function getKisCredentials(mode) {
-  // mode가 지정되면 해당 모드의 크레덴셜 반환
   if (mode === 'virtual' || mode === 'real') {
+    // 모드별 캐시 키
+    const cacheKey = `_mode_${mode}`;
+    if (_kisCache[cacheKey]) return _kisCache[cacheKey];
+    return {};
+  }
+  if (_kisCache.access_token) return _kisCache;
+  return {};
+}
+
+// 비동기 버전: localStorage에서 복호화하여 캐시에 로드
+export async function loadKisCredentials(mode) {
+  if (mode === 'virtual' || mode === 'real') {
+    const key = mode === 'virtual' ? KIS_VIRTUAL_KEY : KIS_REAL_KEY;
     try {
-      const key = mode === 'virtual' ? KIS_VIRTUAL_KEY : KIS_REAL_KEY;
-      return JSON.parse(localStorage.getItem(key) || "{}");
+      const raw = JSON.parse(localStorage.getItem(key) || "{}");
+      const decrypted = await decryptCredentials(raw);
+      const cacheKey = `_mode_${mode}`;
+      _kisCache[cacheKey] = decrypted;
+      return decrypted;
     } catch { return {}; }
   }
-  // mode 미지정: 현재 활성 모드의 크레덴셜 반환
   if (_kisCache.access_token) return _kisCache;
   try {
-    const stored = JSON.parse(localStorage.getItem(KIS_STORAGE_KEY) || "{}");
-    if (stored.access_token) _kisCache = stored;
-    return stored;
+    const raw = JSON.parse(localStorage.getItem(KIS_STORAGE_KEY) || "{}");
+    const decrypted = await decryptCredentials(raw);
+    if (decrypted.access_token) _kisCache = { ..._kisCache, ...decrypted };
+    return decrypted;
   } catch { return _kisCache; }
 }
 
@@ -29,30 +47,46 @@ export function getKisActiveMode() {
   try { return localStorage.getItem(KIS_ACTIVE_MODE_KEY) || 'virtual'; } catch { return 'virtual'; }
 }
 
-function saveKisCredentials(creds) {
-  _kisCache = creds;
-  try { localStorage.setItem(KIS_STORAGE_KEY, JSON.stringify(creds)); } catch {}
-  // 모드별로도 저장
+async function saveKisCredentials(creds) {
+  _kisCache = { ..._kisCache, ...creds };
+  // 모드별 캐시 업데이트
+  const cacheKey = `_mode_${creds.is_virtual !== false ? 'virtual' : 'real'}`;
+  _kisCache[cacheKey] = creds;
+  // 암호화 후 localStorage에 저장
+  const encrypted = await encryptCredentials(creds);
+  try { localStorage.setItem(KIS_STORAGE_KEY, JSON.stringify(encrypted)); } catch {}
   const modeKey = creds.is_virtual !== false ? KIS_VIRTUAL_KEY : KIS_REAL_KEY;
-  try { localStorage.setItem(modeKey, JSON.stringify(creds)); } catch {}
+  try { localStorage.setItem(modeKey, JSON.stringify(encrypted)); } catch {}
   try { localStorage.setItem(KIS_ACTIVE_MODE_KEY, creds.is_virtual !== false ? 'virtual' : 'real'); } catch {}
 }
 
 // 특정 모드의 크레덴셜을 활성화
-export function activateKisMode(mode) {
-  const creds = getKisCredentials(mode);
-  // is_virtual 플래그를 모드에 맞게 강제 설정 (누락 방지)
+export async function activateKisMode(mode) {
+  const creds = await loadKisCredentials(mode);
   creds.is_virtual = mode === 'virtual';
-  // 항상 해당 모드의 크레덴셜로 전환 (토큰 없어도 모드 전환)
-  _kisCache = creds;
-  try { localStorage.setItem(KIS_STORAGE_KEY, JSON.stringify(creds)); } catch {}
+  _kisCache = { ..._kisCache, ...creds };
+  const cacheKey = `_mode_${mode}`;
+  _kisCache[cacheKey] = creds;
+  const encrypted = await encryptCredentials(creds);
+  try { localStorage.setItem(KIS_STORAGE_KEY, JSON.stringify(encrypted)); } catch {}
   try { localStorage.setItem(KIS_ACTIVE_MODE_KEY, mode); } catch {}
   return !!creds.access_token;
 }
 
+// 앱 초기화 시 호출: 저장된 크레덴셜 복호화하여 캐시에 로드
+export async function initKisCredentials() {
+  if (_decryptPromise) return _decryptPromise;
+  _decryptPromise = (async () => {
+    await loadKisCredentials('virtual');
+    await loadKisCredentials('real');
+    await loadKisCredentials();
+  })();
+  return _decryptPromise;
+}
+
 // 토큰 자동 갱신 (app_key/app_secret이 저장되어 있으면 새 토큰 발급)
 export async function refreshKisToken(mode) {
-  const creds = getKisCredentials(mode);
+  const creds = await loadKisCredentials(mode);
   if (!creds.app_key || !creds.app_secret || !creds.account_no) return false;
   try {
     const isV = mode === 'virtual';
@@ -62,11 +96,7 @@ export async function refreshKisToken(mode) {
     });
     if (r?.success && r.access_token) {
       const updated = { ...creds, access_token: r.access_token, is_virtual: isV };
-      _kisCache = updated;
-      try { localStorage.setItem(KIS_STORAGE_KEY, JSON.stringify(updated)); } catch {}
-      const modeKey = isV ? KIS_VIRTUAL_KEY : KIS_REAL_KEY;
-      try { localStorage.setItem(modeKey, JSON.stringify(updated)); } catch {}
-      try { localStorage.setItem(KIS_ACTIVE_MODE_KEY, mode); } catch {}
+      await saveKisCredentials(updated);
       console.log(`[KIS] Token refreshed for ${mode} mode`);
       return true;
     }
@@ -76,23 +106,18 @@ export async function refreshKisToken(mode) {
 
 export async function kisApi(route, params = {}, options = {}) {
   try {
-    const creds = getKisCredentials();
-    // is_virtual이 undefined이면 활성 모드에서 결정
+    // 캐시에 없으면 비동기 로드
+    let creds = getKisCredentials();
+    if (!creds.access_token) creds = await loadKisCredentials();
     const activeMode = getKisActiveMode();
     const isVirtual = creds.is_virtual !== undefined ? creds.is_virtual : (activeMode === 'virtual');
-    console.log("[KIS]", route, "mode:", isVirtual ? "virtual" : "REAL", "token:", creds.access_token ? "yes" : "NO", "appkey:", creds.app_key ? "yes" : "NO");
+
     const url = new URL("/api/kis", window.location.origin);
-    // Route + credentials + extra params all as query string
+    // ★ 보안: 크레덴셜은 헤더로만 전송 (URL 쿼리에 노출하지 않음)
     url.searchParams.set("_route", route);
-    if (creds.app_key) url.searchParams.set("_ak", creds.app_key);
-    if (creds.app_secret) url.searchParams.set("_as", creds.app_secret);
-    if (creds.account_no) url.searchParams.set("_acct", creds.account_no);
-    // 항상 _virt 플래그 전송 (누락 시 백엔드가 모의투자로 기본 처리하는 문제 방지)
-    url.searchParams.set("_virt", String(isVirtual));
-    if (creds.access_token) url.searchParams.set("_token", creds.access_token);
     Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== "") url.searchParams.set(k, v); });
 
-    // Also send credentials via headers as backup
+    // 크레덴셜은 HTTP 헤더로만 전송 (URL/로그/브라우저 히스토리에 노출 방지)
     const headers = {
       "Content-Type": "application/json",
       ...(creds.app_key && { "x-kis-appkey": creds.app_key }),
@@ -191,39 +216,36 @@ export default function KisTrading({ mode = "virtual" }) {
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Load KIS status from localStorage for the given mode + auto-refresh token
+  // Load KIS status from encrypted localStorage + auto-refresh token
   useEffect(() => {
-    activateKisMode(mode);
-    const creds = getKisCredentials(mode);
-    const configured = !!(creds.app_key && creds.app_secret && creds.account_no);
-    const tokenValid = !!creds.access_token;
+    (async () => {
+      await activateKisMode(mode);
+      const creds = await loadKisCredentials(mode);
+      const configured = !!(creds.app_key && creds.app_secret && creds.account_no);
+      const tokenValid = !!creds.access_token;
 
-    const updateStatus = (c) => {
-      const conf = !!(c.app_key && c.app_secret && c.account_no);
-      const tok = !!c.access_token;
-      setStatus({
-        configured: conf, token_valid: tok, is_virtual: isVirtual,
-        account_no: c.account_no ? c.account_no.replace(/-/g, "").slice(0, 4) + "****" + c.account_no.replace(/-/g, "").slice(-2) : "",
-      });
-      if (conf && tok) setTab(prev => prev === "config" ? "balance" : prev);
-    };
+      const updateStatus = (c) => {
+        const conf = !!(c.app_key && c.app_secret && c.account_no);
+        const tok = !!c.access_token;
+        setStatus({
+          configured: conf, token_valid: tok, is_virtual: isVirtual,
+          account_no: c.account_no ? c.account_no.replace(/-/g, "").slice(0, 4) + "****" + c.account_no.replace(/-/g, "").slice(-2) : "",
+        });
+        if (conf && tok) setTab(prev => prev === "config" ? "balance" : prev);
+      };
 
-    updateStatus(creds);
-    setLoading(false);
+      updateStatus(creds);
+      setLoading(false);
 
-    // 크레덴셜이 있지만 토큰이 없거나 만료되었을 수 있으면 자동 갱신
-    if (configured && !tokenValid) {
-      refreshKisToken(mode).then(ok => {
-        if (ok) updateStatus(getKisCredentials(mode));
-      });
-    }
-    // 토큰이 있어도 페이지 진입 시 갱신 시도 (만료 방지)
-    else if (configured && tokenValid) {
-      setTab("balance");
-      refreshKisToken(mode).then(ok => {
-        if (ok) updateStatus(getKisCredentials(mode));
-      });
-    }
+      if (configured && !tokenValid) {
+        const ok = await refreshKisToken(mode);
+        if (ok) updateStatus(await loadKisCredentials(mode));
+      } else if (configured && tokenValid) {
+        setTab("balance");
+        const ok = await refreshKisToken(mode);
+        if (ok) updateStatus(await loadKisCredentials(mode));
+      }
+    })();
   }, [mode]);
 
   const tabs = [
@@ -236,8 +258,7 @@ export default function KisTrading({ mode = "virtual" }) {
     { id: "finance", label: "재무정보", icon: "📑" },
   ];
 
-  // 렌더 직전 항상 해당 모드 크레덴셜 활성화 (하위 패널이 올바른 데이터 사용)
-  activateKisMode(mode);
+  // 렌더 시 해당 모드의 크레덴셜이 캐시에 로드되어 있도록 useEffect에서 처리
 
   const titleLabel = isVirtual ? "KIS 모의투자" : "KIS 실전투자";
   const titleIcon = isVirtual ? "🏦" : "🔴";
@@ -276,9 +297,9 @@ export default function KisTrading({ mode = "virtual" }) {
       </div>
 
       {/* Tab Content */}
-      {tab === "config" && <ConfigPanel mode={mode} onConnect={() => {
-        activateKisMode(mode);
-        const creds = getKisCredentials(mode);
+      {tab === "config" && <ConfigPanel mode={mode} onConnect={async () => {
+        await activateKisMode(mode);
+        const creds = await loadKisCredentials(mode);
         setStatus({ configured: true, token_valid: !!creds.access_token, is_virtual: isVirtual, account_no: creds.account_no ? creds.account_no.replace(/-/g, "").slice(0, 4) + "****" + creds.account_no.replace(/-/g, "").slice(-2) : "" });
       }} />}
       {tab === "balance" && <BalancePanel key={mode} />}
@@ -295,14 +316,23 @@ export default function KisTrading({ mode = "virtual" }) {
 // Config Panel
 // ============================================================
 function ConfigPanel({ mode = 'virtual', onConnect }) {
-  const saved = getKisCredentials(mode);
   const isV = mode === 'virtual';
-  const [appKey, setAppKey] = useState(saved.app_key || "");
-  const [appSecret, setAppSecret] = useState(saved.app_secret || "");
-  const [acctNo, setAcctNo] = useState(saved.account_no || "");
-  const [hasToken, setHasToken] = useState(!!saved.access_token);
+  const [appKey, setAppKey] = useState("");
+  const [appSecret, setAppSecret] = useState("");
+  const [acctNo, setAcctNo] = useState("");
+  const [hasToken, setHasToken] = useState(false);
   const [result, setResult] = useState(null);
   const [connecting, setConnecting] = useState(false);
+
+  // 비동기로 암호화된 크레덴셜 복호화 후 폼에 로드
+  useEffect(() => {
+    loadKisCredentials(mode).then(saved => {
+      if (saved.app_key) setAppKey(saved.app_key);
+      if (saved.app_secret) setAppSecret(saved.app_secret);
+      if (saved.account_no) setAcctNo(saved.account_no);
+      if (saved.access_token) setHasToken(true);
+    });
+  }, [mode]);
 
   const connect = async () => {
     if (!appKey || !appSecret || !acctNo) return;
@@ -315,7 +345,7 @@ function ConfigPanel({ mode = 'virtual', onConnect }) {
     setResult(r);
     setConnecting(false);
     if (r?.success && r.access_token) {
-      saveKisCredentials({ app_key: appKey, app_secret: appSecret, account_no: acctNo, is_virtual: isV, access_token: r.access_token });
+      await saveKisCredentials({ app_key: appKey, app_secret: appSecret, account_no: acctNo, is_virtual: isV, access_token: r.access_token });
       setHasToken(true);
       onConnect?.();
     }
