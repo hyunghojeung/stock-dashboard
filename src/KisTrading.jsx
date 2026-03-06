@@ -8,10 +8,11 @@ async function kisApi(path, options = {}) {
       headers: { "Content-Type": "application/json" },
       ...options,
     });
-    if (!res.ok) return null;
-    return await res.json();
-  } catch {
-    return null;
+    const data = await res.json();
+    if (!res.ok) return { success: false, detail: data?.detail || `오류 ${res.status}` };
+    return data;
+  } catch (e) {
+    return { success: false, detail: `네트워크 오류: ${e.message}` };
   }
 }
 

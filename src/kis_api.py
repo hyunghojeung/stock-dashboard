@@ -37,7 +37,9 @@ class KISClient:
     ):
         self.app_key = app_key or os.getenv("KIS_APP_KEY", "")
         self.app_secret = app_secret or os.getenv("KIS_APP_SECRET", "")
-        self.account_no = account_no or os.getenv("KIS_ACCOUNT_NO", "")
+        # 계좌번호: 하이픈 제거하여 순수 숫자 10자리로 정규화
+        raw_account = account_no or os.getenv("KIS_ACCOUNT_NO", "")
+        self.account_no = raw_account.replace("-", "")
         self.is_virtual = is_virtual
         self.base_url = VIRT_BASE if is_virtual else REAL_BASE
 
@@ -46,7 +48,7 @@ class KISClient:
         self._token_expires: Optional[datetime] = None
         self._websocket_key: Optional[str] = None
 
-        # 계좌번호 분리
+        # 계좌번호 분리 (8자리 + 2자리)
         self.cano = self.account_no[:8] if len(self.account_no) >= 10 else ""
         self.acnt_prdt_cd = self.account_no[8:10] if len(self.account_no) >= 10 else ""
 
