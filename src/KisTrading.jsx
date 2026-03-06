@@ -1,11 +1,22 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 
 // KIS credentials: in-memory cache + localStorage backup
+// 모의투자/실전투자 각각 별도 저장
 const KIS_STORAGE_KEY = "kis_credentials";
+const KIS_VIRTUAL_KEY = "kis_credentials_virtual";
+const KIS_REAL_KEY = "kis_credentials_real";
+const KIS_ACTIVE_MODE_KEY = "kis_active_mode"; // 'virtual' | 'real'
 let _kisCache = {};
 
-function getKisCredentials() {
-  // In-memory cache takes priority
+export function getKisCredentials(mode) {
+  // mode가 지정되면 해당 모드의 크레덴셜 반환
+  if (mode === 'virtual' || mode === 'real') {
+    try {
+      const key = mode === 'virtual' ? KIS_VIRTUAL_KEY : KIS_REAL_KEY;
+      return JSON.parse(localStorage.getItem(key) || "{}");
+    } catch { return {}; }
+  }
+  // mode 미지정: 현재 활성 모드의 크레덴셜 반환
   if (_kisCache.access_token) return _kisCache;
   try {
     const stored = JSON.parse(localStorage.getItem(KIS_STORAGE_KEY) || "{}");
@@ -14,12 +25,32 @@ function getKisCredentials() {
   } catch { return _kisCache; }
 }
 
+export function getKisActiveMode() {
+  try { return localStorage.getItem(KIS_ACTIVE_MODE_KEY) || 'virtual'; } catch { return 'virtual'; }
+}
+
 function saveKisCredentials(creds) {
   _kisCache = creds;
   try { localStorage.setItem(KIS_STORAGE_KEY, JSON.stringify(creds)); } catch {}
+  // 모드별로도 저장
+  const modeKey = creds.is_virtual !== false ? KIS_VIRTUAL_KEY : KIS_REAL_KEY;
+  try { localStorage.setItem(modeKey, JSON.stringify(creds)); } catch {}
+  try { localStorage.setItem(KIS_ACTIVE_MODE_KEY, creds.is_virtual !== false ? 'virtual' : 'real'); } catch {}
 }
 
-async function kisApi(route, params = {}, options = {}) {
+// 특정 모드의 크레덴셜을 활성화
+export function activateKisMode(mode) {
+  const creds = getKisCredentials(mode);
+  if (creds.access_token) {
+    _kisCache = creds;
+    try { localStorage.setItem(KIS_STORAGE_KEY, JSON.stringify(creds)); } catch {}
+    try { localStorage.setItem(KIS_ACTIVE_MODE_KEY, mode); } catch {}
+    return true;
+  }
+  return false;
+}
+
+export async function kisApi(route, params = {}, options = {}) {
   try {
     const creds = getKisCredentials();
     console.log("[KIS]", route, "token:", creds.access_token ? "yes" : "NO", "appkey:", creds.app_key ? "yes" : "NO", "creds_keys:", Object.keys(creds));
@@ -208,73 +239,112 @@ export default function KisTrading() {
 // Config Panel
 // ============================================================
 function ConfigPanel({ onConnect }) {
-  const saved = getKisCredentials();
-  const [appKey, setAppKey] = useState(saved.app_key || "");
-  const [appSecret, setAppSecret] = useState(saved.app_secret || "");
-  const [accountNo, setAccountNo] = useState(saved.account_no || "");
-  const [isVirtual, setIsVirtual] = useState(saved.is_virtual !== false);
+  const [configTab, setConfigTab] = useState('virtual'); // 'virtual' | 'real'
+  const virtSaved = getKisCredentials('virtual');
+  const realSaved = getKisCredentials('real');
+  const [virtKey, setVirtKey] = useState(virtSaved.app_key || "");
+  const [virtSecret, setVirtSecret] = useState(virtSaved.app_secret || "");
+  const [virtAcct, setVirtAcct] = useState(virtSaved.account_no || "");
+  const [virtToken, setVirtToken] = useState(!!virtSaved.access_token);
+  const [realKey, setRealKey] = useState(realSaved.app_key || "");
+  const [realSecret, setRealSecret] = useState(realSaved.app_secret || "");
+  const [realAcct, setRealAcct] = useState(realSaved.account_no || "");
+  const [realToken, setRealToken] = useState(!!realSaved.access_token);
   const [result, setResult] = useState(null);
   const [connecting, setConnecting] = useState(false);
 
-  const connect = async () => {
+  const connect = async (mode) => {
+    const isV = mode === 'virtual';
+    const ak = isV ? virtKey : realKey;
+    const as_ = isV ? virtSecret : realSecret;
+    const acct = isV ? virtAcct : realAcct;
+    if (!ak || !as_ || !acct) return;
     setConnecting(true);
     setResult(null);
     const r = await kisApi("config", {}, {
       method: "POST",
-      body: JSON.stringify({ app_key: appKey, app_secret: appSecret, account_no: accountNo, is_virtual: isVirtual }),
+      body: JSON.stringify({ app_key: ak, app_secret: as_, account_no: acct, is_virtual: isV }),
     });
     setResult(r);
     setConnecting(false);
     if (r?.success && r.access_token) {
-      saveKisCredentials({ app_key: appKey, app_secret: appSecret, account_no: accountNo, is_virtual: isVirtual, access_token: r.access_token });
+      saveKisCredentials({ app_key: ak, app_secret: as_, account_no: acct, is_virtual: isV, access_token: r.access_token });
+      if (isV) setVirtToken(true); else setRealToken(true);
       onConnect?.();
     }
+  };
+
+  const renderForm = (mode) => {
+    const isV = mode === 'virtual';
+    const ak = isV ? virtKey : realKey; const setAk = isV ? setVirtKey : setRealKey;
+    const as_ = isV ? virtSecret : realSecret; const setAs = isV ? setVirtSecret : setRealSecret;
+    const acct = isV ? virtAcct : realAcct; const setAcct = isV ? setVirtAcct : setRealAcct;
+    const hasToken = isV ? virtToken : realToken;
+    const borderColor = isV ? 'rgba(26,111,255,0.3)' : 'rgba(220,38,38,0.3)';
+    const accentColor = isV ? '#60a5fa' : '#ef4444';
+
+    return (
+      <div style={{ border: `1px solid ${borderColor}`, borderRadius:10, padding:16, background: hasToken ? `${accentColor}08` : 'transparent' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+          <span style={{ fontSize:14, fontWeight:700, color: accentColor }}>
+            {isV ? '🏦 모의투자' : '🔴 실전투자'} API
+          </span>
+          {hasToken && <span style={{ fontSize:11, padding:'3px 10px', borderRadius:6, background:`${accentColor}20`, color:accentColor, fontWeight:600 }}>연결됨</span>}
+        </div>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:12 }}>
+          <div>
+            <label style={S.label}>App Key</label>
+            <input style={S.input} value={ak} onChange={e => setAk(e.target.value)} placeholder="앱키" />
+          </div>
+          <div>
+            <label style={S.label}>App Secret</label>
+            <input style={S.input} type="password" value={as_} onChange={e => setAs(e.target.value)} placeholder="앱시크릿" />
+          </div>
+        </div>
+        <div style={{ marginBottom:12 }}>
+          <label style={S.label}>계좌번호</label>
+          <input style={{ ...S.input, maxWidth:300 }} value={acct} onChange={e => setAcct(e.target.value)} placeholder="00000000-01" />
+        </div>
+        <button onClick={() => connect(mode)} disabled={connecting || !ak || !as_ || !acct}
+          style={{ ...S.btn(isV ? "#1a5a3e" : "#5a1a1a"), padding:"8px 20px", fontSize:12, opacity: connecting ? 0.6 : 1 }}>
+          {connecting ? "연결 중..." : hasToken ? "재연결" : "연결하기"}
+        </button>
+      </div>
+    );
   };
 
   return (
     <div style={S.panel}>
       <div style={S.title}>KIS Open API 설정</div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
-        <div>
-          <label style={S.label}>App Key</label>
-          <input style={S.input} value={appKey} onChange={e => setAppKey(e.target.value)} placeholder="발급받은 앱키" />
-        </div>
-        <div>
-          <label style={S.label}>App Secret</label>
-          <input style={{ ...S.input }} type="password" value={appSecret} onChange={e => setAppSecret(e.target.value)} placeholder="발급받은 앱시크릿" />
-        </div>
-        <div>
-          <label style={S.label}>계좌번호 (10자리)</label>
-          <input style={S.input} value={accountNo} onChange={e => setAccountNo(e.target.value)} placeholder="00000000-01" />
-        </div>
-        <div>
-          <label style={S.label}>서버 유형</label>
-          <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-            <button onClick={() => setIsVirtual(true)} style={{ ...S.btn(isVirtual ? "#1a5a3e" : "#333"), padding: "8px 16px", fontSize: 12 }}>
-              {isVirtual ? "✓ " : ""}모의투자
-            </button>
-            <button onClick={() => setIsVirtual(false)} style={{ ...S.btn(!isVirtual ? "#5a1a1a" : "#333"), padding: "8px 16px", fontSize: 12 }}>
-              {!isVirtual ? "✓ " : ""}실전투자
-            </button>
-          </div>
-        </div>
+      <div style={{ fontSize:12, color:'#9ca3af', marginBottom:14 }}>모의투자와 실전투자 API를 각각 설정할 수 있습니다.</div>
+
+      {/* 탭 */}
+      <div style={{ display:'flex', gap:8, marginBottom:16 }}>
+        {[{ key:'virtual', label:'🏦 모의투자', color:'#60a5fa', has: virtToken },
+          { key:'real', label:'🔴 실전투자', color:'#ef4444', has: realToken }].map(t => (
+          <button key={t.key} onClick={() => setConfigTab(t.key)} style={{
+            flex:1, padding:'10px', borderRadius:8, cursor:'pointer', textAlign:'center', fontSize:13, fontWeight:600, fontFamily:'inherit',
+            border: configTab === t.key ? `2px solid ${t.color}` : '1px solid rgba(100,140,200,0.15)',
+            background: configTab === t.key ? `${t.color}15` : 'transparent',
+            color: configTab === t.key ? t.color : '#6688aa',
+          }}>{t.label} {t.has && '✓'}</button>
+        ))}
       </div>
 
-      <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-        <button onClick={connect} disabled={connecting || !appKey || !appSecret || !accountNo} style={{ ...S.btn(), opacity: connecting ? 0.6 : 1 }}>
-          {connecting ? "연결 중..." : "연결하기"}
-        </button>
-        {result && (
-          <span style={{ color: result.success ? "#4cff8b" : "#ff4c4c", fontSize: 12 }}>
+      {renderForm(configTab)}
+
+      {result && (
+        <div style={{ marginTop:12, padding:10, borderRadius:8, background: result.success ? 'rgba(76,255,139,0.08)' : 'rgba(255,76,76,0.08)', border: `1px solid ${result.success ? 'rgba(76,255,139,0.2)' : 'rgba(255,76,76,0.2)'}` }}>
+          <span style={{ color: result.success ? "#4cff8b" : "#ff4c4c", fontSize:12 }}>
             {result.success ? `연결 성공! (${result.is_virtual ? "모의투자" : "실전"})` : result.detail || "연결 실패"}
           </span>
-        )}
-      </div>
+        </div>
+      )}
 
-      <div style={{ marginTop: 16, padding: 12, background: "rgba(10,18,40,0.5)", borderRadius: 8 }}>
-        <div style={{ color: "#6688aa", fontSize: 11, lineHeight: 1.8 }}>
+      <div style={{ marginTop:16, padding:12, background:"rgba(10,18,40,0.5)", borderRadius:8 }}>
+        <div style={{ color:"#6688aa", fontSize:11, lineHeight:1.8 }}>
           한국투자증권 KIS Developers에서 앱키를 발급받으세요.<br />
-          모의투자 서버: openapivts.koreainvestment.com:29443<br />
+          모의투자/실전투자 앱키는 별도로 발급받아야 합니다.<br />
           모의투자 계좌는 HTS에서 신청 가능합니다.
         </div>
       </div>
