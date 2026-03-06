@@ -3,6 +3,8 @@ import SwingBacktest from "./SwingBacktest";
 import PatternDetector from "./PatternDetector";
 import VirtualPortfolioTracker from "./VirtualPortfolioTracker";
 import DatabaseBackup from "./DatabaseBackup";
+import KisTrading from "./KisTrading";
+import MarketAnalysis from "./MarketAnalysis";
 // ============================================================
 // API Helper
 // ============================================================
@@ -486,6 +488,8 @@ const MENU=[
    {id:"swing",icon:"📊",label:"스윙백테스트"},
   {id:"pattern",icon:"🔍",label:"패턴탐지기"},
   {id:"virtual-portfolio",icon:"📊",label:"실시간 추적"},
+  {id:"kis-trading",icon:"🏦",label:"KIS 모의투자"},
+  {id:"market-analysis",icon:"🔥",label:"시장 분석"},
   {id:"backup",icon:"💾",label:"DB 백업"},
   {id:"settings",icon:"⚙️",label:"설정"},
 
@@ -536,6 +540,8 @@ export default function App() {
       case "backup": return <DatabaseBackup/>;
       case "pattern": return <PatternDetector/>;
       case "virtual-portfolio": return <VirtualPortfolioTracker key={vpKey}/>;
+      case "kis-trading": return <KisTrading/>;
+      case "market-analysis": return <MarketAnalysis/>;
       default: return <DashboardPage/>;
     }
   };
