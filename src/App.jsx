@@ -490,7 +490,7 @@ const MENU=[
   {id:"strategy",icon:"📖",label:"전략정리"},
    {id:"swing",icon:"📊",label:"스윙백테스트"},
   {id:"pattern",icon:"🔍",label:"패턴탐지기"},
-  {id:"virtual-portfolio",icon:"📊",label:"실시간 추적"},
+  {id:"virtual-portfolio",icon:"📊",label:"가상투자추적"},
   {id:"kis-trading",icon:"🏦",label:"KIS 모의투자"},
   {id:"market-analysis",icon:"🔥",label:"시장 분석"},
   {id:"backup",icon:"💾",label:"DB 백업"},

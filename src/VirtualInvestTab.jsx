@@ -1007,12 +1007,12 @@ export default function VirtualInvestTab({ recommendations = [], backtestRecomme
         </>
       )}
 
-      {/* ━━━━ 실시간 가상투자 추적 ━━━━ */}
+      {/* ━━━━ 가상투자추적 ━━━━ */}
       {subTab === "realtime" && (
         <div>
           {/* 헤더 */}
           <div style={{ ...S.card, marginBottom: 12 }}>
-            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>📊 실시간 가상투자 추적</div>
+            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>📊 가상투자추적</div>
             <div style={S.dimText}>매수추천 종목으로 가상 포트폴리오를 만들고 실시간으로 수익을 추적합니다</div>
           </div>
 
