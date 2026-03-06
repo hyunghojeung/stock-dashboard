@@ -14,6 +14,9 @@ from app.api.pattern_routes import router as pattern_router
 from app.api.surge_scanner_routes import router as scanner_router
 from app.api.virtual_invest_routes import router as virtual_invest_router
 
+# ★ KIS 모의투자 API
+from kis_routes import router as kis_router
+
 # ★ 패턴 벡터 수집기
 from app.services.stock_pattern_collector import run_pattern_collection
 
@@ -65,6 +68,8 @@ app.include_router(swing_router)
 app.include_router(scanner_router)
 app.include_router(pattern_router)
 app.include_router(virtual_invest_router)
+app.include_router(kis_router)
+
 @app.get("/")
 async def root():
     now = datetime.now(KST)
