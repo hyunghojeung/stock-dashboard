@@ -490,8 +490,9 @@ const MENU=[
   {id:"strategy",icon:"📖",label:"전략정리"},
    {id:"swing",icon:"📊",label:"스윙백테스트"},
   {id:"pattern",icon:"🔍",label:"패턴탐지기"},
-  {id:"virtual-portfolio",icon:"📊",label:"실시간 추적"},
+  {id:"virtual-portfolio",icon:"📊",label:"가상투자추적"},
   {id:"kis-trading",icon:"🏦",label:"KIS 모의투자"},
+  {id:"kis-real",icon:"🔴",label:"KIS 실전투자"},
   {id:"market-analysis",icon:"🔥",label:"시장 분석"},
   {id:"backup",icon:"💾",label:"DB 백업"},
   {id:"settings",icon:"⚙️",label:"설정"},
@@ -542,7 +543,8 @@ export default function App() {
       case "backup": return <DatabaseBackup/>;
       case "pattern": return <PatternDetector/>;
       case "virtual-portfolio": return <VirtualPortfolioTracker key={vpKey}/>;
-      case "kis-trading": return <KisTrading/>;
+      case "kis-trading": return <KisTrading mode="virtual" />;
+      case "kis-real": return <KisTrading mode="real" />;
       case "market-analysis": return <MarketAnalysis/>;
       default: return <DashboardPage/>;
     }

@@ -416,7 +416,7 @@ export default function VirtualPortfolioTracker() {
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: COLORS.white, margin: 0 }}>
-            📊 실시간 가상투자 추적
+            📊 가상투자추적
           </h1>
           <p style={{ fontSize: 12, color: COLORS.textDim, marginTop: 4 }}>
             매수추천 종목으로 가상 포트폴리오를 만들고 실시간으로 수익을 추적합니다
