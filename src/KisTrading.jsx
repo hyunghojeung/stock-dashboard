@@ -41,13 +41,11 @@ function saveKisCredentials(creds) {
 // 특정 모드의 크레덴셜을 활성화
 export function activateKisMode(mode) {
   const creds = getKisCredentials(mode);
-  if (creds.access_token) {
-    _kisCache = creds;
-    try { localStorage.setItem(KIS_STORAGE_KEY, JSON.stringify(creds)); } catch {}
-    try { localStorage.setItem(KIS_ACTIVE_MODE_KEY, mode); } catch {}
-    return true;
-  }
-  return false;
+  // 항상 해당 모드의 크레덴셜로 전환 (토큰 없어도 모드 전환)
+  _kisCache = creds;
+  try { localStorage.setItem(KIS_STORAGE_KEY, JSON.stringify(creds)); } catch {}
+  try { localStorage.setItem(KIS_ACTIVE_MODE_KEY, mode); } catch {}
+  return !!creds.access_token;
 }
 
 export async function kisApi(route, params = {}, options = {}) {
@@ -190,6 +188,9 @@ export default function KisTrading({ mode = "virtual" }) {
     { id: "finance", label: "재무정보", icon: "📑" },
   ];
 
+  // 렌더 직전 항상 해당 모드 크레덴셜 활성화 (하위 패널이 올바른 데이터 사용)
+  activateKisMode(mode);
+
   const titleLabel = isVirtual ? "KIS 모의투자" : "KIS 실전투자";
   const titleIcon = isVirtual ? "🏦" : "🔴";
   const accentColor = isVirtual ? undefined : "#ef4444";
@@ -232,12 +233,12 @@ export default function KisTrading({ mode = "virtual" }) {
         const creds = getKisCredentials(mode);
         setStatus({ configured: true, token_valid: !!creds.access_token, is_virtual: isVirtual, account_no: creds.account_no ? creds.account_no.replace(/-/g, "").slice(0, 4) + "****" + creds.account_no.replace(/-/g, "").slice(-2) : "" });
       }} />}
-      {tab === "balance" && <BalancePanel />}
-      {tab === "order" && <OrderPanel />}
-      {tab === "orders" && <OrderHistoryPanel />}
-      {tab === "quote" && <QuotePanel />}
-      {tab === "asking" && <AskingPanel />}
-      {tab === "finance" && <FinancePanel />}
+      {tab === "balance" && <BalancePanel key={mode} />}
+      {tab === "order" && <OrderPanel key={mode} />}
+      {tab === "orders" && <OrderHistoryPanel key={mode} />}
+      {tab === "quote" && <QuotePanel key={mode} />}
+      {tab === "asking" && <AskingPanel key={mode} />}
+      {tab === "finance" && <FinancePanel key={mode} />}
     </div>
   );
 }
