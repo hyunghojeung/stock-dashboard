@@ -158,6 +158,7 @@ function DashboardPage() {
   const totalAsset=accountData?.total_eval||null;
   const cumRet=totalAsset?((totalAsset-initCap)/initCap*100):0;
   const tgtPct=totalAsset?(totalAsset/1e9*100):0;
+  const hist=[];
   const chartStock=hList[0]||wList[0]||null;
   const chartCode=mkt.isOpen?(chartStock?.stock_code||""):"";
 
