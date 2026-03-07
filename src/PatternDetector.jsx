@@ -671,6 +671,66 @@ export default function PatternDetector() {
     setKisOrderLoading(false);
   };
 
+  // ━━━ 스캔 히스토리 상태 ━━━
+  const [scanHistoryList, setScanHistoryList] = useState([]);
+  const [showScanHistory, setShowScanHistory] = useState(false);
+  const [loadingScanHistory, setLoadingScanHistory] = useState(false);
+
+  const saveScanToHistory = useCallback(async (resData) => {
+    try {
+      const stats = resData.stats || {};
+      await fetch(`${API_BASE}/api/scan-history/save`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scan_date: resData.scan_date || new Date().toISOString(),
+          market: resData.market || 'ALL',
+          period_days: resData.period_days || 365,
+          rise_pct: resData.rise_pct || 30,
+          rise_window: resData.rise_window || 5,
+          min_volume_ratio: resData.min_volume_ratio || 2.0,
+          total_scanned: stats.total_scanned || 0,
+          total_found: stats.total_found || 0,
+          total_surges: stats.total_surges || 0,
+          high_manip_count: stats.high_manip_count || 0,
+          medium_manip_count: stats.medium_manip_count || 0,
+          entry_signal_count: stats.entry_signal_count || 0,
+          stocks: resData.stocks || [],
+        }),
+      });
+      console.log('[scan-history] DB 저장 완료');
+    } catch (e) { console.error('[scan-history] DB 저장 실패:', e); }
+  }, []);
+
+  const loadScanHistoryList = useCallback(async () => {
+    setLoadingScanHistory(true);
+    try {
+      const resp = await fetch(`${API_BASE}/api/scan-history/list?limit=20`);
+      const data = await resp.json();
+      setScanHistoryList(data.items || []);
+    } catch (e) { console.error('[scan-history] 목록 로드 실패:', e); }
+    setLoadingScanHistory(false);
+  }, []);
+
+  const loadScanHistoryDetail = useCallback(async (id) => {
+    try {
+      setScanSource('loading');
+      const resp = await fetch(`${API_BASE}/api/scan-history/${id}`);
+      const data = await resp.json();
+      if (data.status === 'done' && data.stocks?.length > 0) {
+        setScanResultWithCache(data);
+        setScanDate(data.scan_date || '');
+        setScanSource('db');
+        setShowScanHistory(false);
+      } else {
+        alert('해당 스캔 결과를 불러올 수 없습니다.');
+        setScanSource('');
+      }
+    } catch (e) {
+      console.error('[scan-history] 상세 로드 실패:', e);
+      setScanSource('');
+    }
+  }, [setScanResultWithCache]);
+
   // ━━━ 이전 분석 결과 상태 ━━━
   const [prevSessions, setPrevSessions] = useState([]);
   const [loadingPrevAnalysis, setLoadingPrevAnalysis] = useState(false);
@@ -749,7 +809,7 @@ export default function PatternDetector() {
           else if (data.has_result) {
             const resResp = await fetch(`${API_BASE}/api/scanner/result`);
             const resData = await resResp.json();
-            if (resData.status === 'done') { setScanResultWithCache(resData); setScanDate(resData.scan_date || new Date().toISOString()); setScanSource('memory'); }
+            if (resData.status === 'done') { setScanResultWithCache(resData); setScanDate(resData.scan_date || new Date().toISOString()); setScanSource('memory'); saveScanToHistory(resData); }
             else if (resData.status === 'error') setScanError(resData.error);
             setScanning(false);
           } else {
@@ -1205,7 +1265,10 @@ export default function PatternDetector() {
           filteredScanResults={filteredScanResults}
           scanDate={scanDate} scanSource={scanSource} onReload={reloadScanFromDB}
           scanChartCode={scanChartCode} scanChartCandles={scanChartCandles}
-          scanChartLoading={scanChartLoading} fetchScanChart={fetchScanChart} />}
+          scanChartLoading={scanChartLoading} fetchScanChart={fetchScanChart}
+          scanHistoryList={scanHistoryList} showScanHistory={showScanHistory}
+          setShowScanHistory={setShowScanHistory} loadingScanHistory={loadingScanHistory}
+          loadScanHistoryList={loadScanHistoryList} loadScanHistoryDetail={loadScanHistoryDetail} />}
 
         {!scanResult && !scanning && !loadingPrev && (
           <div style={{ background:COLORS.card, border:`1px solid ${COLORS.cardBorder}`,
@@ -2176,7 +2239,7 @@ const PatternScanMatchTable = React.memo(function PatternScanMatchTable({
   );
 });
 
-function ScanResultView({ scanResult, scanSortKey, setScanSortKey, scanSortDir, setScanSortDir, scanFilterLevel, setScanFilterLevel, selectedScanStocks, toggleScanStock, selectAllVisible, setSelectedScanStocks, sendToAnalyzer, filteredScanResults, scanDate, scanSource, onReload, scanChartCode, scanChartCandles, scanChartLoading, fetchScanChart }) {
+function ScanResultView({ scanResult, scanSortKey, setScanSortKey, scanSortDir, setScanSortDir, scanFilterLevel, setScanFilterLevel, selectedScanStocks, toggleScanStock, selectAllVisible, setSelectedScanStocks, sendToAnalyzer, filteredScanResults, scanDate, scanSource, onReload, scanChartCode, scanChartCandles, scanChartLoading, fetchScanChart, scanHistoryList, showScanHistory, setShowScanHistory, loadingScanHistory, loadScanHistoryList, loadScanHistoryDetail }) {
   const handleSort = (key) => {
     if (scanSortKey === key) { setScanSortDir(prev => prev === 'desc' ? 'asc' : 'desc'); }
     else { setScanSortKey(key); setScanSortDir('desc'); }
@@ -2198,8 +2261,58 @@ function ScanResultView({ scanResult, scanSortKey, setScanSortKey, scanSortDir, 
         {scanSource==='loading' ? '⏳ DB에서 불러오는 중...' : scanSource==='db' ? '💾 DB에서 복원된 결과' : '✅ 방금 스캔한 결과'}
         <span style={{ marginLeft:8, fontSize:10, color:COLORS.textDim }}>클릭하면 DB에서 다시 불러옵니다</span>
       </span>
-      <span style={{ fontSize:12, color:COLORS.textDim }}>마지막 스캔: <b style={{ color:COLORS.text }}>{fmtDate(scanDate)}</b>{scanResult.market && <span> · {scanResult.market==='ALL'?'전체':scanResult.market}</span>}</span>
+      <span style={{ display:'flex', alignItems:'center', gap:8 }}>
+        <span style={{ fontSize:12, color:COLORS.textDim }}>마지막 스캔: <b style={{ color:COLORS.text }}>{fmtDate(scanDate)}</b>{scanResult.market && <span> · {scanResult.market==='ALL'?'전체':scanResult.market}</span>}</span>
+        <button onClick={(e) => { e.stopPropagation(); setShowScanHistory(!showScanHistory); if (!showScanHistory) loadScanHistoryList(); }}
+          style={{ padding:'4px 10px', fontSize:11, borderRadius:6, border:`1px solid ${COLORS.cardBorder}`, background:showScanHistory?COLORS.accentDim:'transparent', color:showScanHistory?COLORS.accent:COLORS.textDim, cursor:'pointer', whiteSpace:'nowrap' }}>
+          {showScanHistory ? '닫기' : '이전 기록'}
+        </button>
+      </span>
     </div>)}
+    {showScanHistory && (
+      <div style={{ background:COLORS.card, border:`1px solid ${COLORS.cardBorder}`, borderRadius:10, padding:14, marginBottom:14 }}>
+        <div style={{ fontSize:13, fontWeight:600, color:COLORS.text, marginBottom:10 }}>스캔 히스토리</div>
+        {loadingScanHistory ? (
+          <div style={{ textAlign:'center', padding:16, color:COLORS.textDim, fontSize:12 }}>불러오는 중...</div>
+        ) : scanHistoryList.length === 0 ? (
+          <div style={{ textAlign:'center', padding:16, color:COLORS.textDim, fontSize:12 }}>저장된 스캔 기록이 없습니다.</div>
+        ) : (
+          <div style={{ maxHeight:250, overflowY:'auto' }}>
+            <table style={{ width:'100%', fontSize:12, borderCollapse:'collapse' }}>
+              <thead>
+                <tr style={{ borderBottom:`1px solid ${COLORS.cardBorder}`, color:COLORS.textDim }}>
+                  <th style={{ padding:'6px 8px', textAlign:'left' }}>스캔일시</th>
+                  <th style={{ padding:'6px 8px', textAlign:'center' }}>시장</th>
+                  <th style={{ padding:'6px 8px', textAlign:'right' }}>스캔</th>
+                  <th style={{ padding:'6px 8px', textAlign:'right' }}>발견</th>
+                  <th style={{ padding:'6px 8px', textAlign:'right' }}>세력</th>
+                  <th style={{ padding:'6px 8px', textAlign:'right' }}>진입</th>
+                  <th style={{ padding:'6px 8px', textAlign:'center' }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {scanHistoryList.map(h => (
+                  <tr key={h.id} style={{ borderBottom:`1px solid ${COLORS.cardBorder}`, cursor:'pointer' }}
+                    onClick={() => loadScanHistoryDetail(h.id)}
+                    onMouseEnter={e => e.currentTarget.style.background='rgba(139,92,246,0.06)'}
+                    onMouseLeave={e => e.currentTarget.style.background='transparent'}>
+                    <td style={{ padding:'6px 8px' }}>{fmtDate(h.scan_date)}</td>
+                    <td style={{ padding:'6px 8px', textAlign:'center' }}>{h.market==='ALL'?'전체':h.market}</td>
+                    <td style={{ padding:'6px 8px', textAlign:'right' }}>{h.total_scanned?.toLocaleString()}</td>
+                    <td style={{ padding:'6px 8px', textAlign:'right', color:COLORS.green }}>{h.total_found}</td>
+                    <td style={{ padding:'6px 8px', textAlign:'right', color:COLORS.red }}>{h.high_manip_count}</td>
+                    <td style={{ padding:'6px 8px', textAlign:'right', color:'#00BCD4' }}>{h.entry_signal_count}</td>
+                    <td style={{ padding:'6px 8px', textAlign:'center' }}>
+                      <span style={{ fontSize:10, color:COLORS.accent }}>불러오기</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    )}
     <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(130px, 1fr))', gap:12, marginBottom:16 }}>
       {[
         { label:'스캔 종목', value:stats.total_scanned, unit:'개', color:COLORS.accent },

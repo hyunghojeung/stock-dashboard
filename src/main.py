@@ -163,6 +163,107 @@ async def collect_patterns_status():
     }
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# ★ 스캔 히스토리 저장/조회 API
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+from pydantic import BaseModel
+from typing import Optional, List, Any
+
+class ScanHistorySaveRequest(BaseModel):
+    scan_date: str
+    market: str = "ALL"
+    period_days: int = 365
+    rise_pct: float = 30
+    rise_window: int = 5
+    min_volume_ratio: float = 2.0
+    total_scanned: int = 0
+    total_found: int = 0
+    total_surges: int = 0
+    high_manip_count: int = 0
+    medium_manip_count: int = 0
+    entry_signal_count: int = 0
+    stocks: List[Any] = []
+
+@app.post("/api/scan-history/save")
+async def save_scan_history(req: ScanHistorySaveRequest):
+    """스캔 결과를 scan_history 테이블에 저장"""
+    try:
+        from app.core.database import db
+        save_data = {
+            "scan_date": req.scan_date,
+            "status": "done",
+            "market": req.market,
+            "period_days": req.period_days,
+            "rise_pct": req.rise_pct,
+            "rise_window": req.rise_window,
+            "min_volume_ratio": req.min_volume_ratio,
+            "total_scanned": req.total_scanned,
+            "total_found": req.total_found,
+            "total_surges": req.total_surges,
+            "high_manip_count": req.high_manip_count,
+            "medium_manip_count": req.medium_manip_count,
+            "entry_signal_count": req.entry_signal_count,
+            "stocks": req.stocks,
+        }
+        result = db.table("scan_history").insert(save_data).execute()
+        return {"success": True, "id": result.data[0]["id"] if result.data else None}
+    except Exception as e:
+        print(f"[scan-history] 저장 실패: {e}")
+        raise HTTPException(500, f"저장 실패: {str(e)}")
+
+@app.get("/api/scan-history/list")
+async def list_scan_history(limit: int = 20):
+    """스캔 히스토리 목록 조회 (최근 N개, stocks 제외)"""
+    try:
+        from app.core.database import db
+        resp = (
+            db.table("scan_history")
+            .select("id, scan_date, status, market, period_days, rise_pct, rise_window, min_volume_ratio, total_scanned, total_found, total_surges, high_manip_count, medium_manip_count, entry_signal_count, created_at")
+            .order("scan_date", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        return {"items": resp.data}
+    except Exception as e:
+        print(f"[scan-history] 목록 조회 실패: {e}")
+        raise HTTPException(500, f"조회 실패: {str(e)}")
+
+@app.get("/api/scan-history/{history_id}")
+async def get_scan_history_detail(history_id: int):
+    """특정 스캔 히스토리 상세 조회 (stocks 포함)"""
+    try:
+        from app.core.database import db
+        resp = (
+            db.table("scan_history")
+            .select("*")
+            .eq("id", history_id)
+            .single()
+            .execute()
+        )
+        if not resp.data:
+            raise HTTPException(404, "스캔 히스토리를 찾을 수 없습니다")
+        row = resp.data
+        return {
+            "status": "done",
+            "scan_date": row["scan_date"],
+            "market": row["market"],
+            "source": "db",
+            "stats": {
+                "total_scanned": row["total_scanned"],
+                "total_found": row["total_found"],
+                "total_surges": row["total_surges"],
+                "high_manip_count": row["high_manip_count"],
+                "medium_manip_count": row["medium_manip_count"],
+                "entry_signal_count": row["entry_signal_count"],
+            },
+            "stocks": row.get("stocks", []),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[scan-history] 상세 조회 실패: {e}")
+        raise HTTPException(500, f"조회 실패: {str(e)}")
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # ★ 프론트엔드 정적 파일 서빙 (SPA)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 DIST_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "dist")
