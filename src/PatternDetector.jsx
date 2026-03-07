@@ -2408,58 +2408,8 @@ function ScanResultView({ scanResult, scanSortKey, setScanSortKey, scanSortDir, 
       </span>
       <span style={{ display:'flex', alignItems:'center', gap:8 }}>
         <span style={{ fontSize:12, color:COLORS.textDim }}>마지막 스캔: <b style={{ color:COLORS.text }}>{fmtDate(scanDate)}</b>{scanResult.market && <span> · {scanResult.market==='ALL'?'전체':scanResult.market}</span>}</span>
-        <button onClick={(e) => { e.stopPropagation(); setShowScanHistory(!showScanHistory); if (!showScanHistory) loadScanHistoryList(); }}
-          style={{ padding:'4px 10px', fontSize:11, borderRadius:6, border:`1px solid ${COLORS.cardBorder}`, background:showScanHistory?COLORS.accentDim:'transparent', color:showScanHistory?COLORS.accent:COLORS.textDim, cursor:'pointer', whiteSpace:'nowrap' }}>
-          {showScanHistory ? '닫기' : '이전 기록'}
-        </button>
       </span>
     </div>)}
-    {showScanHistory && (
-      <div style={{ background:COLORS.card, border:`1px solid ${COLORS.cardBorder}`, borderRadius:10, padding:14, marginBottom:14 }}>
-        <div style={{ fontSize:13, fontWeight:600, color:COLORS.text, marginBottom:10 }}>스캔 히스토리</div>
-        {loadingScanHistory ? (
-          <div style={{ textAlign:'center', padding:16, color:COLORS.textDim, fontSize:12 }}>불러오는 중...</div>
-        ) : scanHistoryList.length === 0 ? (
-          <div style={{ textAlign:'center', padding:16, color:COLORS.textDim, fontSize:12 }}>저장된 스캔 기록이 없습니다.</div>
-        ) : (
-          <div style={{ maxHeight:250, overflowY:'auto' }}>
-            <table style={{ width:'100%', fontSize:12, borderCollapse:'collapse' }}>
-              <thead>
-                <tr style={{ borderBottom:`1px solid ${COLORS.cardBorder}`, color:COLORS.textDim }}>
-                  <th style={{ padding:'6px 8px', textAlign:'left' }}>스캔일시</th>
-                  <th style={{ padding:'6px 8px', textAlign:'center' }}>시장</th>
-                  <th style={{ padding:'6px 8px', textAlign:'center' }}>조회기간</th>
-                  <th style={{ padding:'6px 8px', textAlign:'center' }}>급상승기준</th>
-                  <th style={{ padding:'6px 8px', textAlign:'center' }}>상승기간</th>
-                  <th style={{ padding:'6px 8px', textAlign:'center' }}>거래량배율</th>
-                  <th style={{ padding:'6px 8px', textAlign:'center' }}></th>
-                </tr>
-              </thead>
-              <tbody>
-                {scanHistoryList.map(h => {
-                  const periodLabel = h.period_days >= 730 ? '2년' : h.period_days >= 365 ? '1년' : '6개월';
-                  return (
-                  <tr key={h.id} style={{ borderBottom:`1px solid ${COLORS.cardBorder}`, cursor:'pointer' }}
-                    onClick={() => loadScanHistoryDetail(h.id)}
-                    onMouseEnter={e => e.currentTarget.style.background='rgba(139,92,246,0.06)'}
-                    onMouseLeave={e => e.currentTarget.style.background='transparent'}>
-                    <td style={{ padding:'6px 8px' }}>{fmtDate(h.scan_date)}</td>
-                    <td style={{ padding:'6px 8px', textAlign:'center' }}>{h.market==='ALL'?'전체':h.market}</td>
-                    <td style={{ padding:'6px 8px', textAlign:'center' }}>{periodLabel}</td>
-                    <td style={{ padding:'6px 8px', textAlign:'center', color:COLORS.green, fontWeight:600 }}>+{h.rise_pct}%</td>
-                    <td style={{ padding:'6px 8px', textAlign:'center' }}>{h.rise_window}일</td>
-                    <td style={{ padding:'6px 8px', textAlign:'center' }}>{h.min_volume_ratio}배</td>
-                    <td style={{ padding:'6px 8px', textAlign:'center' }}>
-                      <span style={{ fontSize:10, color:COLORS.accent }}>불러오기</span>
-                    </td>
-                  </tr>);
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-    )}
     <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(130px, 1fr))', gap:12, marginBottom:16 }}>
       {[
         { label:'스캔 종목', value:stats.total_scanned, unit:'개', color:COLORS.accent },
