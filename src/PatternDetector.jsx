@@ -14,20 +14,6 @@ import VirtualInvestTab from "./VirtualInvestTab";
 import { kisApi, getKisCredentials, loadKisCredentials, activateKisMode, refreshKisToken } from "./KisTrading";
 import { supabase } from "./supabaseClient";
 
-// ── 복리 투자 풀 관리 (localStorage) ──
-const COMPOUND_POOL_KEY = 'kis_compound_pool';
-function getCompoundPool(mode) {
-  try { return JSON.parse(localStorage.getItem(`${COMPOUND_POOL_KEY}_${mode}`) || 'null'); } catch { return null; }
-}
-function saveCompoundPool(mode, pool) {
-  try { localStorage.setItem(`${COMPOUND_POOL_KEY}_${mode}`, JSON.stringify(pool)); } catch {}
-}
-function initCompoundPool(mode, capital) {
-  const pool = { initial_capital: capital, current_capital: capital, total_invested: 0, total_returned: 0, round: 1, history: [], created_at: new Date().toISOString() };
-  saveCompoundPool(mode, pool);
-  return pool;
-}
-
 const API_BASE = "https://web-production-139e9.up.railway.app";
 
 const PRESETS = {
@@ -220,13 +206,6 @@ export default function PatternDetector() {
   const [regCapital, setRegCapital] = useState(1000000);
   const [regLoading, setRegLoading] = useState(false);
   const [newRtSessionId, setNewRtSessionId] = useState(null);
-  // ★ 복리 그룹 상태
-  const [compoundGroups, setCompoundGroups] = useState([]);
-  const [selectedCompound, setSelectedCompound] = useState(null); // null=새 포트폴리오, {id,name,...}=복리 그룹
-  const [newCompoundName, setNewCompoundName] = useState('10억 도전');
-  const [newCompoundSeed, setNewCompoundSeed] = useState(100000);
-  const [newCompoundGoal, setNewCompoundGoal] = useState(1000000000);
-  const [regMode, setRegMode] = useState('portfolio'); // 'portfolio' | 'compound' | 'new-compound'
   const [regPatternId, setRegPatternId] = useState(null);   // 등록 시 선택한 패턴 ID
   const [regPatternName, setRegPatternName] = useState(''); // 등록 시 선택한 패턴명
   const [regActiveFilters, setRegActiveFilters] = useState([]);  // ★ 등록 모달에 표시할 적용된 필터 목록
@@ -255,7 +234,6 @@ export default function PatternDetector() {
   const [kisOrderType, setKisOrderType] = useState('01'); // '00'=지정가, '01'=시장가
   const [kisOrderLoading, setKisOrderLoading] = useState(false);
   const [kisOrderResults, setKisOrderResults] = useState(null);
-  const [kisUseCompound, setKisUseCompound] = useState(true); // 복리 모드
 
   // ━━━ ★ 패턴 라이브러리 함수 ━━━
   const fetchSavedPatterns = useCallback(async () => {
@@ -457,14 +435,9 @@ export default function PatternDetector() {
       setRegPatternName('');
     }
     setShowRegModal(true);
-    // 복리 그룹 목록 + 패턴 라이브러리 동시 로드
+    // 패턴 라이브러리 로드
     try {
-      const [compRes] = await Promise.all([
-        fetch(`${API_BASE}/api/virtual-portfolio/compound/list`),
-        savedPatterns.length === 0 ? fetchSavedPatterns() : Promise.resolve(),
-      ]);
-      const compData = await compRes.json();
-      if (compData.success) setCompoundGroups(compData.groups || []);
+      if (savedPatterns.length === 0) await fetchSavedPatterns();
     } catch(e) { console.error('모달 데이터 로드 실패:', e); }
   };
 
@@ -499,37 +472,8 @@ export default function PatternDetector() {
 
       let data;
 
-      if (regMode === 'new-compound') {
-        // ★ 새 복리 그룹 생성 + 1회차 등록
-        const res = await fetch(`${API_BASE}/api/virtual-portfolio/compound/create`, {
-          method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({
-            name: newCompoundName || '10억 도전',
-            seed_money: newCompoundSeed,
-            goal_amount: newCompoundGoal,
-            strategy: regPreset,
-            stocks: stocksList,
-            filters: filtersPayload,
-          }),
-        });
-        data = await res.json();
-
-      } else if (regMode === 'compound' && selectedCompound) {
-        // ★ 기존 복리 그룹에 다음 회차 등록
-        const res = await fetch(`${API_BASE}/api/virtual-portfolio/compound/${selectedCompound.id}/next-round`, {
-          method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({
-            stocks: stocksList,
-            preset: regPreset,
-            take_profit_pct: p.tp, stop_loss_pct: p.sl,
-            max_hold_days: p.days, trailing_stop_pct: p.trailing, grace_days: p.grace,
-            filters: filtersPayload,
-          }),
-        });
-        data = await res.json();
-
-      } else {
-        // ★ 기존 방식: 독립 포트폴리오
+      {
+        // 독립 포트폴리오 등록
         const body = {
           title: regTitle || 'Untitled',
           stocks: stocksList,
@@ -577,11 +521,6 @@ export default function PatternDetector() {
     if (!hasStocks) return;
     setKisOrderMode(mode);
     setKisOrderResults(null);
-    // 복리 풀에서 현재 자금 로드
-    const pool = getCompoundPool(mode);
-    if (pool && kisUseCompound) {
-      setKisOrderCapital(pool.current_capital);
-    }
     setShowKisOrderModal(true);
   };
 
@@ -649,23 +588,6 @@ export default function PatternDetector() {
       } catch (e) {
         results.push({ code: stock.code, name: stock.name, success: false, message: e.message });
       }
-    }
-
-    // 복리 풀 업데이트
-    if (kisUseCompound) {
-      const totalOrdered = results.filter(r => r.success).reduce((sum, r) => sum + (r.qty * r.price), 0);
-      let pool = getCompoundPool(kisOrderMode) || initCompoundPool(kisOrderMode, kisOrderCapital);
-      pool.current_capital -= totalOrdered;
-      pool.total_invested += totalOrdered;
-      pool.history.push({
-        round: pool.round,
-        date: new Date().toISOString(),
-        action: 'buy',
-        stocks: results.filter(r => r.success).map(r => ({ code: r.code, name: r.name, qty: r.qty, price: r.price })),
-        amount: totalOrdered,
-      });
-      pool.round++;
-      saveCompoundPool(kisOrderMode, pool);
     }
 
     setKisOrderResults(results);
@@ -1724,108 +1646,8 @@ export default function PatternDetector() {
               💰 가상투자 등록
             </div>
 
-            {/* ★ 등록 대상 선택: 포트폴리오 vs 복리 그룹 */}
-            <div style={{ marginBottom:16 }}>
-              <div style={{ fontSize:12, color:'#9ca3af', marginBottom:8 }}>등록 대상</div>
-              <div style={{ display:'flex', gap:6 }}>
-                {[
-                  { key:'portfolio', label:'📋 포트폴리오', desc:'1회성 추적' },
-                  { key:'compound', label:'🔄 기존 복리그룹', desc:`${compoundGroups.filter(g=>g.status==='active').length}개`, hide: compoundGroups.filter(g=>g.status==='active').length === 0 },
-                  { key:'new-compound', label:'✨ 새 복리그룹', desc:'시드→목표' },
-                ].filter(m => !m.hide).map(m => (
-                  <button key={m.key} onClick={() => setRegMode(m.key)} style={{
-                    flex:1, padding:'10px 6px', borderRadius:8, cursor:'pointer', textAlign:'center',
-                    border: regMode===m.key ? '2px solid #ffd54f' : '1px solid #1e293b',
-                    background: regMode===m.key ? 'rgba(255,213,79,0.12)' : 'transparent',
-                    color: regMode===m.key ? '#ffd54f' : '#9ca3af', fontSize:11, fontFamily:'inherit',
-                  }}>
-                    <div style={{ fontWeight:600, marginBottom:2 }}>{m.label}</div>
-                    <div style={{ fontSize:10, opacity:0.7 }}>{m.desc}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* ★ 기존 복리 그룹 선택 (compound 모드) */}
-            {regMode === 'compound' && (
-              <div style={{ marginBottom:16 }}>
-                <div style={{ fontSize:12, color:'#9ca3af', marginBottom:6 }}>복리 그룹 선택</div>
-                <div style={{ display:'flex', flexDirection:'column', gap:6, maxHeight:140, overflowY:'auto' }}>
-                  {compoundGroups.filter(g => g.status === 'active').map(g => (
-                    <button key={g.id} onClick={() => setSelectedCompound(g)} style={{
-                      padding:'10px 12px', borderRadius:8, cursor:'pointer', textAlign:'left',
-                      border: selectedCompound?.id === g.id ? '2px solid #ff9800' : '1px solid #1e293b',
-                      background: selectedCompound?.id === g.id ? 'rgba(255,152,0,0.12)' : '#0d1321',
-                      color:'#e5e7eb', fontSize:12, fontFamily:'inherit',
-                    }}>
-                      <div style={{ display:'flex', justifyContent:'space-between' }}>
-                        <span style={{ fontWeight:600 }}>🔄 {g.name}</span>
-                        <span style={{ color:'#ffd54f', fontSize:11 }}>{g.current_round}회차</span>
-                      </div>
-                      <div style={{ fontSize:10, color:'#9ca3af', marginTop:4 }}>
-                        현재 원금: <span style={{ color: g.current_capital >= g.seed_money ? '#4cff8b' : '#ff5252' }}>
-                          {Number(g.current_capital).toLocaleString()}원
-                        </span>
-                        {' · '}목표: {Number(g.goal_amount).toLocaleString()}원
-                        {' · '}진행률: {(g.goal_progress || 0).toFixed(1)}%
-                      </div>
-                    </button>
-                  ))}
-                </div>
-                {selectedCompound && (
-                  <div style={{ marginTop:8, padding:8, borderRadius:6, background:'rgba(255,152,0,0.08)',
-                    border:'1px solid rgba(255,152,0,0.2)', fontSize:11, color:'#ff9800' }}>
-                    💡 {selectedCompound.name} {selectedCompound.current_round}회차에 투자금
-                    <b> {Number(selectedCompound.current_capital).toLocaleString()}원</b>으로 등록됩니다
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* ★ 새 복리 그룹 설정 (new-compound 모드) */}
-            {regMode === 'new-compound' && (
-              <div style={{ marginBottom:16 }}>
-                <div style={{ fontSize:12, color:'#9ca3af', marginBottom:6 }}>새 복리 그룹 설정</div>
-                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8 }}>
-                  <div>
-                    <div style={{ fontSize:10, color:'#556677', marginBottom:3 }}>그룹명</div>
-                    <input value={newCompoundName} onChange={e => setNewCompoundName(e.target.value)}
-                      style={{ width:'100%', padding:'7px 10px', fontSize:12, fontFamily:'inherit',
-                        background:'#0d1321', border:'1px solid #1e293b', borderRadius:6, color:'#e5e7eb', outline:'none' }} />
-                  </div>
-                  <div>
-                    <div style={{ fontSize:10, color:'#556677', marginBottom:3 }}>시드머니</div>
-                    <select value={newCompoundSeed} onChange={e => setNewCompoundSeed(Number(e.target.value))}
-                      style={{ width:'100%', padding:'7px 10px', fontSize:12, fontFamily:'inherit',
-                        background:'#0d1321', border:'1px solid #1e293b', borderRadius:6, color:'#e5e7eb', outline:'none' }}>
-                      <option value={100000}>10만원</option>
-                      <option value={500000}>50만원</option>
-                      <option value={1000000}>100만원</option>
-                      <option value={5000000}>500만원</option>
-                      <option value={10000000}>1000만원</option>
-                    </select>
-                  </div>
-                  <div>
-                    <div style={{ fontSize:10, color:'#556677', marginBottom:3 }}>목표금액</div>
-                    <select value={newCompoundGoal} onChange={e => setNewCompoundGoal(Number(e.target.value))}
-                      style={{ width:'100%', padding:'7px 10px', fontSize:12, fontFamily:'inherit',
-                        background:'#0d1321', border:'1px solid #1e293b', borderRadius:6, color:'#e5e7eb', outline:'none' }}>
-                      <option value={10000000}>1천만원</option>
-                      <option value={100000000}>1억원</option>
-                      <option value={1000000000}>10억원</option>
-                      <option value={10000000000}>100억원</option>
-                    </select>
-                  </div>
-                </div>
-                <div style={{ marginTop:6, fontSize:10, color:'#ffd54f' }}>
-                  💡 {Number(newCompoundSeed).toLocaleString()}원 → {Number(newCompoundGoal).toLocaleString()}원
-                  ({newCompoundSeed > 0 ? Math.round(newCompoundGoal / newCompoundSeed).toLocaleString() : 0}배 목표)
-                </div>
-              </div>
-            )}
-
-            {/* 제목 입력 (포트폴리오 모드만) */}
-            {regMode === 'portfolio' && (
+            {/* 포트폴리오 제목 입력 */}
+            {(
               <div style={{ marginBottom:16 }}>
                 <div style={{ fontSize:12, color:'#9ca3af', marginBottom:6 }}>포트폴리오 제목</div>
                 <input value={regTitle} onChange={e => setRegTitle(e.target.value)}
@@ -1897,22 +1719,20 @@ export default function PatternDetector() {
               </div>
             </div>
 
-            {/* 투자금 (포트폴리오 모드만) */}
-            {regMode === 'portfolio' && (
-              <div style={{ marginBottom:20 }}>
-                <div style={{ fontSize:12, color:'#9ca3af', marginBottom:6 }}>투자금액</div>
-                <div style={{ display:'flex', gap:8 }}>
-                  {[500000, 1000000, 3000000, 5000000].map(v => (
-                    <button key={v} onClick={() => setRegCapital(v)} style={{
-                      flex:1, padding:'8px 4px', borderRadius:6, cursor:'pointer', fontSize:12, fontFamily:'inherit',
-                      border: regCapital===v ? '1px solid #4fc3f7' : '1px solid #1e293b',
-                      background: regCapital===v ? 'rgba(79,195,247,0.15)' : 'transparent',
-                      color: regCapital===v ? '#4fc3f7' : '#9ca3af',
-                    }}>{(v/10000).toFixed(0)}만</button>
-                  ))}
-                </div>
+            {/* 투자금액 */}
+            <div style={{ marginBottom:20 }}>
+              <div style={{ fontSize:12, color:'#9ca3af', marginBottom:6 }}>투자금액</div>
+              <div style={{ display:'flex', gap:8 }}>
+                {[500000, 1000000, 3000000, 5000000].map(v => (
+                  <button key={v} onClick={() => setRegCapital(v)} style={{
+                    flex:1, padding:'8px 4px', borderRadius:6, cursor:'pointer', fontSize:12, fontFamily:'inherit',
+                    border: regCapital===v ? '1px solid #4fc3f7' : '1px solid #1e293b',
+                    background: regCapital===v ? 'rgba(79,195,247,0.15)' : 'transparent',
+                    color: regCapital===v ? '#4fc3f7' : '#9ca3af',
+                  }}>{(v/10000).toFixed(0)}만</button>
+                ))}
               </div>
-            )}
+            </div>
 
             {/* ★ 적용된 필터 표시 */}
             {regActiveFilters.length > 0 && (
@@ -1971,16 +1791,13 @@ export default function PatternDetector() {
                   background:'transparent', border:'1px solid #374151', color:'#9ca3af',
                 }}>취소</button>
               <button onClick={doRegisterVirtual}
-                disabled={regLoading || !regPatternName || (regMode === 'compound' && !selectedCompound)}
+                disabled={regLoading || !regPatternName}
                 style={{
                   padding:'10px 28px', borderRadius:8, cursor:'pointer', fontSize:14, fontWeight:700, fontFamily:'inherit',
-                  background: regLoading || !regPatternName ? '#374151' : regMode === 'portfolio' ? '#10b981' : '#ff9800',
+                  background: regLoading || !regPatternName ? '#374151' : '#10b981',
                   border:'none', color: regLoading || !regPatternName ? '#6b7280' : 'white',
-                  opacity: (!regPatternName || (regMode === 'compound' && !selectedCompound)) ? 0.5 : 1,
-                }}>{regLoading ? '⏳ 등록 중...' :
-                    regMode === 'new-compound' ? '🔄 복리 그룹 생성 + 등록' :
-                    regMode === 'compound' ? `🔄 ${selectedCompound?.current_round || '?'}회차 등록` :
-                    '✅ 등록하기'}</button>
+                  opacity: !regPatternName ? 0.5 : 1,
+                }}>{regLoading ? '⏳ 등록 중...' : '✅ 등록하기'}</button>
             </div>
           </div>
         </div>
@@ -2019,28 +1836,6 @@ export default function PatternDetector() {
             })()}
 
             {!kisOrderResults ? (<>
-              {/* 복리 모드 토글 */}
-              <div style={{ marginBottom:14, display:'flex', alignItems:'center', gap:10 }}>
-                <label style={{ display:'flex', alignItems:'center', gap:6, cursor:'pointer', fontSize:12, color: kisUseCompound ? '#ffd54f' : '#9ca3af' }}>
-                  <input type="checkbox" checked={kisUseCompound} onChange={e => {
-                    setKisUseCompound(e.target.checked);
-                    if (e.target.checked) {
-                      const pool = getCompoundPool(kisOrderMode);
-                      if (pool) setKisOrderCapital(pool.current_capital);
-                    }
-                  }} style={{ accentColor:'#ffd54f' }} />
-                  🔄 복리 모드 (수익금 재투자)
-                </label>
-                {kisUseCompound && (() => {
-                  const pool = getCompoundPool(kisOrderMode);
-                  return pool ? (
-                    <span style={{ fontSize:10, color:'#ffd54f' }}>
-                      {pool.round}회차 · 누적수익: {(pool.total_returned - pool.total_invested).toLocaleString()}원
-                    </span>
-                  ) : <span style={{ fontSize:10, color:'#9ca3af' }}>첫 투자 (새 풀 생성)</span>;
-                })()}
-              </div>
-
               {/* 투자금액 */}
               <div style={{ marginBottom:14 }}>
                 <div style={{ fontSize:12, color:'#9ca3af', marginBottom:6 }}>투자금액</div>
@@ -2124,7 +1919,6 @@ export default function PatternDetector() {
                 ))}
                 <div style={{ marginTop:12, padding:10, borderRadius:8, background:'rgba(255,213,79,0.08)', border:'1px solid rgba(255,213,79,0.2)', fontSize:11, color:'#ffd54f' }}>
                   💡 체결 확인은 {kisOrderMode === 'virtual' ? 'KIS 모의투자' : 'KIS 실전투자'} {'>'} 체결내역에서 확인하세요.
-                  {kisUseCompound && ' 복리 풀이 업데이트되었습니다.'}
                 </div>
                 <div style={{ display:'flex', justifyContent:'flex-end', marginTop:12 }}>
                   <button onClick={() => { setShowKisOrderModal(false); setSelectedRecStocks(new Set()); }}
