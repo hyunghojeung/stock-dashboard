@@ -1258,16 +1258,17 @@ export default function PatternDetector() {
                         </th>
                         <th style={{ padding:'6px 8px', textAlign:'left' }}>스캔일시</th>
                         <th style={{ padding:'6px 8px', textAlign:'center' }}>시장</th>
-                        <th style={{ padding:'6px 8px', textAlign:'right' }}>스캔</th>
-                        <th style={{ padding:'6px 8px', textAlign:'right' }}>발견</th>
-                        <th style={{ padding:'6px 8px', textAlign:'right', color:COLORS.red }}>세력</th>
-                        <th style={{ padding:'6px 8px', textAlign:'right', color:'#00BCD4' }}>진입</th>
+                        <th style={{ padding:'6px 8px', textAlign:'center' }}>조회기간</th>
+                        <th style={{ padding:'6px 8px', textAlign:'center' }}>급상승기준</th>
+                        <th style={{ padding:'6px 8px', textAlign:'center' }}>상승기간</th>
+                        <th style={{ padding:'6px 8px', textAlign:'center' }}>거래량배율</th>
                         <th style={{ padding:'6px 8px', textAlign:'center' }}></th>
                       </tr>
                     </thead>
                     <tbody>
                       {scanHistoryList.map(h => {
                         const sel = selectedHistoryIds.has(h.id);
+                        const periodLabel = h.period_days >= 730 ? '2년' : h.period_days >= 365 ? '1년' : '6개월';
                         return (
                         <tr key={h.id} style={{ borderBottom:`1px solid ${COLORS.cardBorder}`, cursor:'pointer', background:sel?'rgba(59,130,246,0.06)':'transparent' }}
                           onClick={() => loadScanHistoryDetail(h.id)}
@@ -1281,10 +1282,10 @@ export default function PatternDetector() {
                           </td>
                           <td style={{ padding:'6px 8px' }}>{(() => { try { const d = new Date(h.scan_date); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; } catch { return h.scan_date; } })()}</td>
                           <td style={{ padding:'6px 8px', textAlign:'center' }}>{h.market==='ALL'?'전체':h.market}</td>
-                          <td style={{ padding:'6px 8px', textAlign:'right' }}>{h.total_scanned?.toLocaleString()}</td>
-                          <td style={{ padding:'6px 8px', textAlign:'right', color:COLORS.green, fontWeight:600 }}>{h.total_found}</td>
-                          <td style={{ padding:'6px 8px', textAlign:'right', color:COLORS.red, fontWeight:600 }}>{h.high_manip_count}</td>
-                          <td style={{ padding:'6px 8px', textAlign:'right', color:'#00BCD4', fontWeight:600 }}>{h.entry_signal_count}</td>
+                          <td style={{ padding:'6px 8px', textAlign:'center' }}>{periodLabel}</td>
+                          <td style={{ padding:'6px 8px', textAlign:'center', color:COLORS.green, fontWeight:600 }}>+{h.rise_pct}%</td>
+                          <td style={{ padding:'6px 8px', textAlign:'center' }}>{h.rise_window}일</td>
+                          <td style={{ padding:'6px 8px', textAlign:'center' }}>{h.min_volume_ratio}배</td>
                           <td style={{ padding:'6px 8px', textAlign:'center' }}>
                             <span style={{ fontSize:10, color:COLORS.accent, fontWeight:600 }}>불러오기</span>
                           </td>
@@ -2427,30 +2428,32 @@ function ScanResultView({ scanResult, scanSortKey, setScanSortKey, scanSortDir, 
                 <tr style={{ borderBottom:`1px solid ${COLORS.cardBorder}`, color:COLORS.textDim }}>
                   <th style={{ padding:'6px 8px', textAlign:'left' }}>스캔일시</th>
                   <th style={{ padding:'6px 8px', textAlign:'center' }}>시장</th>
-                  <th style={{ padding:'6px 8px', textAlign:'right' }}>스캔</th>
-                  <th style={{ padding:'6px 8px', textAlign:'right' }}>발견</th>
-                  <th style={{ padding:'6px 8px', textAlign:'right' }}>세력</th>
-                  <th style={{ padding:'6px 8px', textAlign:'right' }}>진입</th>
+                  <th style={{ padding:'6px 8px', textAlign:'center' }}>조회기간</th>
+                  <th style={{ padding:'6px 8px', textAlign:'center' }}>급상승기준</th>
+                  <th style={{ padding:'6px 8px', textAlign:'center' }}>상승기간</th>
+                  <th style={{ padding:'6px 8px', textAlign:'center' }}>거래량배율</th>
                   <th style={{ padding:'6px 8px', textAlign:'center' }}></th>
                 </tr>
               </thead>
               <tbody>
-                {scanHistoryList.map(h => (
+                {scanHistoryList.map(h => {
+                  const periodLabel = h.period_days >= 730 ? '2년' : h.period_days >= 365 ? '1년' : '6개월';
+                  return (
                   <tr key={h.id} style={{ borderBottom:`1px solid ${COLORS.cardBorder}`, cursor:'pointer' }}
                     onClick={() => loadScanHistoryDetail(h.id)}
                     onMouseEnter={e => e.currentTarget.style.background='rgba(139,92,246,0.06)'}
                     onMouseLeave={e => e.currentTarget.style.background='transparent'}>
                     <td style={{ padding:'6px 8px' }}>{fmtDate(h.scan_date)}</td>
                     <td style={{ padding:'6px 8px', textAlign:'center' }}>{h.market==='ALL'?'전체':h.market}</td>
-                    <td style={{ padding:'6px 8px', textAlign:'right' }}>{h.total_scanned?.toLocaleString()}</td>
-                    <td style={{ padding:'6px 8px', textAlign:'right', color:COLORS.green }}>{h.total_found}</td>
-                    <td style={{ padding:'6px 8px', textAlign:'right', color:COLORS.red }}>{h.high_manip_count}</td>
-                    <td style={{ padding:'6px 8px', textAlign:'right', color:'#00BCD4' }}>{h.entry_signal_count}</td>
+                    <td style={{ padding:'6px 8px', textAlign:'center' }}>{periodLabel}</td>
+                    <td style={{ padding:'6px 8px', textAlign:'center', color:COLORS.green, fontWeight:600 }}>+{h.rise_pct}%</td>
+                    <td style={{ padding:'6px 8px', textAlign:'center' }}>{h.rise_window}일</td>
+                    <td style={{ padding:'6px 8px', textAlign:'center' }}>{h.min_volume_ratio}배</td>
                     <td style={{ padding:'6px 8px', textAlign:'center' }}>
                       <span style={{ fontSize:10, color:COLORS.accent }}>불러오기</span>
                     </td>
-                  </tr>
-                ))}
+                  </tr>);
+                })}
               </tbody>
             </table>
           </div>
