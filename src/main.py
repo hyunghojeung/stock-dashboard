@@ -263,6 +263,21 @@ async def get_scan_history_detail(history_id: int):
         print(f"[scan-history] 상세 조회 실패: {e}")
         raise HTTPException(500, f"조회 실패: {str(e)}")
 
+class ScanHistoryDeleteRequest(BaseModel):
+    ids: List[int]
+
+@app.post("/api/scan-history/delete")
+async def delete_scan_history(req: ScanHistoryDeleteRequest):
+    """스캔 히스토리 다중 삭제"""
+    try:
+        from app.core.database import db
+        for hid in req.ids:
+            db.table("scan_history").delete().eq("id", hid).execute()
+        return {"success": True, "deleted": len(req.ids)}
+    except Exception as e:
+        print(f"[scan-history] 삭제 실패: {e}")
+        raise HTTPException(500, f"삭제 실패: {str(e)}")
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # ★ 프론트엔드 정적 파일 서빙 (SPA)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
