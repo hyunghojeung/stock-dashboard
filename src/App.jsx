@@ -499,9 +499,22 @@ const MENU=[
 
 ];
 
+const AUTH_TOKEN_KEY = "__site_token__";
+
+// 저장된 토큰으로 인증 상태 확인
+function getStoredAuth() {
+  try { return !!localStorage.getItem(AUTH_TOKEN_KEY); } catch { return false; }
+}
+
+// 인증 토큰 가져오기 (API 호출 시 사용)
+export function getAuthToken() {
+  try { return localStorage.getItem(AUTH_TOKEN_KEY) || ""; } catch { return ""; }
+}
+
 export default function App() {
-  const [auth,setAuth]=useState(true);
+  const [auth,setAuth]=useState(getStoredAuth);
   const [pw,setPw]=useState("");
+  const [authLoading,setAuthLoading]=useState(false);
   const [page,setPage]=useState("dashboard");
   const [vpKey,setVpKey]=useState(0);
   const [sideOpen,setSideOpen]=useState(true);
@@ -510,10 +523,34 @@ export default function App() {
   const ta=appAccount?.total_eval||null;
   const tp=ta?(ta/1e9*100):0;
 
+  // 앱 로드 시 저장된 토큰 유효성 검증
+  useEffect(()=>{
+    const token=localStorage.getItem(AUTH_TOKEN_KEY);
+    if(!token){setAuth(false);return;}
+    fetch("/api/auth",{headers:{Authorization:`Bearer ${token}`}})
+      .then(r=>{if(!r.ok){localStorage.removeItem(AUTH_TOKEN_KEY);setAuth(false);}})
+      .catch(()=>{/* 네트워크 오류 시 기존 토큰 유지 */});
+  },[]);
+
   const doLogin=async()=>{
-    const r=await api(`/api/auth?password=${pw}`);
-    if(r&&r.authenticated) setAuth(true);
-    else alert("비밀번호가 틀렸습니다");
+    setAuthLoading(true);
+    try{
+      const r=await fetch("/api/auth",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({password:pw})});
+      const data=await r.json();
+      if(data.authenticated&&data.token){
+        localStorage.setItem(AUTH_TOKEN_KEY,data.token);
+        setAuth(true);
+      } else {
+        alert("비밀번호가 틀렸습니다");
+      }
+    }catch{alert("인증 서버 연결 실패");}
+    finally{setAuthLoading(false);}
+  };
+
+  const doLogout=()=>{
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+    setAuth(false);
+    setPw("");
   };
 
   if(!auth) return (
@@ -523,7 +560,7 @@ export default function App() {
         <div style={{color:"#e0e6f0",fontSize:20,fontWeight:700,marginBottom:4}}>10억 만들기</div>
         <div style={{color:"#6688aa",fontSize:12,marginBottom:24}}>한국 주식 자동매매 시스템</div>
         <input value={pw} onChange={e=>setPw(e.target.value)} onKeyDown={e=>e.key==="Enter"&&doLogin()} type="password" placeholder="비밀번호 입력" style={{width:"100%",padding:"12px 16px",background:"rgba(10,18,40,0.8)",border:"1px solid rgba(100,140,200,0.2)",borderRadius:8,color:"#e0e6f0",fontSize:14,marginBottom:12,outline:"none"}}/>
-        <button onClick={doLogin} style={{width:"100%",padding:"12px",background:"linear-gradient(135deg,#1a3a6e,#2a5098)",color:"#e0e6f0",border:"none",borderRadius:8,fontSize:14,fontWeight:600,cursor:"pointer"}}>로그인</button>
+        <button onClick={doLogin} disabled={authLoading} style={{width:"100%",padding:"12px",background:authLoading?"#333":"linear-gradient(135deg,#1a3a6e,#2a5098)",color:"#e0e6f0",border:"none",borderRadius:8,fontSize:14,fontWeight:600,cursor:authLoading?"wait":"pointer"}}>{authLoading?"인증 중...":"로그인"}</button>
       </div>
     </div>
   );
@@ -597,7 +634,8 @@ export default function App() {
         {MENU.map(m=><div key={m.id} onClick={()=>{setPage(m.id);if(m.id==='virtual-portfolio')setVpKey(k=>k+1);}} style={{padding:sideOpen?"10px 16px":"10px 0",cursor:"pointer",background:page===m.id?"rgba(26,58,110,0.6)":"transparent",borderRadius:6,margin:"1px 6px",color:page===m.id?"#64b5f6":"#6688aa",fontSize:13,textAlign:sideOpen?"left":"center",transition:"background 0.15s"}}>{m.icon}{sideOpen?` ${m.label}`:""}</div>)}
         <div style={{flex:1}}/>
         <div style={{borderTop:"1px solid rgba(100,140,200,0.1)",margin:"0 8px",padding:sideOpen?16:8}}>
-          {sideOpen&&<><div style={{color:"#556677",fontSize:11}}>총 자산</div><div style={{color:"#4cff8b",fontSize:14,fontWeight:600,fontFamily:"monospace"}}>{ta?`${fmt(ta)}원`:"—"}</div><div style={{color:"#556677",fontSize:11,marginTop:8}}>목표 진행률</div><div style={{background:"rgba(10,18,40,0.8)",borderRadius:6,height:6,marginTop:4,overflow:"hidden"}}><div style={{background:"#64b5f6",width:`${Math.max(tp,0.1)}%`,minWidth:3,height:"100%",borderRadius:6}}/></div><div style={{color:"#445566",fontSize:10,marginTop:3}}>{tp.toFixed(2)}% / 10억</div></>}
+          {sideOpen&&<><div style={{color:"#556677",fontSize:11}}>총 자산</div><div style={{color:"#4cff8b",fontSize:14,fontWeight:600,fontFamily:"monospace"}}>{ta?`${fmt(ta)}원`:"—"}</div><div style={{color:"#556677",fontSize:11,marginTop:8}}>목표 진행률</div><div style={{background:"rgba(10,18,40,0.8)",borderRadius:6,height:6,marginTop:4,overflow:"hidden"}}><div style={{background:"#64b5f6",width:`${Math.max(tp,0.1)}%`,minWidth:3,height:"100%",borderRadius:6}}/></div><div style={{color:"#445566",fontSize:10,marginTop:3}}>{tp.toFixed(2)}% / 10억</div>
+          <div onClick={doLogout} style={{marginTop:12,padding:"6px 0",textAlign:"center",color:"#ff6666",fontSize:11,cursor:"pointer",borderRadius:6,border:"1px solid rgba(255,100,100,0.2)"}}>로그아웃</div></>}
         </div>
       </div>
       {/* Main */}

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { encryptCredentials, decryptCredentials } from "./kisCrypto";
 
-// KIS credentials: in-memory cache + localStorage (AES-GCM 암호화)
+// KIS credentials: 메모리 캐시 + localStorage + 클라우드(Supabase) 동기화
 // 모의투자/실전투자 각각 별도 저장
 const KIS_STORAGE_KEY = "kis_credentials";
 const KIS_VIRTUAL_KEY = "kis_credentials_virtual";
@@ -10,10 +10,34 @@ const KIS_ACTIVE_MODE_KEY = "kis_active_mode"; // 'virtual' | 'real'
 let _kisCache = {};
 let _decryptPromise = null; // 비동기 복호화 중복 방지
 
+// ── 클라우드 동기화 헬퍼 ──
+async function cloudSave(creds, mode) {
+  try {
+    const token = localStorage.getItem("__site_token__") || "";
+    if (!token) return;
+    await fetch("/api/credentials", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ ...creds, mode }),
+    });
+  } catch (e) { console.warn("[KIS Cloud] 저장 실패:", e.message); }
+}
+
+async function cloudLoad(mode) {
+  try {
+    const token = localStorage.getItem("__site_token__") || "";
+    if (!token) return null;
+    const url = mode ? `/api/credentials?mode=${mode}` : "/api/credentials";
+    const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!r.ok) return null;
+    const data = await r.json();
+    return data.credentials;
+  } catch { return null; }
+}
+
 // 동기 버전: 캐시에서만 읽기 (이미 복호화된 상태)
 export function getKisCredentials(mode) {
   if (mode === 'virtual' || mode === 'real') {
-    // 모드별 캐시 키
     const cacheKey = `_mode_${mode}`;
     if (_kisCache[cacheKey]) return _kisCache[cacheKey];
     return {};
@@ -22,14 +46,29 @@ export function getKisCredentials(mode) {
   return {};
 }
 
-// 비동기 버전: localStorage에서 복호화하여 캐시에 로드
+// 비동기 버전: localStorage → 클라우드 순서로 로드
 export async function loadKisCredentials(mode) {
   if (mode === 'virtual' || mode === 'real') {
     const key = mode === 'virtual' ? KIS_VIRTUAL_KEY : KIS_REAL_KEY;
+    const cacheKey = `_mode_${mode}`;
     try {
+      // 1. localStorage에서 로드
       const raw = JSON.parse(localStorage.getItem(key) || "{}");
       const decrypted = await decryptCredentials(raw);
-      const cacheKey = `_mode_${mode}`;
+      if (decrypted.app_key) {
+        _kisCache[cacheKey] = decrypted;
+        return decrypted;
+      }
+      // 2. localStorage에 없으면 클라우드에서 로드
+      const cloud = await cloudLoad(mode);
+      if (cloud && cloud.app_key) {
+        const merged = { ...cloud, is_virtual: mode === 'virtual' };
+        _kisCache[cacheKey] = merged;
+        // 로컬에도 캐싱
+        const encrypted = await encryptCredentials(merged);
+        try { localStorage.setItem(key, JSON.stringify(encrypted)); } catch {}
+        return merged;
+      }
       _kisCache[cacheKey] = decrypted;
       return decrypted;
     } catch { return {}; }
@@ -49,15 +88,17 @@ export function getKisActiveMode() {
 
 async function saveKisCredentials(creds) {
   _kisCache = { ..._kisCache, ...creds };
-  // 모드별 캐시 업데이트
-  const cacheKey = `_mode_${creds.is_virtual !== false ? 'virtual' : 'real'}`;
+  const mode = creds.is_virtual !== false ? 'virtual' : 'real';
+  const cacheKey = `_mode_${mode}`;
   _kisCache[cacheKey] = creds;
-  // 암호화 후 localStorage에 저장
+  // localStorage에 암호화 저장
   const encrypted = await encryptCredentials(creds);
   try { localStorage.setItem(KIS_STORAGE_KEY, JSON.stringify(encrypted)); } catch {}
   const modeKey = creds.is_virtual !== false ? KIS_VIRTUAL_KEY : KIS_REAL_KEY;
   try { localStorage.setItem(modeKey, JSON.stringify(encrypted)); } catch {}
-  try { localStorage.setItem(KIS_ACTIVE_MODE_KEY, creds.is_virtual !== false ? 'virtual' : 'real'); } catch {}
+  try { localStorage.setItem(KIS_ACTIVE_MODE_KEY, mode); } catch {}
+  // 클라우드에도 동기화 (비동기, 실패해도 무시)
+  cloudSave(creds, mode);
 }
 
 // 특정 모드의 크레덴셜을 활성화
@@ -73,7 +114,7 @@ export async function activateKisMode(mode) {
   return !!creds.access_token;
 }
 
-// 앱 초기화 시 호출: 저장된 크레덴셜 복호화하여 캐시에 로드
+// 앱 초기화 시 호출: localStorage → 클라우드 순서로 크레덴셜 로드
 export async function initKisCredentials() {
   if (_decryptPromise) return _decryptPromise;
   _decryptPromise = (async () => {
@@ -117,9 +158,11 @@ export async function kisApi(route, params = {}, options = {}) {
     url.searchParams.set("_route", route);
     Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== "") url.searchParams.set(k, v); });
 
-    // 크레덴셜은 HTTP 헤더로만 전송 (URL/로그/브라우저 히스토리에 노출 방지)
+    // 사이트 인증 토큰 + KIS 크레덴셜을 HTTP 헤더로 전송
+    const siteToken = localStorage.getItem("__site_token__") || "";
     const headers = {
       "Content-Type": "application/json",
+      ...(siteToken && { "Authorization": `Bearer ${siteToken}` }),
       ...(creds.app_key && { "x-kis-appkey": creds.app_key }),
       ...(creds.app_secret && { "x-kis-appsecret": creds.app_secret }),
       ...(creds.account_no && { "x-kis-account": creds.account_no }),

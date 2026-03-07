@@ -4,7 +4,10 @@
  *
  * Frontend sends credentials via headers:
  *   x-kis-appkey, x-kis-appsecret, x-kis-account, x-kis-virtual, x-kis-token
+ *   Authorization: Bearer <token> (사이트 인증 토큰)
  */
+
+import { verifyToken } from "./auth.js";
 
 const VIRT_BASE = "https://openapivts.koreainvestment.com:29443";
 const REAL_BASE = "https://openapi.koreainvestment.com:9443";
@@ -74,7 +77,7 @@ export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
   res.setHeader(
     "Access-Control-Allow-Headers",
-    "Content-Type,x-kis-appkey,x-kis-appsecret,x-kis-account,x-kis-virtual,x-kis-token"
+    "Content-Type,Authorization,x-kis-appkey,x-kis-appsecret,x-kis-account,x-kis-virtual,x-kis-token"
   );
   res.setHeader("Access-Control-Allow-Credentials", "true");
   if (req.method === "OPTIONS") return res.status(200).end();
@@ -104,6 +107,16 @@ export default async function handler(req, res) {
   const acntPrdtCd = accountNo.slice(8, 10);
 
   try {
+    // ── 사이트 인증 토큰 검증 (debug, search 제외) ──
+    const publicRoutes = ["debug", "search"];
+    if (!publicRoutes.includes(routeName)) {
+      const authHeader = req.headers["authorization"] || "";
+      const siteToken = authHeader.replace("Bearer ", "");
+      if (!verifyToken(siteToken)) {
+        return res.status(401).json({ rt_cd: "-1", msg1: "인증이 필요합니다. 로그인해주세요." });
+      }
+    }
+
     // ── debug (GET): show routing info ──
     if (routeName === "debug") {
       return res.json({ url: req.url, routeName, pathSegments, method: req.method, hasAppKey: !!appKey, hasToken: !!token, qp });
