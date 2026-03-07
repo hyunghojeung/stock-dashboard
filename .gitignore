@@ -3,3 +3,4 @@ dist/
 .env
 changes.patch
 download/
+__pycache__/
