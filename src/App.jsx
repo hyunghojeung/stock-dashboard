@@ -489,7 +489,7 @@ const MENU=[
   {id:"growth",icon:"🎯",label:"성장여정"},
   {id:"strategy",icon:"📖",label:"전략정리"},
    {id:"swing",icon:"📊",label:"스윙백테스트"},
-  {id:"pattern",icon:"🔍",label:"패턴탐지기"},
+  {id:"pattern",icon:"🔍",label:"패턴탐지기",bold:true},
   {id:"virtual-portfolio",icon:"📊",label:"가상투자",bold:true},
   {id:"kis-trading",icon:"🏦",label:"KIS 모의투자",bold:true},
   {id:"kis-real",icon:"🔴",label:"KIS 실전투자",bold:true},
