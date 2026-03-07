@@ -5,6 +5,7 @@ import VirtualPortfolioTracker from "./VirtualPortfolioTracker";
 import DatabaseBackup from "./DatabaseBackup";
 import KisTrading from "./KisTrading";
 import MarketAnalysis from "./MarketAnalysis";
+import TradeJournal from "./TradeJournal";
 // ============================================================
 // API Helper
 // ============================================================
@@ -493,6 +494,7 @@ const MENU=[
   {id:"virtual-portfolio",icon:"📊",label:"가상투자",bold:true},
   {id:"kis-trading",icon:"🏦",label:"KIS 모의투자",bold:true},
   {id:"kis-real",icon:"🔴",label:"KIS 실전투자",bold:true},
+  {id:"trade-journal",icon:"📋",label:"매매 일지",bold:true},
   {id:"market-analysis",icon:"🔥",label:"시장 분석"},
   {id:"backup",icon:"💾",label:"DB 백업"},
   {id:"settings",icon:"⚙️",label:"설정"},
@@ -581,6 +583,7 @@ export default function App() {
       case "virtual-portfolio": return <VirtualPortfolioTracker key={vpKey}/>;
       case "kis-trading": return <KisTrading key="virtual" mode="virtual" />;
       case "kis-real": return <KisTrading key="real" mode="real" />;
+      case "trade-journal": return <TradeJournal/>;
       case "market-analysis": return <MarketAnalysis/>;
       default: return <DashboardPage/>;
     }
