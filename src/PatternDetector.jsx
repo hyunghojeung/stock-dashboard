@@ -677,36 +677,19 @@ export default function PatternDetector() {
   const [showScanHistory, setShowScanHistory] = useState(false);
   const [loadingScanHistory, setLoadingScanHistory] = useState(false);
 
-  const saveScanToHistory = useCallback(async (resData) => {
-    try {
-      const stats = resData.stats || {};
-      const { error } = await supabase.from('scan_history').insert({
-        scan_date: resData.scan_date || new Date().toISOString(),
-        status: 'done',
-        market: resData.market || 'ALL',
-        period_days: resData.period_days || 365,
-        rise_pct: resData.rise_pct || 30,
-        rise_window: resData.rise_window || 5,
-        min_volume_ratio: resData.min_volume_ratio || 2.0,
-        total_scanned: stats.total_scanned || 0,
-        total_found: stats.total_found || 0,
-        total_surges: stats.total_surges || 0,
-        high_manip_count: stats.high_manip_count || 0,
-        medium_manip_count: stats.medium_manip_count || 0,
-        entry_signal_count: stats.entry_signal_count || 0,
-        stocks: resData.stocks || [],
-      });
-      if (error) throw error;
-      console.log('[scan-history] DB 저장 완료');
-    } catch (e) { console.error('[scan-history] DB 저장 실패:', e); }
-  }, []);
+  // 백엔드가 surge_scan_sessions 테이블에 자동 저장하므로 프론트엔드 별도 저장 불필요
+  const saveScanToHistory = useCallback(async () => {
+    // 저장 완료 후 히스토리 목록 갱신
+    await loadScanHistoryList();
+  }, [loadScanHistoryList]);
 
   const loadScanHistoryList = useCallback(async () => {
     setLoadingScanHistory(true);
     try {
       const { data, error } = await supabase
-        .from('scan_history')
-        .select('id, scan_date, status, market, period_days, rise_pct, rise_window, min_volume_ratio, total_scanned, total_found, total_surges, high_manip_count, medium_manip_count, entry_signal_count, created_at')
+        .from('surge_scan_sessions')
+        .select('id, scan_date, status, market, period_days, rise_pct, rise_window, min_volume_ratio, total_scanned, total_found, total_surges, high_manip_count, medium_manip_count')
+        .in('status', ['done', 'stopped'])
         .order('scan_date', { ascending: false })
         .limit(20);
       if (error) throw error;
@@ -718,28 +701,57 @@ export default function PatternDetector() {
   const loadScanHistoryDetail = useCallback(async (id) => {
     try {
       setScanSource('loading');
-      const { data: row, error } = await supabase
-        .from('scan_history')
+      // 1) 세션 정보 로드
+      const { data: session, error: sessErr } = await supabase
+        .from('surge_scan_sessions')
         .select('*')
         .eq('id', id)
         .single();
-      if (error) throw error;
+      if (sessErr) throw sessErr;
+      // 2) 종목 데이터 로드 (페이지네이션)
+      let allStocks = [];
+      let offset = 0;
+      const pageSize = 1000;
+      while (true) {
+        const { data: rows, error: stockErr } = await supabase
+          .from('surge_scan_stocks')
+          .select('*')
+          .eq('session_id', id)
+          .order('top_manip_score', { ascending: false })
+          .range(offset, offset + pageSize - 1);
+        if (stockErr) throw stockErr;
+        if (!rows || rows.length === 0) break;
+        allStocks = allStocks.concat(rows.map(row => ({
+          code: row.code, name: row.name, market: row.market || '',
+          current_price: row.current_price || 0, last_date: row.last_date || '',
+          surge_count: row.surge_count || 0,
+          top_manip_score: row.top_manip_score || 0,
+          top_manip_level: row.top_manip_level || 'low',
+          top_manip_label: row.top_manip_label || '',
+          latest_rise_pct: row.latest_rise_pct || 0,
+          latest_surge_date: row.latest_surge_date || '',
+          latest_from_peak: row.latest_from_peak || 0,
+          surges: (() => { try { return JSON.parse(row.surges_json || '[]'); } catch { return []; } })(),
+        })));
+        if (rows.length < pageSize) break;
+        offset += pageSize;
+      }
       const detail = {
         status: 'done',
-        scan_date: row.scan_date,
-        market: row.market,
+        scan_date: session.scan_date,
+        market: session.market,
         source: 'db',
         stats: {
-          total_scanned: row.total_scanned,
-          total_found: row.total_found,
-          total_surges: row.total_surges,
-          high_manip_count: row.high_manip_count,
-          medium_manip_count: row.medium_manip_count,
-          entry_signal_count: row.entry_signal_count,
+          total_scanned: session.total_scanned,
+          total_found: session.total_found,
+          total_surges: session.total_surges,
+          high_manip_count: session.high_manip_count,
+          medium_manip_count: session.medium_manip_count,
+          entry_signal_count: 0,
         },
-        stocks: row.stocks || [],
+        stocks: allStocks,
       };
-      if (detail.status === 'done' && detail.stocks?.length > 0) {
+      if (allStocks.length > 0) {
         setScanResultWithCache(detail);
         setScanDate(detail.scan_date || '');
         setScanSource('db');
@@ -750,6 +762,7 @@ export default function PatternDetector() {
       }
     } catch (e) {
       console.error('[scan-history] 상세 로드 실패:', e);
+      alert('스캔 기록 로드 실패: ' + e.message);
       setScanSource('');
     }
   }, [setScanResultWithCache]);
@@ -771,10 +784,13 @@ export default function PatternDetector() {
     if (!confirm(`선택한 ${selectedHistoryIds.size}개의 스캔 기록을 삭제하시겠습니까?`)) return;
     setDeletingHistory(true);
     try {
+      // 종목 데이터 먼저 삭제 후 세션 삭제
+      const ids = [...selectedHistoryIds];
+      await supabase.from('surge_scan_stocks').delete().in('session_id', ids);
       const { error } = await supabase
-        .from('scan_history')
+        .from('surge_scan_sessions')
         .delete()
-        .in('id', [...selectedHistoryIds]);
+        .in('id', ids);
       if (error) throw error;
       setSelectedHistoryIds(new Set());
       await loadScanHistoryList();
