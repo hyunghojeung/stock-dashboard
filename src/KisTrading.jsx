@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { encryptCredentials, decryptCredentials } from "./kisCrypto";
+import { supabase } from "./supabaseClient";
 
 // KIS credentials: 메모리 캐시 + localStorage + 클라우드(Supabase) 동기화
 // 모의투자/실전투자 각각 별도 저장
@@ -570,6 +571,54 @@ function OrderPanel() {
 
     if (r?.success) {
       setResult({ type: "success", message: `${side === "buy" ? "매수" : "매도"} 주문 성공! 주문번호: ${r.order_no}` });
+
+      // ── 매매 일지 자동 기록 ──
+      try {
+        const activeMode = getKisActiveMode();
+        const journalMode = activeMode === 'real' ? 'real' : 'mock';
+        const orderPrice = parseInt(price || "0");
+        const orderQty = parseInt(qty);
+        const stockName = quoteData?.name || stockCode;
+
+        // 매도 시: 잔고 API에서 평균매수단가 조회 → 실현손익 계산
+        let realizedPnl = 0;
+        let realizedPnlPct = 0;
+        let cashBalance = 0;
+
+        if (side === 'sell') {
+          const bal = await kisApi("balance");
+          if (bal?.success) {
+            cashBalance = bal.summary?.deposit || 0;
+            const pos = bal.positions?.find(p => p.stock_code === stockCode);
+            if (pos && pos.avg_price > 0) {
+              realizedPnl = Math.round((orderPrice - pos.avg_price) * orderQty);
+              realizedPnlPct = Math.round((orderPrice - pos.avg_price) / pos.avg_price * 10000) / 100;
+            }
+          }
+        } else {
+          // 매수 시: 예수금만 조회
+          const bal = await kisApi("balance");
+          if (bal?.success) cashBalance = bal.summary?.deposit || 0;
+        }
+
+        await supabase.from('trade_journal').insert({
+          mode: journalMode,
+          trade_type: side,
+          stock_code: stockCode,
+          stock_name: stockName,
+          price: orderPrice,
+          quantity: orderQty,
+          amount: orderPrice * orderQty,
+          realized_pnl: realizedPnl,
+          realized_pnl_pct: realizedPnlPct,
+          cash_balance: cashBalance,
+          order_no: r.order_no || '',
+          memo: '자동 기록',
+          trade_date: new Date().toISOString(),
+        });
+      } catch (e) {
+        console.warn('[매매일지] 자동 기록 실패:', e.message);
+      }
     } else {
       setResult({ type: "error", message: r?.message || r?.detail || "주문 실패" });
     }
