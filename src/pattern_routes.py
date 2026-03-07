@@ -1050,6 +1050,62 @@ async def delete_saved_pattern(pattern_id: str):
         return {"success": False, "message": str(e)}
 
 
+@router.get("/library/{pattern_id}/scan-cache")
+async def get_pattern_scan_cache(pattern_id: str):
+    """패턴의 캐시된 스캔 결과 조회"""
+    try:
+        resp = db.table("pattern_scan_results").select("*").eq("pattern_id", pattern_id).execute()
+        rows = resp.data or []
+        if not rows:
+            return {"success": True, "cached": False, "matches": [], "message": "캐시된 결과 없음"}
+
+        row = rows[0]
+        matches = row.get("matches", [])
+        if isinstance(matches, str):
+            matches = json.loads(matches)
+
+        return {
+            "success": True,
+            "cached": True,
+            "total_scanned": row.get("total_scanned", 0),
+            "matches": matches,
+            "patterns_used": row.get("patterns_used", []),
+            "scanned_at": row.get("scanned_at", ""),
+        }
+    except Exception as e:
+        logger.warning(f"스캔 캐시 조회 실패 (무시): {e}")
+        return {"success": True, "cached": False, "matches": []}
+
+
+@router.delete("/library/{pattern_id}/scan-cache")
+async def delete_pattern_scan_cache(pattern_id: str):
+    """패턴의 캐시된 스캔 결과 삭제 (재스캔용)"""
+    try:
+        db.table("pattern_scan_results").delete().eq("pattern_id", pattern_id).execute()
+        return {"success": True, "message": "캐시 삭제 완료"}
+    except Exception as e:
+        logger.warning(f"스캔 캐시 삭제 실패: {e}")
+        return {"success": False, "message": str(e)}
+
+
+def _save_scan_cache(pattern_id: str, total_scanned: int, matches: list, patterns_used: list):
+    """스캔 결과를 DB에 캐시 저장 (upsert)"""
+    try:
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).isoformat()
+        data = {
+            "pattern_id": pattern_id,
+            "total_scanned": total_scanned,
+            "matches": matches,
+            "patterns_used": patterns_used,
+            "scanned_at": now,
+        }
+        db.table("pattern_scan_results").upsert(data, on_conflict="pattern_id").execute()
+        logger.info(f"패턴 {pattern_id} 스캔 결과 캐시 저장 ({len(matches)}개 매치)")
+    except Exception as e:
+        logger.warning(f"스캔 캐시 저장 실패 (무시): {e}")
+
+
 @router.post("/library/scan")
 async def scan_with_saved_patterns(req: PatternScanRequest):
     """저장된 패턴으로 전종목 매칭 스캔"""
@@ -1155,6 +1211,12 @@ async def scan_with_saved_patterns(req: PatternScanRequest):
             if pid not in pattern_stats:
                 pattern_stats[pid] = {"id": pid, "name": m["matched_pattern_name"], "match_count": 0}
             pattern_stats[pid]["match_count"] += 1
+
+        # ★ 스캔 결과를 DB에 캐시 저장 (패턴별)
+        for pid in req.pattern_ids:
+            pid_matches = [m for m in matches if m["matched_pattern_id"] == pid]
+            pid_stats = [s for s in pattern_stats.values() if s["id"] == pid]
+            _save_scan_cache(pid, len(all_stocks), pid_matches, pid_stats)
 
         logger.info(f"패턴 스캔 완료: {len(all_stocks)}개 중 {len(matches)}개 매칭")
         return {
