@@ -518,7 +518,6 @@ export default function App() {
   const [page,setPage]=useState("dashboard");
   const [vpKey,setVpKey]=useState(0);
   const [sideOpen,setSideOpen]=useState(true);
-  const {data:st}=useApi("/api/strategy/",0);
   const {data:appAccount}=useApi("/api/trading/account",60000);
   const ta=appAccount?.total_eval||null;
   const tp=ta?(ta/1e9*100):0;
@@ -645,10 +644,6 @@ export default function App() {
             <div style={{color:"#e0e6f0",fontWeight:600,fontSize:15}}>{MENU.find(m=>m.id===page)?.icon} {MENU.find(m=>m.id===page)?.label}</div>
           </div>
           <Clock/>
-        </div>
-        <div style={{background:"rgba(10,16,32,0.8)",borderBottom:"1px solid rgba(100,140,200,0.1)",padding:"0 20px",display:"flex",gap:0,flexShrink:0}}>
-          {(st||[]).length>0?(st||[]).map((s,i)=><div key={i} style={{padding:"10px 20px",fontSize:12,color:"#64b5f6",borderBottom:"2px solid #64b5f6",cursor:"pointer"}}>{s.name} {s.is_live?"🔴":"🟡"}</div>)
-          :<div style={{padding:"10px 20px",fontSize:12,color:"#556677"}}>전략 로딩 중...</div>}
         </div>
         <div style={{flex:1,overflow:"auto",padding:16}}>{render()}</div>
       </div>
