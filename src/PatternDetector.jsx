@@ -832,14 +832,31 @@ export default function PatternDetector() {
         if (!data.running) {
           clearInterval(scanIntervalRef.current);
           scanIntervalRef.current = null;
-          if (data.error) { setScanError(data.error); setScanning(false); }
+          if (data.error && !data.has_result) { setScanError(data.error); setScanning(false); }
           else if (data.has_result) {
             const resResp = await fetch(`${API_BASE}/api/scanner/result`);
             const resData = await resResp.json();
-            if (resData.status === 'done') { setScanResultWithCache(resData); setScanDate(resData.scan_date || new Date().toISOString()); setScanSource('memory'); saveScanToHistory(resData); }
+            if (resData.status === 'done') {
+              setScanResultWithCache(resData);
+              setScanDate(resData.scan_date || new Date().toISOString());
+              setScanSource('memory');
+              saveScanToHistory(resData);
+              if (resData.stopped) setScanMsg(`스캔 중지됨 — 부분 결과 ${resData.stocks?.length || 0}개 저장 완료`);
+            }
             else if (resData.status === 'error') setScanError(resData.error);
             setScanning(false);
           } else {
+            // ★ has_result=false 이지만 중지로 인한 것일 수 있음 → result 한번 더 확인
+            try {
+              const resResp = await fetch(`${API_BASE}/api/scanner/result`);
+              const resData = await resResp.json();
+              if (resData.status === 'done' && resData.stocks?.length > 0) {
+                setScanResultWithCache(resData);
+                setScanDate(resData.scan_date || new Date().toISOString());
+                setScanSource('memory');
+                saveScanToHistory(resData);
+              }
+            } catch (_e) { /* ignore */ }
             setScanning(false);
           }
         }
