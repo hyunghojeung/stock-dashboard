@@ -402,23 +402,32 @@ function TradeTable({ trades, onDelete }) {
               return (
                 <div key={t.id} style={{
                   display: 'grid',
-                  gridTemplateColumns: '50px 1fr 90px 70px 90px 90px 28px',
+                  gridTemplateColumns: '56px 1fr 90px 70px 90px 90px 28px',
                   alignItems: 'center', gap: 6,
                   padding: '10px 14px', borderBottom: `1px solid ${COLORS.cardBorder}20`, fontSize: 12,
                 }}>
-                  {/* 매수/매도 뱃지 */}
-                  <span style={{
-                    fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 4, textAlign: 'center',
-                    background: isBuy ? 'rgba(239,68,68,0.15)' : 'rgba(59,130,246,0.15)',
-                    color: isBuy ? COLORS.red : COLORS.accent,
-                  }}>
-                    {isBuy ? '매수' : '매도'}
-                  </span>
+                  {/* 매수/매도 뱃지 + 시간 */}
+                  <div style={{ textAlign: 'center' }}>
+                    <span style={{
+                      fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 4, display: 'inline-block',
+                      background: isBuy ? 'rgba(239,68,68,0.15)' : 'rgba(59,130,246,0.15)',
+                      color: isBuy ? COLORS.red : COLORS.accent,
+                    }}>
+                      {isBuy ? '매수' : '매도'}
+                    </span>
+                    <div style={{ fontSize: 9, color: COLORS.gray, marginTop: 2 }}>{toKSTTime(t.trade_date)}</div>
+                  </div>
 
                   {/* 종목 */}
                   <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     <span style={{ fontWeight: 600, color: COLORS.white }}>{t.stock_name}</span>
                     <span style={{ fontSize: 10, color: COLORS.textDim, marginLeft: 6 }}>{t.stock_code}</span>
+                    {t.order_no && (
+                      <span style={{ fontSize: 9, color: COLORS.accent, marginLeft: 4, padding: '1px 4px', borderRadius: 3, background: COLORS.accentDim }}>
+                        자동
+                      </span>
+                    )}
+                    {t.order_no && <span style={{ fontSize: 9, color: COLORS.gray, marginLeft: 3 }}>#{t.order_no}</span>}
                     {t.memo && <span style={{ fontSize: 10, color: COLORS.gray, marginLeft: 4 }}>· {t.memo}</span>}
                   </div>
 
