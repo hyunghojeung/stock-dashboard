@@ -295,6 +295,7 @@ export default function KisTrading({ mode = "virtual" }) {
   const tabs = [
     { id: "config", label: "API 설정", icon: "🔑" },
     { id: "balance", label: "잔고", icon: "💰" },
+    { id: "autotrade", label: "자동매매", icon: "🤖" },
     { id: "order", label: "주문", icon: "📝" },
     { id: "orders", label: "체결내역", icon: "📋" },
     { id: "quote", label: "시세조회", icon: "📈" },
@@ -347,6 +348,7 @@ export default function KisTrading({ mode = "virtual" }) {
         setStatus({ configured: true, token_valid: !!creds.access_token, is_virtual: isVirtual, account_no: creds.account_no ? creds.account_no.replace(/-/g, "").slice(0, 4) + "****" + creds.account_no.replace(/-/g, "").slice(-2) : "" });
       }} />}
       {tab === "balance" && <BalancePanel key={mode} />}
+      {tab === "autotrade" && <AutoTradePanel key={mode} mode={mode} />}
       {tab === "order" && <OrderPanel key={mode} />}
       {tab === "orders" && <OrderHistoryPanel key={mode} />}
       {tab === "quote" && <QuotePanel key={mode} />}
@@ -1459,6 +1461,325 @@ function StockChart({ candles, buyDate, buyPrice, sellDate, sellPrice, pos }) {
           {pos?.similarity != null && <span><span style={{ color: '#556677' }}>유사도 </span><span style={{ color: '#4fc3f7' }}>{pos.similarity}%</span></span>}
         </div>
       )}
+    </div>
+  );
+}
+
+// ============================================================
+// Auto Trade Panel (자동 손절/익절)
+// ============================================================
+const AUTO_TRADE_STORAGE_KEY = "kis_auto_trade_rules";
+
+function AutoTradePanel({ mode = "virtual" }) {
+  const [rules, setRules] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(`${AUTO_TRADE_STORAGE_KEY}_${mode}`) || "[]"); } catch { return []; }
+  });
+  const [monitoring, setMonitoring] = useState(false);
+  const [logs, setLogs] = useState([]);
+  const [positions, setPositions] = useState([]);
+  const [loadingBal, setLoadingBal] = useState(false);
+  const intervalRef = useRef(null);
+  const [intervalSec, setIntervalSec] = useState(30);
+  const [globalTP, setGlobalTP] = useState(7);
+  const [globalSL, setGlobalSL] = useState(3);
+  const [globalMaxDays, setGlobalMaxDays] = useState(10);
+
+  // 규칙 저장
+  const saveRules = useCallback((r) => {
+    setRules(r);
+    try { localStorage.setItem(`${AUTO_TRADE_STORAGE_KEY}_${mode}`, JSON.stringify(r)); } catch {}
+  }, [mode]);
+
+  // 잔고 조회 → 보유종목 로드
+  const loadPositions = useCallback(async () => {
+    setLoadingBal(true);
+    const r = await kisApi("balance");
+    if (r?.success && r.positions) {
+      setPositions(r.positions);
+      // 새 종목이 추가되었으면 규칙에 자동 등록
+      const existing = new Set(rules.map(r => r.stock_code));
+      const newRules = [...rules];
+      r.positions.forEach(p => {
+        if (!existing.has(p.stock_code)) {
+          newRules.push({
+            stock_code: p.stock_code,
+            stock_name: p.stock_name,
+            take_profit_pct: globalTP,
+            stop_loss_pct: globalSL,
+            max_hold_days: globalMaxDays,
+            enabled: true,
+            buy_date: new Date().toISOString().slice(0, 10),
+          });
+        }
+      });
+      if (newRules.length !== rules.length) saveRules(newRules);
+    }
+    setLoadingBal(false);
+  }, [rules, globalTP, globalSL, globalMaxDays, saveRules]);
+
+  // 로그 추가
+  const addLog = useCallback((msg) => {
+    setLogs(prev => [{ time: new Date().toLocaleTimeString('ko-KR'), msg }, ...prev].slice(0, 50));
+  }, []);
+
+  // 자동매매 체크 1회 실행
+  const checkAndExecute = useCallback(async () => {
+    addLog("잔고 조회 중...");
+    const bal = await kisApi("balance");
+    if (!bal?.success) { addLog("❌ 잔고 조회 실패"); return; }
+
+    const posMap = {};
+    (bal.positions || []).forEach(p => { posMap[p.stock_code] = p; });
+    setPositions(bal.positions || []);
+
+    const activeRules = rules.filter(r => r.enabled && posMap[r.stock_code]);
+    if (activeRules.length === 0) { addLog("활성 규칙 없음 (보유종목 매칭 0건)"); return; }
+
+    addLog(`${activeRules.length}개 종목 모니터링 중...`);
+    const journalMode = mode === 'real' ? 'real' : 'mock';
+
+    for (const rule of activeRules) {
+      const pos = posMap[rule.stock_code];
+      const profitRate = pos.profit_rate || 0;
+      const holdDays = rule.buy_date
+        ? Math.floor((Date.now() - new Date(rule.buy_date).getTime()) / 86400000)
+        : 0;
+
+      let reason = null;
+      if (profitRate >= rule.take_profit_pct) reason = `익절 (수익률 ${profitRate.toFixed(2)}% ≥ ${rule.take_profit_pct}%)`;
+      else if (profitRate <= -rule.stop_loss_pct) reason = `손절 (수익률 ${profitRate.toFixed(2)}% ≤ -${rule.stop_loss_pct}%)`;
+      else if (rule.max_hold_days > 0 && holdDays >= rule.max_hold_days) reason = `만기매도 (보유 ${holdDays}일 ≥ ${rule.max_hold_days}일)`;
+
+      if (!reason) {
+        addLog(`  ${pos.stock_name}(${pos.stock_code}) 수익률 ${profitRate >= 0 ? '+' : ''}${profitRate.toFixed(2)}% → 유지`);
+        continue;
+      }
+
+      // 자동 매도 실행
+      addLog(`🔔 ${pos.stock_name}(${pos.stock_code}) ${reason} → 시장가 매도 실행`);
+      const sellResult = await kisApi("order/sell", {}, {
+        method: "POST",
+        body: JSON.stringify({
+          stock_code: pos.stock_code,
+          qty: pos.qty,
+          price: 0,
+          order_type: "01", // 시장가
+        }),
+      });
+
+      if (sellResult?.success) {
+        addLog(`✅ ${pos.stock_name} 매도 성공! 주문번호: ${sellResult.order_no}`);
+
+        // 매매 일지 자동 기록
+        try {
+          const realizedPnl = pos.profit_loss || 0;
+          const realizedPnlPct = pos.profit_rate || 0;
+          await supabase.from('trade_journal').insert({
+            mode: journalMode,
+            trade_type: 'sell',
+            stock_code: pos.stock_code,
+            stock_name: pos.stock_name,
+            price: pos.current_price,
+            quantity: pos.qty,
+            amount: pos.current_price * pos.qty,
+            realized_pnl: realizedPnl,
+            realized_pnl_pct: Math.round(realizedPnlPct * 100) / 100,
+            cash_balance: (bal.summary?.deposit || 0) + pos.eval_amount,
+            order_no: sellResult.order_no || '',
+            memo: `자동매매 ${reason}`,
+            trade_date: new Date().toISOString(),
+          });
+          addLog(`📋 매매 일지 기록 완료: ${pos.stock_name} ${reason}`);
+        } catch (e) {
+          addLog(`⚠️ 매매 일지 기록 실패: ${e.message}`);
+        }
+
+        // 매도된 종목 규칙 비활성화
+        saveRules(rules.map(r => r.stock_code === pos.stock_code ? { ...r, enabled: false } : r));
+      } else {
+        addLog(`❌ ${pos.stock_name} 매도 실패: ${sellResult?.message || sellResult?.detail || '알 수 없는 오류'}`);
+      }
+    }
+    addLog("체크 완료");
+  }, [rules, mode, addLog, saveRules]);
+
+  // 모니터링 시작/정지
+  const toggleMonitoring = useCallback(() => {
+    if (monitoring) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+      setMonitoring(false);
+      addLog("⏹️ 모니터링 정지");
+    } else {
+      setMonitoring(true);
+      addLog(`▶️ 모니터링 시작 (${intervalSec}초 간격)`);
+      checkAndExecute();
+      intervalRef.current = setInterval(checkAndExecute, intervalSec * 1000);
+    }
+  }, [monitoring, intervalSec, checkAndExecute, addLog]);
+
+  // 컴포넌트 언마운트 시 정리
+  useEffect(() => () => { if (intervalRef.current) clearInterval(intervalRef.current); }, []);
+
+  // 규칙 수정
+  const updateRule = (code, field, value) => {
+    saveRules(rules.map(r => r.stock_code === code ? { ...r, [field]: value } : r));
+  };
+
+  const removeRule = (code) => saveRules(rules.filter(r => r.stock_code !== code));
+
+  // 전체 일괄 설정
+  const applyGlobalSettings = () => {
+    saveRules(rules.map(r => ({
+      ...r,
+      take_profit_pct: globalTP,
+      stop_loss_pct: globalSL,
+      max_hold_days: globalMaxDays,
+    })));
+    addLog(`전체 규칙 일괄 변경: 익절 ${globalTP}% / 손절 ${globalSL}% / 최대보유 ${globalMaxDays}일`);
+  };
+
+  const isVirtual = mode === 'virtual';
+  const accent = isVirtual ? '#60a5fa' : '#ef4444';
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {/* 상태 + 시작/정지 */}
+      <div style={{ ...S.panel, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: '#e0e6f0', marginBottom: 4 }}>
+            🤖 자동 손절/익절
+          </div>
+          <div style={{ fontSize: 11, color: '#6688aa' }}>
+            보유종목 수익률을 주기적으로 체크하여 조건 도달 시 자동 시장가 매도
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <label style={{ fontSize: 11, color: '#6688aa' }}>체크 주기</label>
+          <select value={intervalSec} onChange={e => setIntervalSec(Number(e.target.value))}
+            disabled={monitoring}
+            style={{ padding: '4px 8px', background: 'rgba(10,18,40,0.8)', border: '1px solid rgba(100,140,200,0.2)', borderRadius: 6, color: '#e0e6f0', fontSize: 12 }}>
+            <option value={10}>10초</option>
+            <option value={30}>30초</option>
+            <option value={60}>1분</option>
+            <option value={180}>3분</option>
+            <option value={300}>5분</option>
+          </select>
+          <button onClick={toggleMonitoring} style={{
+            padding: '10px 24px', borderRadius: 8, border: 'none', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+            background: monitoring
+              ? 'linear-gradient(135deg, #8b0000, #cc0000)'
+              : `linear-gradient(135deg, ${isVirtual ? '#1a5a3e' : '#1a3a6e'}, ${isVirtual ? '#2a8a5e' : '#2a5098'})`,
+            color: '#fff',
+          }}>
+            {monitoring ? '⏹ 정지' : '▶ 모니터링 시작'}
+          </button>
+        </div>
+      </div>
+
+      {/* 전체 규칙 설정 */}
+      <div style={{ ...S.panel }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: '#e0e6f0', marginBottom: 10 }}>전체 규칙 설정</div>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <div>
+            <label style={S.label}>익절 (%)</label>
+            <input type="number" value={globalTP} onChange={e => setGlobalTP(Number(e.target.value))}
+              style={{ ...S.input, width: 80 }} />
+          </div>
+          <div>
+            <label style={S.label}>손절 (%)</label>
+            <input type="number" value={globalSL} onChange={e => setGlobalSL(Number(e.target.value))}
+              style={{ ...S.input, width: 80 }} />
+          </div>
+          <div>
+            <label style={S.label}>최대보유 (일)</label>
+            <input type="number" value={globalMaxDays} onChange={e => setGlobalMaxDays(Number(e.target.value))}
+              style={{ ...S.input, width: 80 }} />
+          </div>
+          <button onClick={applyGlobalSettings} style={{ ...S.btn(), padding: '8px 16px', fontSize: 12 }}>전체 적용</button>
+          <button onClick={loadPositions} disabled={loadingBal}
+            style={{ ...S.btn('#333', '#444'), padding: '8px 16px', fontSize: 12 }}>
+            {loadingBal ? '조회 중...' : '보유종목 불러오기'}
+          </button>
+        </div>
+      </div>
+
+      {/* 종목별 규칙 */}
+      {rules.length > 0 && (
+        <div style={S.panel}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#e0e6f0', marginBottom: 10 }}>
+            종목별 규칙 ({rules.length}개)
+          </div>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                {['활성', '종목', '익절%', '손절%', '최대보유일', '현재수익률', '삭제'].map(h =>
+                  <th key={h} style={S.th}>{h}</th>
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {rules.map(r => {
+                const pos = positions.find(p => p.stock_code === r.stock_code);
+                const pRate = pos?.profit_rate || 0;
+                return (
+                  <tr key={r.stock_code}>
+                    <td style={S.td}>
+                      <input type="checkbox" checked={r.enabled} onChange={e => updateRule(r.stock_code, 'enabled', e.target.checked)} />
+                    </td>
+                    <td style={{ ...S.td, color: '#e0e6f0', fontWeight: 600 }}>
+                      {r.stock_name} <span style={{ color: '#6688aa', fontSize: 10 }}>{r.stock_code}</span>
+                    </td>
+                    <td style={S.td}>
+                      <input type="number" value={r.take_profit_pct} onChange={e => updateRule(r.stock_code, 'take_profit_pct', Number(e.target.value))}
+                        style={{ ...S.input, width: 60, padding: '4px 6px', fontSize: 11 }} />
+                    </td>
+                    <td style={S.td}>
+                      <input type="number" value={r.stop_loss_pct} onChange={e => updateRule(r.stock_code, 'stop_loss_pct', Number(e.target.value))}
+                        style={{ ...S.input, width: 60, padding: '4px 6px', fontSize: 11 }} />
+                    </td>
+                    <td style={S.td}>
+                      <input type="number" value={r.max_hold_days} onChange={e => updateRule(r.stock_code, 'max_hold_days', Number(e.target.value))}
+                        style={{ ...S.input, width: 60, padding: '4px 6px', fontSize: 11 }} />
+                    </td>
+                    <td style={{ ...S.td, fontFamily: 'monospace', fontWeight: 600, color: clr(pRate) }}>
+                      {pos ? `${pRate >= 0 ? '+' : ''}${pRate.toFixed(2)}%` : '—'}
+                    </td>
+                    <td style={S.td}>
+                      <button onClick={() => removeRule(r.stock_code)} style={{
+                        background: 'transparent', border: 'none', cursor: 'pointer', color: '#ff4444', fontSize: 14,
+                      }}>✕</button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* 실행 로그 */}
+      <div style={S.panel}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#e0e6f0' }}>
+            실행 로그 {monitoring && <span style={{ color: '#4cff8b', fontSize: 11 }}>● 모니터링 중</span>}
+          </div>
+          <button onClick={() => setLogs([])} style={{ ...S.btn('#333', '#444'), padding: '4px 10px', fontSize: 10 }}>지우기</button>
+        </div>
+        <div style={{
+          maxHeight: 200, overflowY: 'auto', background: 'rgba(10,18,40,0.6)', borderRadius: 8, padding: 10,
+          fontFamily: "'JetBrains Mono', monospace", fontSize: 11,
+        }}>
+          {logs.length === 0
+            ? <div style={{ color: '#556677', textAlign: 'center', padding: 20 }}>모니터링을 시작하면 로그가 표시됩니다</div>
+            : logs.map((l, i) => (
+              <div key={i} style={{ color: l.msg.includes('✅') ? '#4cff8b' : l.msg.includes('❌') ? '#ff4c4c' : l.msg.includes('🔔') ? '#ffd54f' : '#8899aa', marginBottom: 2 }}>
+                <span style={{ color: '#556677' }}>[{l.time}]</span> {l.msg}
+              </div>
+            ))
+          }
+        </div>
+      </div>
     </div>
   );
 }
