@@ -24,3 +24,8 @@
 - DB 테이블 생성/수정이 필요하면 Supabase Management API 또는 SQL Editor API를 통해 직접 수행한다.
 - Supabase service_role key가 필요한 경우 환경변수 SUPABASE_SERVICE_ROLE_KEY 사용
 - 새 PC 설정: `export SUPABASE_SERVICE_ROLE_KEY="your_key_here"` 실행 후 Claude Code 시작
+
+## 언어 규칙
+- 모든 대화, 진행 상황 안내, 커밋 메시지, PR 설명은 한글로 작성한다.
+- 코드 내 주석도 한글로 작성한다.
+- 영어 전문 용어(API, PR, merge 등)는 그대로 사용 가능하되, 설명은 한글로 한다.
