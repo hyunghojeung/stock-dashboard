@@ -677,12 +677,6 @@ export default function PatternDetector() {
   const [showScanHistory, setShowScanHistory] = useState(false);
   const [loadingScanHistory, setLoadingScanHistory] = useState(false);
 
-  // 백엔드가 surge_scan_sessions 테이블에 자동 저장하므로 프론트엔드 별도 저장 불필요
-  const saveScanToHistory = useCallback(async () => {
-    // 저장 완료 후 히스토리 목록 갱신
-    await loadScanHistoryList();
-  }, [loadScanHistoryList]);
-
   const loadScanHistoryList = useCallback(async () => {
     setLoadingScanHistory(true);
     try {
@@ -697,6 +691,11 @@ export default function PatternDetector() {
     } catch (e) { console.error('[scan-history] 목록 로드 실패:', e); }
     setLoadingScanHistory(false);
   }, []);
+
+  // 백엔드가 surge_scan_sessions에 자동 저장하므로 프론트엔드는 목록 갱신만 수행
+  const saveScanToHistory = useCallback(async () => {
+    await loadScanHistoryList();
+  }, [loadScanHistoryList]);
 
   const loadScanHistoryDetail = useCallback(async (id) => {
     try {
