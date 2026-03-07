@@ -610,8 +610,8 @@ export default function App() {
                   {[30,90,150,210,270,330].map((a,i)=><line key={i} x1={36+24*Math.cos(a*Math.PI/180)} y1={36+24*Math.sin(a*Math.PI/180)} x2={36+26*Math.cos(a*Math.PI/180)} y2={36+26*Math.sin(a*Math.PI/180)} stroke="rgba(100,200,255,0.3)" strokeWidth="1"/>)}
                 </svg>
               </div>
-              <div style={{fontFamily:"'Orbitron',sans-serif",fontWeight:800,fontSize:22,letterSpacing:5,background:'linear-gradient(180deg,#ffd700 0%,#f0a500 30%,#c8860a 60%,#a06a00 100%)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',textShadow:'none',filter:'drop-shadow(0 0 10px rgba(255,200,50,0.5))',lineHeight:1}}>MARK Ⅰ</div>
-              <div style={{fontFamily:"'Orbitron',sans-serif",fontWeight:400,fontSize:8,letterSpacing:6,color:'rgba(100,200,255,0.6)',textTransform:'uppercase',marginTop:1}}>Ver 1.0</div>
+              <div style={{fontFamily:"'Orbitron',sans-serif",fontWeight:800,fontSize:22,letterSpacing:5,background:'linear-gradient(180deg,#ffd700 0%,#f0a500 30%,#c8860a 60%,#a06a00 100%)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',textShadow:'none',filter:'drop-shadow(0 0 10px rgba(255,200,50,0.5))',lineHeight:1}}>MARK 1</div>
+              <div style={{fontFamily:"'Orbitron',sans-serif",fontWeight:400,fontSize:8,letterSpacing:6,color:'rgba(100,200,255,0.6)',textTransform:'uppercase',marginTop:1}}>Ver 1.3</div>
               <div style={{width:'80%',height:1,background:'linear-gradient(90deg,transparent,rgba(255,200,50,0.4),transparent)',marginTop:4}}/>
               <div style={{fontFamily:"'Noto Sans KR',sans-serif",fontSize:9,color:'rgba(180,180,200,0.5)',letterSpacing:1,marginTop:2}}>매매 패턴 분석 투자</div>
             </div>
@@ -625,7 +625,7 @@ export default function App() {
                   <circle cx="36" cy="36" r="4" fill="rgba(180,240,255,0.9)"/>
                 </svg>
               </div>
-              <div style={{fontFamily:"'Orbitron',sans-serif",fontWeight:800,fontSize:7,color:'#f0a500',letterSpacing:1}}>MK Ⅰ</div>
+              <div style={{fontFamily:"'Orbitron',sans-serif",fontWeight:800,fontSize:7,color:'#f0a500',letterSpacing:1}}>MK 1</div>
             </div>
           )}
         </div>
