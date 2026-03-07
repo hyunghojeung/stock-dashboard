@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>대시보드 목업 - MARK 1 Ver 1.3</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#0a0f1e; color:#c0c8d8; font-family:'Noto Sans KR','Segoe UI',sans-serif; font-size:13px; min-height:100vh; }
+
+  .container { max-width:1100px; margin:0 auto; padding:24px 16px; }
+
+  .header { text-align:center; margin-bottom:28px; }
+  .header h1 { font-size:22px; color:#ffd700; letter-spacing:4px; font-weight:800; }
+  .header .ver { font-size:10px; color:rgba(100,200,255,0.6); letter-spacing:4px; margin-top:2px; }
+
+  /* 섹션 공통 */
+  .section { background:rgba(15,22,40,0.85); border:1px solid rgba(100,140,200,0.12); border-radius:10px; margin-bottom:20px; overflow:hidden; }
+  .section-header { padding:14px 20px; display:flex; align-items:center; gap:10px; border-bottom:1px solid rgba(100,140,200,0.1); }
+  .section-header .icon { font-size:20px; }
+  .section-header .title { font-size:16px; font-weight:700; }
+  .section-body { padding:18px 20px; }
+
+  /* 가상투자 */
+  .virtual .section-header { background:rgba(76,175,80,0.1); }
+  .virtual .section-header .title { color:#66bb6a; }
+
+  /* KIS 모의 */
+  .kis-virtual .section-header { background:rgba(33,150,243,0.1); }
+  .kis-virtual .section-header .title { color:#42a5f5; }
+
+  /* KIS 실전 */
+  .kis-real .section-header { background:rgba(244,67,54,0.1); }
+  .kis-real .section-header .title { color:#ef5350; }
+
+  /* 패턴탐지 */
+  .pattern .section-header { background:rgba(255,167,38,0.08); }
+  .pattern .section-header .title { color:#ffa726; }
+
+  /* 상태 뱃지 */
+  .badge { display:inline-block; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:600; }
+  .badge-green { background:rgba(76,175,80,0.2); color:#66bb6a; }
+  .badge-red { background:rgba(244,67,54,0.2); color:#ef5350; }
+  .badge-gray { background:rgba(150,150,150,0.2); color:#999; }
+  .badge-blue { background:rgba(33,150,243,0.2); color:#42a5f5; }
+  .badge-yellow { background:rgba(255,193,7,0.2); color:#ffc107; }
+
+  /* 지표 카드 */
+  .metrics { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:16px; }
+  .metric-card { background:rgba(20,30,55,0.7); border:1px solid rgba(100,140,200,0.08); border-radius:8px; padding:12px 14px; }
+  .metric-card .label { font-size:11px; color:#6688aa; margin-bottom:4px; }
+  .metric-card .value { font-size:18px; font-weight:700; color:#e0e8f0; }
+  .metric-card .value.plus { color:#4caf50; }
+  .metric-card .value.minus { color:#ef5350; }
+  .metric-card .sub { font-size:11px; color:#6688aa; margin-top:2px; }
+
+  /* 진행바 */
+  .progress-bar { background:rgba(255,255,255,0.06); border-radius:6px; height:10px; margin:8px 0; overflow:hidden; }
+  .progress-fill { height:100%; border-radius:6px; transition:width 0.5s; }
+  .progress-fill.green { background:linear-gradient(90deg,#4caf50,#66bb6a); }
+  .progress-label { display:flex; justify-content:space-between; font-size:11px; color:#6688aa; }
+
+  /* 테이블 */
+  table { width:100%; border-collapse:collapse; margin-top:10px; }
+  th { text-align:left; font-size:11px; color:#5577a0; font-weight:600; padding:8px 10px; border-bottom:1px solid rgba(100,140,200,0.12); }
+  td { padding:8px 10px; font-size:12px; border-bottom:1px solid rgba(100,140,200,0.06); }
+  tr:hover { background:rgba(100,140,200,0.04); }
+  .text-right { text-align:right; }
+  .text-center { text-align:center; }
+
+  /* 수익 색상 */
+  .plus { color:#4caf50; }
+  .minus { color:#ef5350; }
+  .neutral { color:#6688aa; }
+
+  /* 소제목 */
+  .sub-title { font-size:13px; font-weight:600; color:#8899bb; margin:16px 0 6px; padding-bottom:4px; border-bottom:1px solid rgba(100,140,200,0.08); }
+
+  /* 링크 버튼 */
+  .link-btn { display:inline-block; margin-top:12px; padding:6px 14px; background:rgba(100,140,200,0.1); border:1px solid rgba(100,140,200,0.2); border-radius:6px; color:#64b5f6; font-size:12px; cursor:pointer; text-decoration:none; }
+  .link-btn:hover { background:rgba(100,140,200,0.2); }
+
+  /* 미설정 안내 */
+  .not-configured { text-align:center; padding:30px 20px; }
+  .not-configured .msg { font-size:14px; color:#888; margin-bottom:12px; }
+
+  /* 포트폴리오 카드 */
+  .pf-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px; margin-top:8px; }
+  .pf-card { background:rgba(20,30,55,0.6); border:1px solid rgba(100,140,200,0.1); border-radius:8px; padding:12px; }
+  .pf-card .name { font-size:13px; font-weight:600; color:#b0bec5; margin-bottom:6px; }
+  .pf-card .row { display:flex; justify-content:space-between; font-size:11px; color:#6688aa; margin-top:3px; }
+  .pf-card .row .val { color:#c0c8d8; }
+
+  /* 오늘 매매 요약 */
+  .trade-summary { display:flex; gap:16px; flex-wrap:wrap; margin-top:8px; }
+  .trade-stat { font-size:12px; color:#8899bb; }
+  .trade-stat strong { color:#c0c8d8; }
+
+  /* 연결 상태 라인 */
+  .conn-line { display:flex; align-items:center; gap:8px; margin-bottom:12px; font-size:12px; }
+  .dot { width:8px; height:8px; border-radius:50%; display:inline-block; }
+  .dot.green { background:#4caf50; box-shadow:0 0 6px rgba(76,175,80,0.5); }
+  .dot.red { background:#ef5350; box-shadow:0 0 6px rgba(244,67,54,0.5); }
+  .dot.yellow { background:#ffc107; box-shadow:0 0 6px rgba(255,193,7,0.5); }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- 헤더 -->
+  <div class="header">
+    <h1>MARK 1</h1>
+    <div class="ver">Ver 1.3 · 투자 종합 대시보드</div>
+  </div>
+
+  <!-- ===== 1. 가상투자 ===== -->
+  <div class="section virtual">
+    <div class="section-header">
+      <span class="icon">📊</span>
+      <span class="title">가상투자</span>
+      <span class="badge badge-green" style="margin-left:auto;">운영중</span>
+    </div>
+    <div class="section-body">
+
+      <!-- 목표 진행률 -->
+      <div style="margin-bottom:14px;">
+        <div class="progress-label">
+          <span>🎯 100만원 → 10억 목표</span>
+          <span>달성률 0.125%</span>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill green" style="width:0.5%;min-width:4px;"></div>
+        </div>
+      </div>
+
+      <!-- 지표 카드 -->
+      <div class="metrics">
+        <div class="metric-card">
+          <div class="label">시드머니</div>
+          <div class="value">1,000,000원</div>
+        </div>
+        <div class="metric-card">
+          <div class="label">총 평가액</div>
+          <div class="value">1,250,000원</div>
+        </div>
+        <div class="metric-card">
+          <div class="label">누적 수익률</div>
+          <div class="value plus">+25.0%</div>
+        </div>
+        <div class="metric-card">
+          <div class="label">활성 포트폴리오</div>
+          <div class="value">3개</div>
+          <div class="sub">종료: 12개</div>
+        </div>
+      </div>
+
+      <!-- 활성 포트폴리오 -->
+      <div class="sub-title">활성 포트폴리오</div>
+      <div class="pf-cards">
+        <div class="pf-card">
+          <div class="name">3월1주차_공격형 🔥</div>
+          <div class="row"><span>보유종목</span><span class="val">4종목</span></div>
+          <div class="row"><span>평가액</span><span class="val">520,000원</span></div>
+          <div class="row"><span>수익률</span><span class="val plus">+4.0%</span></div>
+        </div>
+        <div class="pf-card">
+          <div class="name">3월1주차_스마트형 🧠</div>
+          <div class="row"><span>보유종목</span><span class="val">3종목</span></div>
+          <div class="row"><span>평가액</span><span class="val">430,000원</span></div>
+          <div class="row"><span>수익률</span><span class="val plus">+7.5%</span></div>
+        </div>
+        <div class="pf-card">
+          <div class="name">2월4주차_보수형 🛡️</div>
+          <div class="row"><span>보유종목</span><span class="val">1종목</span></div>
+          <div class="row"><span>평가액</span><span class="val">300,000원</span></div>
+          <div class="row"><span>수익률</span><span class="val minus">-2.3%</span></div>
+        </div>
+      </div>
+
+      <!-- 보유종목 -->
+      <div class="sub-title">보유종목 (8종목)</div>
+      <table>
+        <thead>
+          <tr>
+            <th>종목명(코드)</th>
+            <th class="text-right">매수가</th>
+            <th class="text-right">현재가</th>
+            <th class="text-right">수익률</th>
+            <th class="text-right">보유일</th>
+            <th class="text-center">상태</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>삼성전자(005930)</td>
+            <td class="text-right">72,000</td>
+            <td class="text-right">75,500</td>
+            <td class="text-right plus">+4.9%</td>
+            <td class="text-right">3일</td>
+            <td class="text-center"><span class="badge badge-blue">보유중</span></td>
+          </tr>
+          <tr>
+            <td>SK하이닉스(000660)</td>
+            <td class="text-right">185,000</td>
+            <td class="text-right">192,300</td>
+            <td class="text-right plus">+3.9%</td>
+            <td class="text-right">2일</td>
+            <td class="text-center"><span class="badge badge-blue">보유중</span></td>
+          </tr>
+          <tr>
+            <td>카카오(035720)</td>
+            <td class="text-right">52,000</td>
+            <td class="text-right">48,500</td>
+            <td class="text-right minus">-6.7%</td>
+            <td class="text-right">5일</td>
+            <td class="text-center"><span class="badge badge-red">손절임박</span></td>
+          </tr>
+          <tr>
+            <td>LG에너지솔루션(373220)</td>
+            <td class="text-right">380,000</td>
+            <td class="text-right">395,000</td>
+            <td class="text-right plus">+3.9%</td>
+            <td class="text-right">1일</td>
+            <td class="text-center"><span class="badge badge-blue">보유중</span></td>
+          </tr>
+          <tr>
+            <td>현대차(005380)</td>
+            <td class="text-right">245,000</td>
+            <td class="text-right">249,800</td>
+            <td class="text-right plus">+2.0%</td>
+            <td class="text-right">4일</td>
+            <td class="text-center"><span class="badge badge-blue">보유중</span></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- 오늘 매매 -->
+      <div class="sub-title">오늘의 매매</div>
+      <div class="trade-summary">
+        <span class="trade-stat">매매횟수: <strong>5회</strong></span>
+        <span class="trade-stat">승: <strong class="plus">3</strong> / 패: <strong class="minus">2</strong></span>
+        <span class="trade-stat">승률: <strong>60.0%</strong></span>
+        <span class="trade-stat">실현손익: <strong class="plus">+45,000원</strong></span>
+      </div>
+
+      <!-- 복리 그룹 -->
+      <div class="sub-title">복리 그룹</div>
+      <table>
+        <thead>
+          <tr>
+            <th>그룹명</th>
+            <th class="text-right">시드</th>
+            <th class="text-right">현재자산</th>
+            <th class="text-right">목표</th>
+            <th class="text-right">달성률</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1차 복리도전</td>
+            <td class="text-right">1,000,000</td>
+            <td class="text-right">1,250,000</td>
+            <td class="text-right">5,000,000</td>
+            <td class="text-right plus">25.0%</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <a class="link-btn">→ 가상투자 상세 페이지로 이동</a>
+    </div>
+  </div>
+
+  <!-- ===== 2. KIS 모의투자 ===== -->
+  <div class="section kis-virtual">
+    <div class="section-header">
+      <span class="icon">🏦</span>
+      <span class="title">KIS 모의투자</span>
+      <span class="badge badge-green" style="margin-left:auto;">연결됨</span>
+    </div>
+    <div class="section-body">
+
+      <!-- 연결 상태 -->
+      <div class="conn-line">
+        <span class="dot green"></span>
+        <span>연결됨</span>
+        <span style="color:#555;">|</span>
+        <span>계좌: ****1234</span>
+      </div>
+
+      <!-- 지표 카드 -->
+      <div class="metrics">
+        <div class="metric-card">
+          <div class="label">예수금</div>
+          <div class="value">2,500,000원</div>
+        </div>
+        <div class="metric-card">
+          <div class="label">총 평가액</div>
+          <div class="value">10,350,000원</div>
+        </div>
+        <div class="metric-card">
+          <div class="label">총 손익</div>
+          <div class="value plus">+350,000원</div>
+        </div>
+        <div class="metric-card">
+          <div class="label">수익률</div>
+          <div class="value plus">+3.5%</div>
+        </div>
+      </div>
+
+      <!-- 보유종목 -->
+      <div class="sub-title">보유종목 (5종목)</div>
+      <table>
+        <thead>
+          <tr>
+            <th>종목명(코드)</th>
+            <th class="text-right">수량</th>
+            <th class="text-right">평균가</th>
+            <th class="text-right">현재가</th>
+            <th class="text-right">수익률</th>
+            <th class="text-right">평가손익</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>삼성전자(005930)</td>
+            <td class="text-right">10</td>
+            <td class="text-right">72,000</td>
+            <td class="text-right">75,500</td>
+            <td class="text-right plus">+4.9%</td>
+            <td class="text-right plus">+35,000</td>
+          </tr>
+          <tr>
+            <td>NAVER(035420)</td>
+            <td class="text-right">5</td>
+            <td class="text-right">210,000</td>
+            <td class="text-right">215,000</td>
+            <td class="text-right plus">+2.4%</td>
+            <td class="text-right plus">+25,000</td>
+          </tr>
+          <tr>
+            <td>셀트리온(068270)</td>
+            <td class="text-right">3</td>
+            <td class="text-right">178,000</td>
+            <td class="text-right">182,500</td>
+            <td class="text-right plus">+2.5%</td>
+            <td class="text-right plus">+13,500</td>
+          </tr>
+          <tr>
+            <td>현대차(005380)</td>
+            <td class="text-right">8</td>
+            <td class="text-right">245,000</td>
+            <td class="text-right">241,000</td>
+            <td class="text-right minus">-1.6%</td>
+            <td class="text-right minus">-32,000</td>
+          </tr>
+          <tr>
+            <td>LG전자(066570)</td>
+            <td class="text-right">15</td>
+            <td class="text-right">98,000</td>
+            <td class="text-right">101,200</td>
+            <td class="text-right plus">+3.3%</td>
+            <td class="text-right plus">+48,000</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- 오늘 체결내역 -->
+      <div class="sub-title">오늘 체결내역</div>
+      <table>
+        <thead>
+          <tr>
+            <th>시간</th>
+            <th>종목명(코드)</th>
+            <th class="text-center">매매</th>
+            <th class="text-right">수량</th>
+            <th class="text-right">체결가</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>13:55</td>
+            <td>NAVER(035420)</td>
+            <td class="text-center"><span class="badge badge-red">매수</span></td>
+            <td class="text-right">5</td>
+            <td class="text-right">215,000</td>
+          </tr>
+          <tr>
+            <td>09:32</td>
+            <td>삼성전자(005930)</td>
+            <td class="text-center"><span class="badge badge-red">매수</span></td>
+            <td class="text-right">10</td>
+            <td class="text-right">72,000</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <a class="link-btn">→ KIS 모의투자 상세 페이지로 이동</a>
+    </div>
+  </div>
+
+  <!-- ===== 3. KIS 실전투자 ===== -->
+  <div class="section kis-real">
+    <div class="section-header">
+      <span class="icon">🔴</span>
+      <span class="title">KIS 실전투자</span>
+      <span class="badge badge-gray" style="margin-left:auto;">미설정</span>
+    </div>
+    <div class="section-body">
+      <div class="not-configured">
+        <div class="conn-line" style="justify-content:center;">
+          <span class="dot red"></span>
+          <span>미설정</span>
+        </div>
+        <div class="msg">KIS 실전투자 API 설정이 필요합니다.</div>
+        <div style="font-size:11px; color:#555; margin-bottom:14px;">
+          설정 완료 시 예수금 / 총 평가액 / 보유종목 / 체결내역이 표시됩니다.
+        </div>
+        <a class="link-btn">→ KIS 실전투자 설정으로 이동</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== KIS 실전투자 (연결 상태 예시) ===== -->
+  <div class="section kis-real">
+    <div class="section-header">
+      <span class="icon">🔴</span>
+      <span class="title">KIS 실전투자 (연결 시 예시)</span>
+      <span class="badge badge-green" style="margin-left:auto;">연결됨</span>
+    </div>
+    <div class="section-body">
+
+      <div class="conn-line">
+        <span class="dot green"></span>
+        <span>연결됨</span>
+        <span style="color:#555;">|</span>
+        <span>계좌: ****5678</span>
+        <span style="color:#555;">|</span>
+        <span style="color:#ef5350; font-weight:700;">실전</span>
+      </div>
+
+      <div class="metrics">
+        <div class="metric-card">
+          <div class="label">예수금</div>
+          <div class="value">5,200,000원</div>
+        </div>
+        <div class="metric-card">
+          <div class="label">총 평가액</div>
+          <div class="value">28,750,000원</div>
+        </div>
+        <div class="metric-card">
+          <div class="label">총 손익</div>
+          <div class="value plus">+1,250,000원</div>
+        </div>
+        <div class="metric-card">
+          <div class="label">수익률</div>
+          <div class="value plus">+4.5%</div>
+        </div>
+      </div>
+
+      <div class="sub-title">보유종목 (3종목)</div>
+      <table>
+        <thead>
+          <tr>
+            <th>종목명(코드)</th>
+            <th class="text-right">수량</th>
+            <th class="text-right">평균가</th>
+            <th class="text-right">현재가</th>
+            <th class="text-right">수익률</th>
+            <th class="text-right">평가손익</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>삼성전자(005930)</td>
+            <td class="text-right">50</td>
+            <td class="text-right">71,500</td>
+            <td class="text-right">75,500</td>
+            <td class="text-right plus">+5.6%</td>
+            <td class="text-right plus">+200,000</td>
+          </tr>
+          <tr>
+            <td>SK하이닉스(000660)</td>
+            <td class="text-right">20</td>
+            <td class="text-right">183,000</td>
+            <td class="text-right">192,300</td>
+            <td class="text-right plus">+5.1%</td>
+            <td class="text-right plus">+186,000</td>
+          </tr>
+          <tr>
+            <td>NAVER(035420)</td>
+            <td class="text-right">10</td>
+            <td class="text-right">218,000</td>
+            <td class="text-right">215,000</td>
+            <td class="text-right minus">-1.4%</td>
+            <td class="text-right minus">-30,000</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="sub-title">오늘 체결내역</div>
+      <table>
+        <thead>
+          <tr>
+            <th>시간</th>
+            <th>종목명(코드)</th>
+            <th class="text-center">매매</th>
+            <th class="text-right">수량</th>
+            <th class="text-right">체결가</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>10:05</td>
+            <td>SK하이닉스(000660)</td>
+            <td class="text-center"><span class="badge badge-red">매수</span></td>
+            <td class="text-right">20</td>
+            <td class="text-right">183,000</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <a class="link-btn">→ KIS 실전투자 상세 페이지로 이동</a>
+    </div>
+  </div>
+
+  <!-- ===== 4. 패턴탐지 알림 ===== -->
+  <div class="section pattern">
+    <div class="section-header">
+      <span class="icon">🔍</span>
+      <span class="title">패턴탐지 알림</span>
+    </div>
+    <div class="section-body">
+      <div style="display:flex; gap:24px; flex-wrap:wrap;">
+        <div class="metric-card" style="flex:1;min-width:180px;">
+          <div class="label">오늘 탐지된 급등 패턴 유사 종목</div>
+          <div class="value" style="color:#ffa726;">12개</div>
+        </div>
+        <div class="metric-card" style="flex:1;min-width:180px;">
+          <div class="label">매수 추천 필터 통과 종목</div>
+          <div class="value" style="color:#ffa726;">5개</div>
+        </div>
+      </div>
+      <a class="link-btn">→ 패턴탐지기로 이동</a>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
