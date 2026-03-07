@@ -2598,7 +2598,13 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
   const [requireMa5Above, setRequireMa5Above] = useState(true);
   const [excludeGcExpired, setExcludeGcExpired] = useState(true);  // ★ v9: GC 5일 경과 제외
   const [filterHyunmu, setFilterHyunmu] = useState(false);  // ★ 현무 (양음양 +-+) 필터
-  const [candleFilters, setCandleFilters] = useState({});  // code -> { ma5Declining, hyunmu }
+  const [filterVolumeConfirm, setFilterVolumeConfirm] = useState(false);  // ★ 거래량 동반
+  const [excludeRsiOverbought, setExcludeRsiOverbought] = useState(false);  // ★ RSI 과매수 제외
+  const [excludeUpperWick, setExcludeUpperWick] = useState(false);  // ★ 윗꼬리 경고 제외
+  const [filterBollingerLow, setFilterBollingerLow] = useState(false);  // ★ 볼린저 하단
+  const [filterBullishDays, setFilterBullishDays] = useState(false);  // ★ 연속 양봉
+  const [filterMinTradingValue, setFilterMinTradingValue] = useState(false);  // ★ 거래대금 필터
+  const [candleFilters, setCandleFilters] = useState({});  // code -> { ma5Declining, hyunmu, ... }
   const [candleLoading, setCandleLoading] = useState(false);
   const candleFetchedRef = useRef(false);
   const rawRecs = result.recommendations||[];
@@ -2606,9 +2612,15 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
   const scannedCount = result.scanned_candidates || rawRecs.length;
   const analyzedCodes = result.analyzed_codes || [];
 
-  // ★ 일봉 기반 필터 계산 (MA5 하향 + 현무 패턴)
+  // ★ 일봉 기반 필터 계산 (MA5 하향 + 현무 패턴 + 6종 추가 필터)
   const computeCandleFilters = useCallback((candles) => {
-    const res = { ma5Declining: false, hyunmu: false };
+    const res = {
+      ma5Declining: false, hyunmu: false,
+      volumeConfirm: false, rsiOverbought: false, rsiValue: 0,
+      upperWickWarning: false, bollingerLow: false,
+      bullishDays: false, bullishCount: 0,
+      minTradingValue: false, avgTradingValue: 0,
+    };
     if (!candles || candles.length < 5) return res;
 
     // --- MA5 하향 계산: 5일 이동평균이 직전 최고점 대비 하향 ---
@@ -2638,6 +2650,64 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
         break;
       }
     }
+
+    // --- ★ 거래량 동반: 최근 3일 평균 거래량 > 20일 평균 × 1.5 ---
+    if (candles.length >= 20) {
+      const vol20 = candles.slice(-20).reduce((s, c) => s + (c.volume || 0), 0) / 20;
+      const vol3 = candles.slice(-3).reduce((s, c) => s + (c.volume || 0), 0) / 3;
+      res.volumeConfirm = vol20 > 0 && vol3 > vol20 * 1.5;
+    }
+
+    // --- ★ RSI(14) 계산 ---
+    if (candles.length >= 15) {
+      const changes = [];
+      for (let i = 1; i < candles.length; i++) changes.push(candles[i].close - candles[i - 1].close);
+      const period = 14;
+      let avgGain = 0, avgLoss = 0;
+      for (let i = 0; i < period; i++) {
+        if (changes[i] > 0) avgGain += changes[i]; else avgLoss += Math.abs(changes[i]);
+      }
+      avgGain /= period; avgLoss /= period;
+      for (let i = period; i < changes.length; i++) {
+        avgGain = (avgGain * (period - 1) + (changes[i] > 0 ? changes[i] : 0)) / period;
+        avgLoss = (avgLoss * (period - 1) + (changes[i] < 0 ? Math.abs(changes[i]) : 0)) / period;
+      }
+      const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+      res.rsiValue = Math.round(100 - (100 / (1 + rs)));
+      res.rsiOverbought = res.rsiValue >= 75;
+    }
+
+    // --- ★ 윗꼬리 경고: 최근 3일 내 (고가-종가)/(고가-저가) > 0.6 ---
+    const last3 = candles.slice(-3);
+    for (const c of last3) {
+      const range = c.high - c.low;
+      if (range > 0 && (c.high - c.close) / range > 0.6) {
+        res.upperWickWarning = true;
+        break;
+      }
+    }
+
+    // --- ★ 볼린저밴드(20, 2σ): 현재가가 중간밴드 이하 ---
+    if (candles.length >= 20) {
+      const closes20 = candles.slice(-20).map(c => c.close);
+      const mean = closes20.reduce((s, v) => s + v, 0) / 20;
+      const std = Math.sqrt(closes20.reduce((s, v) => s + (v - mean) ** 2, 0) / 20);
+      const currentClose = candles[candles.length - 1].close;
+      res.bollingerLow = currentClose <= mean;  // 중간밴드(MA20) 이하
+    }
+
+    // --- ★ 연속 양봉: 최근 5일 중 양봉(종가>시가) 3일 이상 ---
+    const last5 = candles.slice(-5);
+    const bullCount = last5.filter(c => c.close > c.open).length;
+    res.bullishCount = bullCount;
+    res.bullishDays = bullCount >= 3;
+
+    // --- ★ 거래대금: 최근 5일 평균 (종가×거래량) > 5억원 ---
+    const last5tv = candles.slice(-5);
+    const avgTV = last5tv.reduce((s, c) => s + (c.close * (c.volume || 0)), 0) / last5tv.length;
+    res.avgTradingValue = avgTV;
+    res.minTradingValue = avgTV >= 500000000;  // 5억원
+
     return res;
   }, []);
 
@@ -2651,10 +2721,10 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
         const res = await fetch(`${API_BASE}/api/virtual-invest/candles/${rec.code}?count=60`);
         const data = await res.json();
         return { code: rec.code, ...computeCandleFilters(data.candles || []) };
-      } catch { return { code: rec.code, ma5Declining: false, hyunmu: false }; }
+      } catch { return { code: rec.code, ma5Declining: false, hyunmu: false, volumeConfirm: false, rsiOverbought: false, rsiValue: 0, upperWickWarning: false, bollingerLow: false, bullishDays: false, bullishCount: 0, minTradingValue: false, avgTradingValue: 0 }; }
     })).then(results => {
       const map = {};
-      results.forEach(r => { map[r.code] = { ma5Declining: r.ma5Declining, hyunmu: r.hyunmu }; });
+      results.forEach(r => { const { code, ...rest } = r; map[code] = rest; });
       setCandleFilters(map);
       setCandleLoading(false);
     });
@@ -2669,6 +2739,12 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
   if (requireMa5Above) recs = recs.filter(r => r.ma5_above_ma20 !== false);
   if (excludeGcExpired) recs = recs.filter(r => !(r.gc_days >= 5));  // ★ v9: GC 5일 경과 제외
   if (filterHyunmu) recs = recs.filter(r => candleFilters[r.code]?.hyunmu);
+  if (filterVolumeConfirm) recs = recs.filter(r => candleFilters[r.code]?.volumeConfirm);
+  if (excludeRsiOverbought) recs = recs.filter(r => !candleFilters[r.code]?.rsiOverbought);
+  if (excludeUpperWick) recs = recs.filter(r => !candleFilters[r.code]?.upperWickWarning);
+  if (filterBollingerLow) recs = recs.filter(r => candleFilters[r.code]?.bollingerLow);
+  if (filterBullishDays) recs = recs.filter(r => candleFilters[r.code]?.bullishDays);
+  if (filterMinTradingValue) recs = recs.filter(r => candleFilters[r.code]?.minTradingValue);
   if (recFilter === 'early') recs = recs.filter(r => r.early_entry);
   else if (recFilter === 'auto_buy') recs = recs.filter(r => r.entry_grade === 'auto_buy');
   else if (recFilter === 'watch') recs = recs.filter(r => r.entry_grade === 'watch' || r.entry_grade === 'auto_buy');
@@ -2722,6 +2798,30 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
     if (filterHyunmu) {
       const cnt = rawRecs.filter(r => candleFilters[r.code]?.hyunmu).length;
       filters.push({ label: `🐢 현무 (${cnt}개)`, color: '#4fc3f7' });
+    }
+    if (filterVolumeConfirm) {
+      const cnt = rawRecs.filter(r => candleFilters[r.code]?.volumeConfirm).length;
+      filters.push({ label: `📊 거래량 동반 (${cnt}개)`, color: '#22d3ee' });
+    }
+    if (excludeRsiOverbought) {
+      const cnt = rawRecs.filter(r => candleFilters[r.code]?.rsiOverbought).length;
+      filters.push({ label: `🌡️ RSI 과매수 제외 (-${cnt})`, color: '#f43f5e' });
+    }
+    if (excludeUpperWick) {
+      const cnt = rawRecs.filter(r => candleFilters[r.code]?.upperWickWarning).length;
+      filters.push({ label: `📌 윗꼬리 제외 (-${cnt})`, color: '#fb923c' });
+    }
+    if (filterBollingerLow) {
+      const cnt = rawRecs.filter(r => candleFilters[r.code]?.bollingerLow).length;
+      filters.push({ label: `📉 볼린저 하단 (${cnt}개)`, color: '#818cf8' });
+    }
+    if (filterBullishDays) {
+      const cnt = rawRecs.filter(r => candleFilters[r.code]?.bullishDays).length;
+      filters.push({ label: `🟩 연속 양봉 (${cnt}개)`, color: '#34d399' });
+    }
+    if (filterMinTradingValue) {
+      const cnt = rawRecs.filter(r => candleFilters[r.code]?.minTradingValue).length;
+      filters.push({ label: `💰 거래대금 5억+ (${cnt}개)`, color: '#fbbf24' });
     }
     return filters;
   };
@@ -2821,6 +2921,56 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
           {candleLoading && <span style={{ color:'#4fc3f7', fontSize:9 }}>(계산중)</span>}
           {!candleLoading && Object.keys(candleFilters).length > 0 && (
             <span style={{ color:'#4fc3f7', fontWeight:600 }}>({rawRecs.filter(r => candleFilters[r.code]?.hyunmu).length})</span>
+          )}
+        </label>
+        <label style={{ display:'flex', alignItems:'center', gap:4, marginLeft:10, cursor:'pointer', fontSize:11, color: filterVolumeConfirm ? '#22d3ee' : COLORS.textDim }}>
+          <input type="checkbox" checked={filterVolumeConfirm} onChange={e => setFilterVolumeConfirm(e.target.checked)} style={{ accentColor:'#22d3ee' }} />
+          📊 거래량 동반
+          {candleLoading && <span style={{ color:'#22d3ee', fontSize:9 }}>(계산중)</span>}
+          {!candleLoading && Object.keys(candleFilters).length > 0 && (
+            <span style={{ color:'#22d3ee', fontWeight:600 }}>({rawRecs.filter(r => candleFilters[r.code]?.volumeConfirm).length})</span>
+          )}
+        </label>
+        <label style={{ display:'flex', alignItems:'center', gap:4, marginLeft:10, cursor:'pointer', fontSize:11, color: excludeRsiOverbought ? '#f43f5e' : COLORS.textDim }}>
+          <input type="checkbox" checked={excludeRsiOverbought} onChange={e => setExcludeRsiOverbought(e.target.checked)} style={{ accentColor:'#f43f5e' }} />
+          🌡️ RSI 과매수 제외
+          {candleLoading && <span style={{ color:'#f43f5e', fontSize:9 }}>(계산중)</span>}
+          {excludeRsiOverbought && !candleLoading && (() => {
+            const cnt = rawRecs.filter(r => candleFilters[r.code]?.rsiOverbought).length;
+            return cnt > 0 ? <span style={{ color:'#ef4444', fontWeight:600 }}>(-{cnt})</span> : null;
+          })()}
+        </label>
+        <label style={{ display:'flex', alignItems:'center', gap:4, marginLeft:10, cursor:'pointer', fontSize:11, color: excludeUpperWick ? '#fb923c' : COLORS.textDim }}>
+          <input type="checkbox" checked={excludeUpperWick} onChange={e => setExcludeUpperWick(e.target.checked)} style={{ accentColor:'#fb923c' }} />
+          📌 윗꼬리 제외
+          {candleLoading && <span style={{ color:'#fb923c', fontSize:9 }}>(계산중)</span>}
+          {excludeUpperWick && !candleLoading && (() => {
+            const cnt = rawRecs.filter(r => candleFilters[r.code]?.upperWickWarning).length;
+            return cnt > 0 ? <span style={{ color:'#ef4444', fontWeight:600 }}>(-{cnt})</span> : null;
+          })()}
+        </label>
+        <label style={{ display:'flex', alignItems:'center', gap:4, marginLeft:10, cursor:'pointer', fontSize:11, color: filterBollingerLow ? '#818cf8' : COLORS.textDim }}>
+          <input type="checkbox" checked={filterBollingerLow} onChange={e => setFilterBollingerLow(e.target.checked)} style={{ accentColor:'#818cf8' }} />
+          📉 볼린저 하단
+          {candleLoading && <span style={{ color:'#818cf8', fontSize:9 }}>(계산중)</span>}
+          {!candleLoading && Object.keys(candleFilters).length > 0 && (
+            <span style={{ color:'#818cf8', fontWeight:600 }}>({rawRecs.filter(r => candleFilters[r.code]?.bollingerLow).length})</span>
+          )}
+        </label>
+        <label style={{ display:'flex', alignItems:'center', gap:4, marginLeft:10, cursor:'pointer', fontSize:11, color: filterBullishDays ? '#34d399' : COLORS.textDim }}>
+          <input type="checkbox" checked={filterBullishDays} onChange={e => setFilterBullishDays(e.target.checked)} style={{ accentColor:'#34d399' }} />
+          🟩 연속 양봉
+          {candleLoading && <span style={{ color:'#34d399', fontSize:9 }}>(계산중)</span>}
+          {!candleLoading && Object.keys(candleFilters).length > 0 && (
+            <span style={{ color:'#34d399', fontWeight:600 }}>({rawRecs.filter(r => candleFilters[r.code]?.bullishDays).length})</span>
+          )}
+        </label>
+        <label style={{ display:'flex', alignItems:'center', gap:4, marginLeft:10, cursor:'pointer', fontSize:11, color: filterMinTradingValue ? '#fbbf24' : COLORS.textDim }}>
+          <input type="checkbox" checked={filterMinTradingValue} onChange={e => setFilterMinTradingValue(e.target.checked)} style={{ accentColor:'#fbbf24' }} />
+          💰 거래대금 5억+
+          {candleLoading && <span style={{ color:'#fbbf24', fontSize:9 }}>(계산중)</span>}
+          {!candleLoading && Object.keys(candleFilters).length > 0 && (
+            <span style={{ color:'#fbbf24', fontWeight:600 }}>({rawRecs.filter(r => candleFilters[r.code]?.minTradingValue).length})</span>
           )}
         </label>
         <span style={{ fontSize:11, color:COLORS.textDim, marginLeft:12 }}>정렬:</span>
