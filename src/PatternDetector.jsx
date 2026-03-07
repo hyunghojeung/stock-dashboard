@@ -731,6 +731,33 @@ export default function PatternDetector() {
     }
   }, [setScanResultWithCache]);
 
+  const [selectedHistoryIds, setSelectedHistoryIds] = useState(new Set());
+  const [deletingHistory, setDeletingHistory] = useState(false);
+
+  const toggleHistorySelect = (id, e) => {
+    e.stopPropagation();
+    setSelectedHistoryIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const deleteSelectedHistory = useCallback(async () => {
+    if (selectedHistoryIds.size === 0) return;
+    if (!confirm(`선택한 ${selectedHistoryIds.size}개의 스캔 기록을 삭제하시겠습니까?`)) return;
+    setDeletingHistory(true);
+    try {
+      await fetch(`${API_BASE}/api/scan-history/delete`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: [...selectedHistoryIds] }),
+      });
+      setSelectedHistoryIds(new Set());
+      await loadScanHistoryList();
+    } catch (e) { console.error('[scan-history] 삭제 실패:', e); }
+    setDeletingHistory(false);
+  }, [selectedHistoryIds, loadScanHistoryList]);
+
   // ━━━ 이전 분석 결과 상태 ━━━
   const [prevSessions, setPrevSessions] = useState([]);
   const [loadingPrevAnalysis, setLoadingPrevAnalysis] = useState(false);
@@ -1148,10 +1175,86 @@ export default function PatternDetector() {
                 borderRadius:10, border:`2px solid ${COLORS.red}`, cursor:'pointer',
                 background:'transparent', color:COLORS.red }}>⏹ 스캔 중지</button>
             )}
+            <button onClick={() => { setShowScanHistory(!showScanHistory); if (!showScanHistory) loadScanHistoryList(); }}
+              style={{ padding:'10px 18px', fontSize:13, fontWeight:600, borderRadius:10, cursor:'pointer',
+                border:`1px solid ${showScanHistory ? COLORS.accent : COLORS.cardBorder}`,
+                background: showScanHistory ? COLORS.accentDim : 'transparent',
+                color: showScanHistory ? COLORS.accent : COLORS.textDim }}>
+              📋 이전 기록</button>
             <div style={{ fontSize:12, color:COLORS.textDim, alignSelf:'center' }}>
               {scanMarket==='ALL'?'전체':scanMarket} 종목 | {scanRiseWindow}일 내 +{scanRisePct}% 이상 | 거래량 {scanVolRatio}배↑
             </div>
           </div>
+
+          {showScanHistory && (
+            <div style={{ background:COLORS.card, border:`1px solid ${COLORS.cardBorder}`, borderRadius:10, padding:14, marginTop:12 }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
+                <div style={{ fontSize:13, fontWeight:600, color:COLORS.text }}>스캔 히스토리 (최근 20개)</div>
+                {selectedHistoryIds.size > 0 && (
+                  <button onClick={deleteSelectedHistory} disabled={deletingHistory}
+                    style={{ padding:'5px 14px', fontSize:11, fontWeight:600, borderRadius:6, border:`1px solid ${COLORS.red}`,
+                      background:'rgba(239,68,68,0.1)', color:COLORS.red, cursor:deletingHistory?'wait':'pointer' }}>
+                    {deletingHistory ? '삭제 중...' : `선택 삭제 (${selectedHistoryIds.size})`}
+                  </button>
+                )}
+              </div>
+              {loadingScanHistory ? (
+                <div style={{ textAlign:'center', padding:16, color:COLORS.textDim, fontSize:12 }}>불러오는 중...</div>
+              ) : scanHistoryList.length === 0 ? (
+                <div style={{ textAlign:'center', padding:16, color:COLORS.textDim, fontSize:12 }}>저장된 스캔 기록이 없습니다.</div>
+              ) : (
+                <div style={{ maxHeight:300, overflowY:'auto' }}>
+                  <table style={{ width:'100%', fontSize:12, borderCollapse:'collapse' }}>
+                    <thead>
+                      <tr style={{ borderBottom:`1px solid ${COLORS.cardBorder}`, color:COLORS.textDim }}>
+                        <th style={{ padding:'6px 8px', textAlign:'center', width:32 }}>
+                          <div onClick={() => {
+                            if (selectedHistoryIds.size === scanHistoryList.length) setSelectedHistoryIds(new Set());
+                            else setSelectedHistoryIds(new Set(scanHistoryList.map(h => h.id)));
+                          }} style={{ width:16, height:16, borderRadius:3, border:`2px solid ${selectedHistoryIds.size===scanHistoryList.length?COLORS.accent:COLORS.cardBorder}`, background:selectedHistoryIds.size===scanHistoryList.length?COLORS.accent:'transparent', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', margin:'0 auto', fontSize:10, color:COLORS.white, fontWeight:700 }}>
+                            {selectedHistoryIds.size === scanHistoryList.length && '✓'}
+                          </div>
+                        </th>
+                        <th style={{ padding:'6px 8px', textAlign:'left' }}>스캔일시</th>
+                        <th style={{ padding:'6px 8px', textAlign:'center' }}>시장</th>
+                        <th style={{ padding:'6px 8px', textAlign:'right' }}>스캔</th>
+                        <th style={{ padding:'6px 8px', textAlign:'right' }}>발견</th>
+                        <th style={{ padding:'6px 8px', textAlign:'right', color:COLORS.red }}>세력</th>
+                        <th style={{ padding:'6px 8px', textAlign:'right', color:'#00BCD4' }}>진입</th>
+                        <th style={{ padding:'6px 8px', textAlign:'center' }}></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {scanHistoryList.map(h => {
+                        const sel = selectedHistoryIds.has(h.id);
+                        return (
+                        <tr key={h.id} style={{ borderBottom:`1px solid ${COLORS.cardBorder}`, cursor:'pointer', background:sel?'rgba(59,130,246,0.06)':'transparent' }}
+                          onClick={() => loadScanHistoryDetail(h.id)}
+                          onMouseEnter={e => { if(!sel) e.currentTarget.style.background='rgba(59,130,246,0.04)'; }}
+                          onMouseLeave={e => { if(!sel) e.currentTarget.style.background='transparent'; }}>
+                          <td style={{ padding:'6px 8px', textAlign:'center' }}>
+                            <div onClick={(e) => toggleHistorySelect(h.id, e)}
+                              style={{ width:16, height:16, borderRadius:3, border:`2px solid ${sel?COLORS.accent:COLORS.cardBorder}`, background:sel?COLORS.accent:'transparent', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', margin:'0 auto', fontSize:10, color:COLORS.white, fontWeight:700 }}>
+                              {sel && '✓'}
+                            </div>
+                          </td>
+                          <td style={{ padding:'6px 8px' }}>{(() => { try { const d = new Date(h.scan_date); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; } catch { return h.scan_date; } })()}</td>
+                          <td style={{ padding:'6px 8px', textAlign:'center' }}>{h.market==='ALL'?'전체':h.market}</td>
+                          <td style={{ padding:'6px 8px', textAlign:'right' }}>{h.total_scanned?.toLocaleString()}</td>
+                          <td style={{ padding:'6px 8px', textAlign:'right', color:COLORS.green, fontWeight:600 }}>{h.total_found}</td>
+                          <td style={{ padding:'6px 8px', textAlign:'right', color:COLORS.red, fontWeight:600 }}>{h.high_manip_count}</td>
+                          <td style={{ padding:'6px 8px', textAlign:'right', color:'#00BCD4', fontWeight:600 }}>{h.entry_signal_count}</td>
+                          <td style={{ padding:'6px 8px', textAlign:'center' }}>
+                            <span style={{ fontSize:10, color:COLORS.accent, fontWeight:600 }}>불러오기</span>
+                          </td>
+                        </tr>);
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {scanning && <ProgressBar progress={scanProgress} msg={scanMsg} color={COLORS.red} />}
