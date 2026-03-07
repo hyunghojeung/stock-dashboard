@@ -352,11 +352,74 @@ export default function PatternDetector() {
     } catch (e) { console.error('이름 수정 실패:', e); }
   };
 
-  const runPatternScan = async () => {
+  // ★ 캐시된 스캔 결과 로드 (돋보기 클릭 시 사용)
+  const loadPatternScanCache = async (patternId) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/pattern/library/${patternId}/scan-cache`);
+      const data = await res.json();
+      if (data.success && data.cached && data.matches?.length > 0) {
+        return data;
+      }
+    } catch (e) { console.warn('캐시 로드 실패:', e); }
+    return null;
+  };
+
+  // ★ 돋보기 클릭: 캐시 우선 로드, 없으면 스캔 실행
+  const scanOrLoadPattern = async (patternId) => {
+    setSelectedPatternIds(new Set([patternId]));
+    setShowPatternScan(true);
+    setPageMode('scanner');
+    setPatternScanning(true);
+    setPatternScanResult(null);
+
+    // 1) 캐시 확인
+    const cached = await loadPatternScanCache(patternId);
+    if (cached) {
+      setPatternScanResult({ ...cached, fromCache: true });
+      setPatternScanning(false);
+      return;
+    }
+
+    // 2) 캐시 없으면 스캔 실행
+    try {
+      const res = await fetch(`${API_BASE}/api/pattern/library/scan`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pattern_ids: [patternId], min_similarity: patternMinSimilarity, market: scanMarket, limit: 50 }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setPatternScanResult(data);
+        setTimeout(() => fetchSavedPatterns(), 2000);
+      } else {
+        alert('스캔 실패: ' + (data.message || ''));
+      }
+    } catch (e) { alert('스캔 실패: ' + e.message); }
+    setPatternScanning(false);
+  };
+
+  const runPatternScan = async (forceRescan = false) => {
     const ids = [...selectedPatternIds];
     if (ids.length === 0) { alert('스캔할 패턴을 선택하세요'); return; }
     setPatternScanning(true);
     setPatternScanResult(null);
+
+    // 단일 패턴이고 forceRescan이 아니면 캐시 먼저 확인
+    if (!forceRescan && ids.length === 1) {
+      const cached = await loadPatternScanCache(ids[0]);
+      if (cached) {
+        setPatternScanResult({ ...cached, fromCache: true });
+        setPatternScanning(false);
+        return;
+      }
+    }
+
+    // forceRescan이면 캐시 삭제
+    if (forceRescan) {
+      for (const pid of ids) {
+        try { await fetch(`${API_BASE}/api/pattern/library/${pid}/scan-cache`, { method: 'DELETE' }); } catch (e) {}
+      }
+    }
+
     try {
       const res = await fetch(`${API_BASE}/api/pattern/library/scan`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -365,7 +428,6 @@ export default function PatternDetector() {
       const data = await res.json();
       if (data.success) {
         setPatternScanResult(data);
-        // use_count 갱신은 결과 렌더링 후 지연 호출 (연속 리렌더링 방지)
         setTimeout(() => fetchSavedPatterns(), 2000);
       } else {
         alert('스캔 실패: ' + (data.message || ''));
@@ -1080,7 +1142,7 @@ export default function PatternDetector() {
                   <input type="range" min={40} max={90} step={5} value={patternMinSimilarity}
                     onChange={e => setPatternMinSimilarity(Number(e.target.value))}
                     style={{ flex:1, maxWidth:200, accentColor:'#8b5cf6' }} />
-                  <button onClick={runPatternScan} disabled={patternScanning || selectedPatternIds.size === 0}
+                  <button onClick={() => runPatternScan(false)} disabled={patternScanning || selectedPatternIds.size === 0}
                     style={{ padding:'8px 20px', fontSize:13, fontWeight:700, borderRadius:8, cursor:'pointer',
                       border:'none', background: patternScanning ? '#555' : 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
                       color:'#fff', opacity: selectedPatternIds.size === 0 ? 0.4 : 1 }}>
@@ -1090,8 +1152,21 @@ export default function PatternDetector() {
                 {/* 패턴 스캔 결과 */}
                 {patternScanResult && (
                   <div style={{ marginTop:8 }}>
-                    <div style={{ fontSize:12, fontWeight:600, color:'#8b5cf6', marginBottom:8 }}>
-                      📊 매칭 결과: {patternScanResult.total_scanned?.toLocaleString()}개 스캔 → {patternScanResult.matches?.length || 0}개 발견
+                    <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8, flexWrap:'wrap' }}>
+                      <div style={{ fontSize:12, fontWeight:600, color:'#8b5cf6' }}>
+                        📊 매칭 결과: {patternScanResult.total_scanned?.toLocaleString()}개 스캔 → {patternScanResult.matches?.length || 0}개 발견
+                      </div>
+                      {patternScanResult.fromCache && (
+                        <span style={{ fontSize:10, padding:'2px 8px', borderRadius:10,
+                          background:'rgba(34,197,94,0.12)', border:'1px solid rgba(34,197,94,0.3)', color:'#22c55e' }}>
+                          저장된 결과{patternScanResult.scanned_at ? ` (${new Date(patternScanResult.scanned_at).toLocaleDateString('ko-KR')})` : ''}
+                        </span>
+                      )}
+                      <button onClick={() => runPatternScan(true)} disabled={patternScanning}
+                        style={{ padding:'3px 10px', fontSize:10, fontWeight:600, borderRadius:6, cursor:'pointer',
+                          border:'1px solid rgba(251,146,60,0.4)', background:'rgba(251,146,60,0.1)', color:'#fb923c' }}>
+                        🔄 재스캔
+                      </button>
                     </div>
                     {patternScanResult.patterns_used?.map((pu, i) => (
                       <span key={i} style={{ fontSize:10, padding:'2px 8px', borderRadius:10, marginRight:6,
@@ -1391,7 +1466,7 @@ export default function PatternDetector() {
           {activeTab===1 && <TabChart result={result} />}
           {activeTab===2 && <TabRecommend result={result} selectedRecStocks={selectedRecStocks} setSelectedRecStocks={setSelectedRecStocks} onRegister={openRegModal} onKisOrder={openKisOrderModal} />}
           {activeTab===3 && <VirtualInvestTab recommendations={result.recommendations || []} backtestRecommendations={result.backtest_recommendations || []} selectedRecStocks={selectedRecStocks} setSelectedRecStocks={setSelectedRecStocks} newRtSessionId={newRtSessionId} setNewRtSessionId={setNewRtSessionId} />}
-          {activeTab===4 && <TabPatternLibrary patterns={savedPatterns} loading={savedPatternsLoading} onRefresh={fetchSavedPatterns} onDelete={deletePattern} onToggleActive={togglePatternActive} editingId={editingPatternId} editingName={editingPatternName} setEditingId={setEditingPatternId} setEditingName={setEditingPatternName} onSaveName={savePatternName} onScanWithPattern={(id) => { setSelectedPatternIds(new Set([id])); setShowPatternScan(true); setPageMode('scanner'); }} />}
+          {activeTab===4 && <TabPatternLibrary patterns={savedPatterns} loading={savedPatternsLoading} onRefresh={fetchSavedPatterns} onDelete={deletePattern} onToggleActive={togglePatternActive} editingId={editingPatternId} editingName={editingPatternName} setEditingId={setEditingPatternId} setEditingName={setEditingPatternName} onSaveName={savePatternName} onScanWithPattern={(id) => scanOrLoadPattern(id)} />}
         </>)}
 
         {!result && !analyzing && (
