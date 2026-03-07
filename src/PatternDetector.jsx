@@ -11,7 +11,7 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import VirtualInvestTab from "./VirtualInvestTab";
-import { kisApi, getKisCredentials, activateKisMode, refreshKisToken } from "./KisTrading";
+import { kisApi, getKisCredentials, loadKisCredentials, activateKisMode, refreshKisToken } from "./KisTrading";
 
 // ── 복리 투자 풀 관리 (localStorage) ──
 const COMPOUND_POOL_KEY = 'kis_compound_pool';
@@ -539,7 +539,7 @@ export default function PatternDetector() {
       }
     }
     // 계좌번호 유효성 검증
-    const activeCreds = getKisCredentials();
+    const activeCreds = await loadKisCredentials();
     const acctNo = (activeCreds.account_no || "").replace(/-/g, "");
     if (!acctNo || acctNo.length < 10) {
       alert(`${isVirtual ? '모의투자' : '실전투자'} 계좌번호가 설정되지 않았습니다.\n${isVirtual ? 'KIS 모의투자' : 'KIS 실전투자'} > API 설정에서 계좌번호를 입력해주세요.\n\n현재 계좌번호: ${acctNo || '(없음)'}`);

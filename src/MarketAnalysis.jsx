@@ -1,40 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
 
-// KIS credentials: localStorage에서 읽기 (KisTrading과 동일)
-const KIS_STORAGE_KEY = "kis_credentials";
-function getKisCredentials() {
-  try {
-    return JSON.parse(localStorage.getItem(KIS_STORAGE_KEY) || "{}");
-  } catch { return {}; }
-}
+// KIS API: KisTrading의 공유 함수 사용 (암호화된 크레덴셜)
+import { kisApi as sharedKisApi } from "./KisTrading";
 
 async function kisApi(route, params = {}) {
-  try {
-    const creds = getKisCredentials();
-    const url = new URL("/api/kis", window.location.origin);
-    url.searchParams.set("_route", route);
-    if (creds.app_key) url.searchParams.set("_ak", creds.app_key);
-    if (creds.app_secret) url.searchParams.set("_as", creds.app_secret);
-    if (creds.account_no) url.searchParams.set("_acct", creds.account_no);
-    if (creds.is_virtual !== undefined) url.searchParams.set("_virt", String(creds.is_virtual));
-    if (creds.access_token) url.searchParams.set("_token", creds.access_token);
-    Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== "") url.searchParams.set(k, v); });
-
-    const res = await fetch(url.toString(), {
-      headers: {
-        "Content-Type": "application/json",
-        ...(creds.app_key && { "x-kis-appkey": creds.app_key }),
-        ...(creds.app_secret && { "x-kis-appsecret": creds.app_secret }),
-        ...(creds.account_no && { "x-kis-account": creds.account_no }),
-        ...(creds.is_virtual !== undefined && { "x-kis-virtual": String(creds.is_virtual) }),
-        ...(creds.access_token && { "x-kis-token": creds.access_token }),
-      },
-    });
-    if (!res.ok) return null;
-    return await res.json();
-  } catch {
-    return null;
-  }
+  return await sharedKisApi(route, params);
 }
 
 const fmt = (n) => n?.toLocaleString("ko-KR") ?? "—";

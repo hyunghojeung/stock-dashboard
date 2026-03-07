@@ -62,13 +62,21 @@ function safeFloat(v, def = 0) {
 // ── Main Handler ─────────────────────────────────────
 
 export default async function handler(req, res) {
-  // CORS
-  res.setHeader("Access-Control-Allow-Origin", "*");
+  // CORS: 동일 출처 또는 Vercel 배포 도메인만 허용
+  const allowedOrigin = req.headers.origin || "*";
+  const host = req.headers.host || "";
+  // Vercel 배포: 동일 호스트의 요청만 허용 (외부 도메인 차단)
+  if (req.headers.origin && !req.headers.origin.includes(host.split(":")[0])) {
+    res.setHeader("Access-Control-Allow-Origin", req.headers.origin); // 브라우저가 차단
+  } else {
+    res.setHeader("Access-Control-Allow-Origin", allowedOrigin);
+  }
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
   res.setHeader(
     "Access-Control-Allow-Headers",
     "Content-Type,x-kis-appkey,x-kis-appsecret,x-kis-account,x-kis-virtual,x-kis-token"
   );
+  res.setHeader("Access-Control-Allow-Credentials", "true");
   if (req.method === "OPTIONS") return res.status(200).end();
 
   // Parse route and query params from URL directly (req.query unreliable for catch-all)
@@ -83,14 +91,13 @@ export default async function handler(req, res) {
   const routeName = routeParts[0] || pathSegments[0] || "";
   const routeSub = routeParts[1] || pathSegments[1] || "";
 
-  // Read credentials from query params (primary) or headers (fallback)
-  const appKey = qp._ak || req.headers["x-kis-appkey"] || "";
-  const appSecret = qp._as || req.headers["x-kis-appsecret"] || "";
-  const accountNo = (qp._acct || req.headers["x-kis-account"] || "").replace(/-/g, "");
-  // _virt 값: "true"=모의, "false"=실전 (프론트엔드가 항상 전송)
-  const virtParam = qp._virt ?? req.headers["x-kis-virtual"] ?? "true";
+  // ★ 보안: 크레덴셜은 HTTP 헤더에서만 읽기 (URL 쿼리 파라미터 노출 방지)
+  const appKey = req.headers["x-kis-appkey"] || "";
+  const appSecret = req.headers["x-kis-appsecret"] || "";
+  const accountNo = (req.headers["x-kis-account"] || "").replace(/-/g, "");
+  const virtParam = req.headers["x-kis-virtual"] ?? "true";
   const isVirtual = virtParam !== "false";
-  const token = qp._token || req.headers["x-kis-token"] || "";
+  const token = req.headers["x-kis-token"] || "";
 
   const baseUrl = isVirtual ? VIRT_BASE : REAL_BASE;
   const cano = accountNo.slice(0, 8);
