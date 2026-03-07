@@ -1218,9 +1218,9 @@ export default function PatternDetector() {
             )}
             <button onClick={() => { setShowScanHistory(!showScanHistory); if (!showScanHistory) loadScanHistoryList(); }}
               style={{ padding:'10px 18px', fontSize:13, fontWeight:600, borderRadius:10, cursor:'pointer',
-                border:`1px solid ${showScanHistory ? COLORS.accent : COLORS.cardBorder}`,
-                background: showScanHistory ? COLORS.accentDim : 'transparent',
-                color: showScanHistory ? COLORS.accent : COLORS.textDim }}>
+                border:`1px solid ${showScanHistory ? '#4ade80' : '#22c55e'}`,
+                background: showScanHistory ? 'rgba(74,222,128,0.15)' : 'rgba(34,197,94,0.08)',
+                color: showScanHistory ? '#4ade80' : '#22c55e' }}>
               📋 이전 기록</button>
             <div style={{ fontSize:12, color:COLORS.textDim, alignSelf:'center' }}>
               {scanMarket==='ALL'?'전체':scanMarket} 종목 | {scanRiseWindow}일 내 +{scanRisePct}% 이상 | 거래량 {scanVolRatio}배↑
