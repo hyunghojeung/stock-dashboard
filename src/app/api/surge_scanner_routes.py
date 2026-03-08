@@ -10,6 +10,8 @@ GET  /api/scanner/progress    — 진행률 확인
 GET  /api/scanner/result      — 현재 스캔 결과
 GET  /api/scanner/latest      — DB에서 최근 스캔 결과 로드
 POST /api/scanner/stop        — 스캔 중지
+GET  /api/scanner/history      — 스캔 히스토리 목록 (최근 20개)
+GET  /api/scanner/history/{id} — 특정 스캔 세션 상세 로드
 """
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
@@ -820,3 +822,119 @@ async def stop_scan():
         return {"status": "not_running", "message": "진행 중인 스캔이 없습니다."}
     _scanner_state["stop_requested"] = True
     return {"status": "stopping", "message": "스캔 중지 요청됨. 현재 배치 완료 후 부분 결과가 저장됩니다."}
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 스캔 히스토리 목록 / Scan History List
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+@router.get("/history")
+async def get_scan_history():
+    """DB에서 최근 스캔 히스토리 목록 (최근 20개) 반환"""
+    try:
+        from app.core.database import db
+        resp = db.table("surge_scan_sessions") \
+            .select("id, scan_date, status, market, period_days, rise_pct, rise_window, min_volume_ratio, total_scanned, total_found, total_surges, high_manip_count, medium_manip_count") \
+            .in_("status", ["done", "stopped"]) \
+            .order("scan_date", desc=True) \
+            .limit(20) \
+            .execute()
+        return {"status": "ok", "data": resp.data or []}
+    except Exception as e:
+        logger.error(f"히스토리 목록 로드 실패: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 스캔 히스토리 상세 / Scan History Detail
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+@router.get("/history/{session_id}")
+async def get_scan_history_detail(session_id: int):
+    """특정 세션의 스캔 결과(세션 정보 + 종목 데이터) 반환"""
+    try:
+        from app.core.database import db
+        # 1) 세션 정보
+        sess_resp = db.table("surge_scan_sessions") \
+            .select("*") \
+            .eq("id", session_id) \
+            .single() \
+            .execute()
+        session = sess_resp.data
+        if not session:
+            raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다.")
+        # 2) 종목 데이터 (페이지네이션)
+        all_stocks = []
+        page_size = 1000
+        offset = 0
+        while True:
+            stocks_resp = db.table("surge_scan_stocks") \
+                .select("*") \
+                .eq("session_id", session_id) \
+                .order("top_manip_score", desc=True) \
+                .range(offset, offset + page_size - 1) \
+                .execute()
+            if not stocks_resp.data:
+                break
+            all_stocks.extend(stocks_resp.data)
+            if len(stocks_resp.data) < page_size:
+                break
+            offset += page_size
+        # 종목 데이터 변환
+        stocks = []
+        for row in all_stocks:
+            surges = []
+            try:
+                surges = json.loads(row.get("surges_json", "[]"))
+            except Exception:
+                pass
+            stocks.append({
+                "code": row["code"],
+                "name": row["name"],
+                "market": row.get("market", ""),
+                "current_price": row.get("current_price", 0),
+                "last_date": row.get("last_date", ""),
+                "surge_count": row.get("surge_count", 0),
+                "top_manip_score": row.get("top_manip_score", 0),
+                "top_manip_level": row.get("top_manip_level", "low"),
+                "top_manip_label": row.get("top_manip_label", ""),
+                "latest_rise_pct": row.get("latest_rise_pct", 0),
+                "latest_surge_date": row.get("latest_surge_date", ""),
+                "latest_from_peak": row.get("latest_from_peak", 0),
+                "surges": surges,
+            })
+        return {
+            "status": "ok",
+            "session": {
+                "id": session["id"],
+                "scan_date": session.get("scan_date"),
+                "market": session.get("market"),
+                "total_scanned": session.get("total_scanned", 0),
+                "total_found": session.get("total_found", 0),
+                "total_surges": session.get("total_surges", 0),
+                "high_manip_count": session.get("high_manip_count", 0),
+                "medium_manip_count": session.get("medium_manip_count", 0),
+            },
+            "stocks": stocks,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"히스토리 상세 로드 실패: {e}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e))
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 스캔 히스토리 삭제 / Delete Scan History
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+class DeleteHistoryRequest(BaseModel):
+    ids: List[int]
+
+@router.post("/history/delete")
+async def delete_scan_history(req: DeleteHistoryRequest):
+    """선택한 세션 및 종목 데이터 삭제"""
+    if not req.ids:
+        raise HTTPException(status_code=400, detail="삭제할 ID가 없습니다.")
+    try:
+        from app.core.database import db
+        # 종목 데이터 먼저 삭제
+        db.table("surge_scan_stocks").delete().in_("session_id", req.ids).execute()
+        # 세션 삭제
+        db.table("surge_scan_sessions").delete().in_("id", req.ids).execute()
+        logger.info(f"히스토리 삭제 완료: {req.ids}")
+        return {"status": "ok", "deleted": len(req.ids)}
+    except Exception as e:
+        logger.error(f"히스토리 삭제 실패: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
