@@ -807,8 +807,74 @@ export default function PatternDetector() {
     setLoadingScanHistory(false);
   }, []);
 
-  // 백엔드가 surge_scan_sessions에 자동 저장하므로 프론트엔드는 목록 갱신만 수행
-  const saveScanToHistory = useCallback(async () => {
+  // 스캔 결과를 Supabase에 직접 저장 (백엔드 미배포 대응)
+  const saveScanToHistory = useCallback(async (resultData) => {
+    if (!resultData || !resultData.stocks || resultData.stocks.length === 0) {
+      await loadScanHistoryList();
+      return;
+    }
+    try {
+      // 1) 기존 백엔드 저장 확인 — 최근 세션에 종목 데이터가 있으면 스킵
+      const { data: recentSessions } = await supabase
+        .from('surge_scan_sessions')
+        .select('id')
+        .in('status', ['done', 'stopped'])
+        .order('id', { ascending: false })
+        .limit(1);
+      if (recentSessions && recentSessions.length > 0) {
+        const { data: stockCheck } = await supabase
+          .from('surge_scan_stocks')
+          .select('id')
+          .eq('session_id', recentSessions[0].id)
+          .limit(1);
+        if (stockCheck && stockCheck.length > 0) {
+          // 백엔드가 이미 저장함 → 목록만 갱신
+          await loadScanHistoryList();
+          return;
+        }
+      }
+      // 2) 세션 생성
+      const stats = resultData.stats || {};
+      const sessionRow = {
+        scan_date: resultData.scan_date || new Date().toISOString(),
+        market: resultData.market || 'ALL',
+        status: resultData.stopped ? 'stopped' : 'done',
+        total_scanned: stats.total_scanned || 0,
+        total_found: stats.total_found || 0,
+        total_surges: stats.total_surges || 0,
+        high_manip_count: stats.high_manip_count || 0,
+        medium_manip_count: stats.medium_manip_count || 0,
+      };
+      const { data: sessData, error: sessErr } = await supabase
+        .from('surge_scan_sessions').insert(sessionRow).select('id').single();
+      if (sessErr || !sessData) throw sessErr || new Error('세션 생성 실패');
+      const sessionId = sessData.id;
+      // 3) 종목 데이터 50개씩 배치 저장
+      const stocks = resultData.stocks;
+      for (let i = 0; i < stocks.length; i += 50) {
+        const batch = stocks.slice(i, i + 50).map(s => ({
+          session_id: sessionId,
+          code: s.code || '',
+          name: s.name || '',
+          market: s.market || '',
+          current_price: parseInt(s.current_price || 0),
+          last_date: s.last_date || '',
+          surge_count: parseInt(s.surge_count || 0),
+          top_manip_score: s.top_manip_score || 0,
+          top_manip_level: s.top_manip_level || 'low',
+          top_manip_label: s.top_manip_label || '',
+          latest_rise_pct: s.latest_rise_pct || 0,
+          latest_surge_date: s.latest_surge_date || '',
+          latest_from_peak: s.latest_from_peak || 0,
+          surges_json: JSON.stringify(s.surges || []),
+        }));
+        const { error: stockErr } = await supabase.from('surge_scan_stocks').insert(batch);
+        if (stockErr) console.error('[scan-history] 종목 배치 저장 실패:', stockErr);
+      }
+      console.log(`[scan-history] 프론트엔드 직접 저장 완료: session_id=${sessionId}, ${stocks.length}개 종목`);
+    } catch (e) {
+      console.error('[scan-history] 프론트엔드 저장 실패:', e);
+    }
     await loadScanHistoryList();
   }, [loadScanHistoryList]);
 
