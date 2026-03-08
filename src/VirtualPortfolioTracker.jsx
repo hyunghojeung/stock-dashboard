@@ -618,16 +618,10 @@ function PortfolioList({ portfolios, loading, onSelect, onRefresh, onRename, onB
 
               {/* 수익 */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{
-                    fontSize: 18, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace',
-                    color: isProfit ? COLORS.red : COLORS.accent,
-                  }}>{isProfit ? '+' : ''}{fmt(pf.total_return_won || 0)}원</div>
-                  <div style={{
-                    fontSize: 18, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace',
-                    color: isProfit ? COLORS.red : COLORS.accent,
-                  }}>{isProfit ? '+' : ''}{pcts}%</div>
-                </div>
+                <div style={{
+                  fontSize: 18, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace',
+                  color: isProfit ? COLORS.red : COLORS.accent, textAlign: 'right', whiteSpace: 'nowrap',
+                }}>{isProfit ? '+' : ''}{fmt(pf.total_return_won || 0)}원 ({isProfit ? '+' : ''}{pcts}%)</div>
                 <div style={{
                   fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 6,
                   background: isActive ? COLORS.greenDim : 'rgba(107,114,128,0.15)',
