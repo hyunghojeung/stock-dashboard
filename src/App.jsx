@@ -654,9 +654,6 @@ export default function App() {
   const [page,setPage]=useState("trade-journal");
   const [vpKey,setVpKey]=useState(0);
   const [sideOpen,setSideOpen]=useState(true);
-  const {data:appAccount}=useApi("/api/trading/account",60000);
-  const ta=appAccount?.total_eval||null;
-  const tp=ta?(ta/1e7*100):0;
 
   // 앱 로드 시 저장된 토큰 유효성 검증
   useEffect(()=>{
@@ -749,7 +746,7 @@ export default function App() {
                 </svg>
               </div>
               <div style={{fontFamily:"'Orbitron',sans-serif",fontWeight:800,fontSize:22,letterSpacing:5,background:'linear-gradient(180deg,#ffd700 0%,#f0a500 30%,#c8860a 60%,#a06a00 100%)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',textShadow:'none',filter:'drop-shadow(0 0 10px rgba(255,200,50,0.5))',lineHeight:1}}>MARK 1</div>
-              <div style={{fontFamily:"'Orbitron',sans-serif",fontWeight:400,fontSize:8,letterSpacing:6,color:'rgba(100,200,255,0.6)',textTransform:'uppercase',marginTop:1}}>Ver 1.3</div>
+              <div style={{fontFamily:"'Orbitron',sans-serif",fontWeight:400,fontSize:8,letterSpacing:6,color:'rgba(100,200,255,0.6)',textTransform:'uppercase',marginTop:1}}>Ver 1.5</div>
               <div style={{width:'80%',height:1,background:'linear-gradient(90deg,transparent,rgba(255,200,50,0.4),transparent)',marginTop:4}}/>
               <div style={{fontFamily:"'Noto Sans KR',sans-serif",fontSize:9,color:'rgba(180,180,200,0.5)',letterSpacing:1,marginTop:2}}>매매 패턴 분석 투자</div>
             </div>
@@ -771,8 +768,7 @@ export default function App() {
         {MENU.map(m=>{const isInvest=m.bold;const active=page===m.id;return <div key={m.id} onClick={()=>{setPage(m.id);if(m.id==='virtual-portfolio')setVpKey(k=>k+1);}} style={{padding:sideOpen?"10px 16px":"10px 0",cursor:"pointer",background:active?"rgba(26,58,110,0.6)":isInvest?"#4caf50":"transparent",borderRadius:6,margin:"1px 6px",color:active?"#fff":isInvest?"#fff":"#6688aa",fontSize:13,fontWeight:isInvest?"bold":"normal",textAlign:sideOpen?"left":"center",transition:"background 0.15s"}}>{m.icon}{sideOpen?` ${m.label}`:""}</div>})}
         <div style={{flex:1}}/>
         <div style={{borderTop:"1px solid rgba(100,140,200,0.1)",margin:"0 8px",padding:sideOpen?16:8}}>
-          {sideOpen&&<><div style={{color:"#556677",fontSize:11}}>총 자산</div><div style={{color:"#4cff8b",fontSize:14,fontWeight:600,fontFamily:"monospace"}}>{ta?`${fmt(ta)}원`:"—"}</div><div style={{color:"#556677",fontSize:11,marginTop:8}}>목표 진행률</div><div style={{background:"rgba(10,18,40,0.8)",borderRadius:6,height:6,marginTop:4,overflow:"hidden"}}><div style={{background:"#64b5f6",width:`${Math.max(tp,0.1)}%`,minWidth:3,height:"100%",borderRadius:6}}/></div><div style={{color:"#445566",fontSize:10,marginTop:3}}>{tp.toFixed(2)}% / 1천만원</div>
-          <div onClick={doLogout} style={{marginTop:12,padding:"6px 0",textAlign:"center",color:"#ff6666",fontSize:11,cursor:"pointer",borderRadius:6,border:"1px solid rgba(255,100,100,0.2)"}}>로그아웃</div></>}
+          {sideOpen&&<><div onClick={doLogout} style={{padding:"6px 0",textAlign:"center",color:"#ff6666",fontSize:11,cursor:"pointer",borderRadius:6,border:"1px solid rgba(255,100,100,0.2)"}}>로그아웃</div></>}
         </div>
       </div>
       {/* Main */}
