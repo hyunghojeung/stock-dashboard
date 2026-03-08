@@ -7,6 +7,7 @@
  * 매수추천 종목을 5가지 전략으로 동시 비교 백테스트 + 실시간 모의투자.
  */
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { supabase } from "./supabaseClient";
 
 const API_BASE = "https://web-production-139e9.up.railway.app";
 
@@ -388,10 +389,18 @@ export default function VirtualInvestTab({ recommendations = [], backtestRecomme
   const fetchNextCandidates = useCallback(async (excludeCodes = []) => {
     setNextCandidatesLoading(true);
     try {
-      const exclude = excludeCodes.join(',');
-      const res = await fetch(`${API_BASE}/api/candidates/next?count=5&exclude_codes=${exclude}`);
-      const data = await res.json();
-      if (data.success) setNextCandidates(data.candidates || []);
+      let query = supabase
+        .from('buy_candidates')
+        .select('*')
+        .eq('status', 'active')
+        .order('composite_score', { ascending: false })
+        .limit(5);
+      if (excludeCodes.length > 0) {
+        query = query.not('code', 'in', `(${excludeCodes.join(',')})`);
+      }
+      const { data, error } = await query;
+      if (error) throw error;
+      setNextCandidates(data || []);
     } catch (e) { console.error('후보 추천 로드 실패:', e); }
     setNextCandidatesLoading(false);
   }, []);
