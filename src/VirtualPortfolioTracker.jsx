@@ -622,11 +622,11 @@ function PortfolioList({ portfolios, loading, onSelect, onRefresh, onRename, onB
                   <div style={{
                     fontSize: 18, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace',
                     color: isProfit ? COLORS.red : COLORS.accent,
-                  }}>{isProfit ? '+' : ''}{pcts}%</div>
-                  <div style={{
-                    fontSize: 11, fontFamily: 'JetBrains Mono, monospace',
-                    color: COLORS.textDim,
                   }}>{isProfit ? '+' : ''}{fmt(pf.total_return_won || 0)}원</div>
+                  <div style={{
+                    fontSize: 18, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace',
+                    color: isProfit ? COLORS.red : COLORS.accent,
+                  }}>{isProfit ? '+' : ''}{pcts}%</div>
                 </div>
                 <div style={{
                   fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 6,
