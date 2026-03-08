@@ -364,6 +364,14 @@ function PortfolioList({ portfolios, loading, onSelect, onRefresh, onRename, onB
     catch { return {}; }
   });
   const getFilters = (pf) => pf.filters || pfFiltersCache[pf.id] || [];
+
+  // ★ id(DB auto-increment) 오름차순으로 고유번호 맵 생성 (P0001~)
+  const seqMap = React.useMemo(() => {
+    const sorted = [...portfolios].sort((a, b) => a.id - b.id);
+    const map = {};
+    sorted.forEach((pf, i) => { map[pf.id] = `P${String(i + 1).padStart(4, '0')}`; });
+    return map;
+  }, [portfolios]);
   if (loading) {
     return (
       <div>
@@ -540,13 +548,13 @@ function PortfolioList({ portfolios, loading, onSelect, onRefresh, onRename, onB
                     });
                   }}
                   style={{ accentColor: COLORS.accent, width: 18, height: 18, cursor: 'pointer', flexShrink: 0 }} />
-                {/* 고유번호 뱃지 */}
+                {/* 고유번호 뱃지 (DB id 기반 고정) */}
                 <div style={{
                   background: COLORS.accentDim,
                   color: COLORS.accent,
                   fontSize: 11, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace',
                   padding: '8px 10px', borderRadius: 8, minWidth: 52, textAlign: 'center',
-                }}>P{String(pfIdx + 1).padStart(4, '0')}</div>
+                }}>{seqMap[pf.id] || '—'}</div>
                 {/* 날짜 뱃지 */}
                 <div style={{
                   background: isProfit ? COLORS.greenDim : COLORS.redDim,
