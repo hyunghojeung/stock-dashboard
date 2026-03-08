@@ -118,7 +118,7 @@ const STRATEGY_PARAMS = {
 // 메인 컴포넌트
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-export default function VirtualPortfolioTracker() {
+export default function VirtualPortfolioTracker({ readOnly = false }) {
   const [view, setView] = useState('list');    // list | detail
   const [portfolios, setPortfolios] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
@@ -449,7 +449,7 @@ function PortfolioList({ portfolios, loading, onSelect, onRefresh, onRename, onB
       </div>
 
       {/* 선택 컨트롤 */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+      {!readOnly && <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, color: COLORS.textDim }}>
             <input type="checkbox"
@@ -509,7 +509,7 @@ function PortfolioList({ portfolios, loading, onSelect, onRefresh, onRename, onB
               }}>🗑 선택 삭제 ({selectedIds.size})</button>
           )}
         </div>
-      </div>
+      </div>}
 
       {/* 포트폴리오 리스트 */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -569,9 +569,9 @@ function PortfolioList({ portfolios, loading, onSelect, onRefresh, onRename, onB
                         style={{ fontSize: 14, fontWeight: 700, color: COLORS.white, background: '#0d1321', border: `1px solid ${COLORS.accent}`, borderRadius: 4, padding: '1px 6px', outline: 'none', fontFamily: 'inherit', width: 200 }} />
                     ) : (
                       <>{pf.name}
-                        <button onClick={e => { e.stopPropagation(); setRenamingId(pf.id); setRenameText(pf.name); }}
+                        {!readOnly && <button onClick={e => { e.stopPropagation(); setRenamingId(pf.id); setRenameText(pf.name); }}
                           style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 12, color: COLORS.textDim, padding: '1px 3px', opacity: 0.6 }}
-                          title="제목 수정">✏️</button>
+                          title="제목 수정">✏️</button>}
                         {/* 패턴명 뱃지 - 제목 옆 */}
                         {(() => {
                           const pnames = [...new Set(stocks.filter(s => s.pattern_name).map(s => s.pattern_name))];
@@ -696,9 +696,9 @@ function PortfolioDetail({ detail, updating, onUpdate, onClose, onDelete, onRena
                   style={{ fontSize: 18, fontWeight: 800, color: COLORS.white, background: '#0d1321', border: `1px solid ${COLORS.accent}`, borderRadius: 6, padding: '2px 8px', outline: 'none', fontFamily: 'inherit', width: 260 }} />
               ) : (
                 <>{pf.name}
-                  <button onClick={() => { setTempName(pf.name); setEditingName(true); }}
+                  {!readOnly && <button onClick={() => { setTempName(pf.name); setEditingName(true); }}
                     style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 14, color: COLORS.textDim, padding: '2px 4px' }}
-                    title="제목 수정">✏️</button>
+                    title="제목 수정">✏️</button>}
                   {/* 패턴명 뱃지 - 상세 제목 옆 */}
                   {(() => {
                     const pnames = [...new Set(positions.filter(p => p.pattern_name).map(p => p.pattern_name))];
@@ -729,7 +729,7 @@ function PortfolioDetail({ detail, updating, onUpdate, onClose, onDelete, onRena
               {!isActive && ` · 종료: ${pf.closed_at ? toKST(pf.closed_at).slice(0, 10) : ''}`}
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 8 }}>
+          {!readOnly && <div style={{ display: 'flex', gap: 8 }}>
             {isActive && (
               <>
                 <button onClick={onUpdate} disabled={updating} style={{
@@ -754,7 +754,7 @@ function PortfolioDetail({ detail, updating, onUpdate, onClose, onDelete, onRena
               padding: '7px 16px', borderRadius: 8, border: `1px solid ${COLORS.cardBorder}`,
               background: 'transparent', color: COLORS.textDim, cursor: 'pointer', fontSize: 12, fontWeight: 600,
             }}>🗑 삭제</button>
-          </div>
+          </div>}
         </div>
 
         {/* 요약 카드 */}

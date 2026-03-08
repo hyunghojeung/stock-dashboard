@@ -685,7 +685,7 @@ export default function App() {
         </div>
         <div style={{marginLeft:'auto',color:'#8899aa',fontSize:13}}>가상 투자 포트폴리오</div>
       </div>
-      <div style={{padding:16}}><VirtualPortfolioTracker/></div>
+      <div style={{padding:16}}><VirtualPortfolioTracker readOnly/></div>
     </div>
   );
 
