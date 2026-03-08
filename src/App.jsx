@@ -616,7 +616,7 @@ function SettingsPage() {
 // Main App
 // ============================================================
 const MENU=[
-  {id:"trade-journal",icon:"📊",label:"대시보드",bold:true},
+  {id:"trade-journal",icon:"📋",label:"매매일지",bold:true},
   {id:"compare",icon:"⚖️",label:"전략 비교"},
   {id:"history",icon:"📋",label:"매매이력"},
   {id:"watchlist",icon:"🔍",label:"감시종목"},
