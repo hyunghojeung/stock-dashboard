@@ -663,11 +663,27 @@ export default function App() {
   // 공개 페이지: 로그인/메뉴 없이 가상 투자만 표시
   if(isPublicPage()) return (
     <div style={{minHeight:"100vh",background:"radial-gradient(ellipse at 30% 20%,rgba(14,24,50,1) 0%,rgba(8,12,24,1) 70%)",fontFamily:"'Noto Sans KR',sans-serif",color:"#e0e6f0"}}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700&family=JetBrains+Mono:wght@400;600;700&family=Orbitron:wght@400;500;600;700;800;900&display=swap');*{margin:0;padding:0;box-sizing:border-box;}::-webkit-scrollbar{width:6px;}::-webkit-scrollbar-track{background:rgba(10,18,40,0.5);}::-webkit-scrollbar-thumb{background:rgba(100,140,200,0.3);border-radius:3px;}`}</style>
-      <div style={{padding:"16px 24px",borderBottom:"1px solid rgba(100,140,200,0.15)",display:"flex",alignItems:"center",gap:12}}>
-        <span style={{fontSize:24}}>💰</span>
-        <span style={{fontFamily:"'Orbitron',sans-serif",fontWeight:700,fontSize:16,color:"#64b5f6"}}>MARK 1</span>
-        <span style={{color:"#8899aa",fontSize:13}}>— 가상 투자 포트폴리오</span>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700&family=JetBrains+Mono:wght@400;600;700&family=Orbitron:wght@400;500;600;700;800;900&display=swap');*{margin:0;padding:0;box-sizing:border-box;}::-webkit-scrollbar{width:6px;}::-webkit-scrollbar-track{background:rgba(10,18,40,0.5);}::-webkit-scrollbar-thumb{background:rgba(100,140,200,0.3);border-radius:3px;}@keyframes arcGlow{0%,100%{opacity:0.7;filter:drop-shadow(0 0 8px rgba(100,200,255,0.6))}50%{opacity:1;filter:drop-shadow(0 0 20px rgba(100,220,255,1))}}@keyframes reactorPulse{0%,100%{box-shadow:0 0 15px rgba(100,200,255,0.5),0 0 40px rgba(100,200,255,0.25),0 0 60px rgba(100,200,255,0.1)}50%{box-shadow:0 0 25px rgba(100,220,255,0.9),0 0 55px rgba(100,200,255,0.5),0 0 80px rgba(100,200,255,0.2)}}`}</style>
+      <div style={{padding:"12px 24px",borderBottom:"1px solid rgba(100,140,200,0.15)",display:"flex",alignItems:"center",gap:16,background:"rgba(8,14,30,0.95)"}}>
+        <div style={{position:'relative',display:'flex',alignItems:'center',justifyContent:'center'}}>
+          <div style={{position:'absolute',width:52,height:52,borderRadius:'50%',background:'radial-gradient(circle,rgba(100,210,255,0.3) 0%,rgba(100,200,255,0.1) 40%,transparent 70%)',animation:'reactorPulse 2.5s ease-in-out infinite'}}/>
+          <svg width="46" height="46" viewBox="0 0 72 72" style={{position:'relative',zIndex:1}}>
+            <defs><radialGradient id="coreGlow"><stop offset="0%" stopColor="rgba(180,230,255,0.9)"/><stop offset="100%" stopColor="rgba(100,200,255,0)"/></radialGradient></defs>
+            <circle cx="36" cy="36" r="32" fill="none" stroke="rgba(100,200,255,0.35)" strokeWidth="1" style={{animation:'arcGlow 2.5s ease-in-out infinite'}}/>
+            <circle cx="36" cy="36" r="27" fill="none" stroke="rgba(100,200,255,0.5)" strokeWidth="1.5" style={{animation:'arcGlow 2.5s ease-in-out infinite'}}/>
+            <circle cx="36" cy="36" r="22" fill="none" stroke="rgba(100,200,255,0.3)" strokeWidth="1"/>
+            <circle cx="36" cy="36" r="10" fill="url(#coreGlow)" stroke="rgba(100,220,255,0.8)" strokeWidth="1.5"/>
+            <circle cx="36" cy="36" r="4" fill="rgba(180,240,255,0.95)"/>
+            {[0,60,120,180,240,300].map((a,i)=><line key={i} x1={36+13*Math.cos(a*Math.PI/180)} y1={36+13*Math.sin(a*Math.PI/180)} x2={36+21*Math.cos(a*Math.PI/180)} y2={36+21*Math.sin(a*Math.PI/180)} stroke="rgba(100,220,255,0.5)" strokeWidth="1.8" strokeLinecap="round"/>)}
+            {[30,90,150,210,270,330].map((a,i)=><line key={i} x1={36+24*Math.cos(a*Math.PI/180)} y1={36+24*Math.sin(a*Math.PI/180)} x2={36+26*Math.cos(a*Math.PI/180)} y2={36+26*Math.sin(a*Math.PI/180)} stroke="rgba(100,200,255,0.3)" strokeWidth="1"/>)}
+          </svg>
+        </div>
+        <div style={{display:'flex',flexDirection:'column',gap:1}}>
+          <div style={{fontFamily:"'Orbitron',sans-serif",fontWeight:800,fontSize:20,letterSpacing:5,background:'linear-gradient(180deg,#ffd700 0%,#f0a500 30%,#c8860a 60%,#a06a00 100%)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',filter:'drop-shadow(0 0 10px rgba(255,200,50,0.5))',lineHeight:1}}>MARK 1</div>
+          <div style={{fontFamily:"'Orbitron',sans-serif",fontWeight:400,fontSize:8,letterSpacing:6,color:'rgba(100,200,255,0.6)',textTransform:'uppercase'}}>Ver 1.5</div>
+          <div style={{fontFamily:"'Noto Sans KR',sans-serif",fontSize:9,color:'rgba(180,180,200,0.5)',letterSpacing:1}}>매매 패턴 분석 투자</div>
+        </div>
+        <div style={{marginLeft:'auto',color:'#8899aa',fontSize:13}}>가상 투자 포트폴리오</div>
       </div>
       <div style={{padding:16}}><VirtualPortfolioTracker/></div>
     </div>
