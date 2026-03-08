@@ -784,13 +784,26 @@ export default function PatternDetector() {
     setLoadingScanHistory(true);
     try {
       const res = await fetch(`${API_BASE}/api/scanner/history`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
       if (json.status === 'ok') {
         setScanHistoryList(json.data || []);
       } else {
         throw new Error(json.detail || '히스토리 목록 로드 실패');
       }
-    } catch (e) { console.error('[scan-history] 목록 로드 실패:', e); }
+    } catch (e) {
+      console.warn('[scan-history] API 실패, Supabase 직접 조회:', e.message);
+      try {
+        const { data, error } = await supabase
+          .from('surge_scan_sessions')
+          .select('id, scan_date, status, market, period_days, rise_pct, rise_window, min_volume_ratio, total_scanned, total_found, total_surges, high_manip_count, medium_manip_count')
+          .in('status', ['done', 'stopped'])
+          .order('id', { ascending: false })
+          .limit(20);
+        if (error) throw error;
+        setScanHistoryList(data || []);
+      } catch (e2) { console.error('[scan-history] Supabase 폴백도 실패:', e2); }
+    }
     setLoadingScanHistory(false);
   }, []);
 
@@ -802,27 +815,59 @@ export default function PatternDetector() {
   const loadScanHistoryDetail = useCallback(async (id) => {
     try {
       setScanSource('loading');
-      const res = await fetch(`${API_BASE}/api/scanner/history/${id}`);
-      const json = await res.json();
-      if (json.status !== 'ok' || !json.stocks || json.stocks.length === 0) {
-        alert('해당 스캔 결과를 불러올 수 없습니다.');
-        setScanSource('');
-        return;
+      // 백엔드 API 시도
+      let session = null;
+      let stocks = [];
+      try {
+        const res = await fetch(`${API_BASE}/api/scanner/history/${id}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        if (json.status === 'ok' && json.stocks && json.stocks.length > 0) {
+          session = json.session;
+          stocks = json.stocks;
+        }
+      } catch (apiErr) {
+        console.warn('[scan-history] API 실패, Supabase 직접 조회:', apiErr.message);
+      }
+      // 백엔드 실패 시 Supabase 직접 조회
+      if (!session) {
+        const { data: sessData, error: sessErr } = await supabase
+          .from('surge_scan_sessions').select('*').eq('id', id).single();
+        if (sessErr || !sessData) { alert('해당 스캔 결과를 불러올 수 없습니다.'); setScanSource(''); return; }
+        session = sessData;
+        // 종목 데이터 페이지네이션 로드
+        let offset = 0;
+        const pageSize = 1000;
+        while (true) {
+          const { data: stockRows, error: stockErr } = await supabase
+            .from('surge_scan_stocks').select('*').eq('session_id', id)
+            .order('top_manip_score', { ascending: false })
+            .range(offset, offset + pageSize - 1);
+          if (stockErr || !stockRows || stockRows.length === 0) break;
+          // surges_json 파싱
+          stocks.push(...stockRows.map(r => ({
+            ...r,
+            surges: r.surges_json ? (typeof r.surges_json === 'string' ? JSON.parse(r.surges_json) : r.surges_json) : [],
+          })));
+          if (stockRows.length < pageSize) break;
+          offset += pageSize;
+        }
+        if (stocks.length === 0) { alert('해당 스캔 결과를 불러올 수 없습니다.'); setScanSource(''); return; }
       }
       const detail = {
         status: 'done',
-        scan_date: json.session.scan_date,
-        market: json.session.market,
+        scan_date: session.scan_date,
+        market: session.market,
         source: 'db',
         stats: {
-          total_scanned: json.session.total_scanned,
-          total_found: json.session.total_found,
-          total_surges: json.session.total_surges,
-          high_manip_count: json.session.high_manip_count,
-          medium_manip_count: json.session.medium_manip_count,
+          total_scanned: session.total_scanned,
+          total_found: session.total_found,
+          total_surges: session.total_surges,
+          high_manip_count: session.high_manip_count,
+          medium_manip_count: session.medium_manip_count,
           entry_signal_count: 0,
         },
-        stocks: json.stocks,
+        stocks,
       };
       setScanResultWithCache(detail);
       setScanDate(detail.scan_date || '');
@@ -853,13 +898,24 @@ export default function PatternDetector() {
     setDeletingHistory(true);
     try {
       const ids = [...selectedHistoryIds];
-      const res = await fetch(`${API_BASE}/api/scanner/history/delete`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids }),
-      });
-      const json = await res.json();
-      if (json.status !== 'ok') throw new Error(json.detail || '삭제 실패');
+      try {
+        const res = await fetch(`${API_BASE}/api/scanner/history/delete`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        if (json.status !== 'ok') throw new Error(json.detail || '삭제 실패');
+      } catch (apiErr) {
+        console.warn('[scan-history] 삭제 API 실패, Supabase 직접 삭제:', apiErr.message);
+        // 종목 데이터 먼저 삭제 후 세션 삭제
+        for (const sid of ids) {
+          await supabase.from('surge_scan_stocks').delete().eq('session_id', sid);
+        }
+        const { error } = await supabase.from('surge_scan_sessions').delete().in('id', ids);
+        if (error) throw error;
+      }
       setSelectedHistoryIds(new Set());
       await loadScanHistoryList();
     } catch (e) { console.error('[scan-history] 삭제 실패:', e); }
