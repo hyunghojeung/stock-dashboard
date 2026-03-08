@@ -16,6 +16,7 @@ from app.api.swing_routes import router as swing_router
 from app.api.pattern_routes import router as pattern_router
 from app.api.surge_scanner_routes import router as scanner_router
 from app.api.virtual_invest_routes import router as virtual_invest_router
+from app.api.buy_candidates_routes import router as candidates_router
 
 # ★ KIS 모의투자 API
 from kis_routes import router as kis_router
@@ -72,6 +73,7 @@ app.include_router(scanner_router)
 app.include_router(pattern_router)
 app.include_router(virtual_invest_router)
 app.include_router(kis_router)
+app.include_router(candidates_router)
 
 @app.get("/api/health")
 async def health():

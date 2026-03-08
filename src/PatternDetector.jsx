@@ -78,11 +78,17 @@ export default function PatternDetector() {
     } catch (e) { console.log('스캔 캐시 로드 실패:', e); }
     return null;
   };
-  // setScanResult를 래핑하여 자동 캐시
+  // setScanResult를 래핑하여 자동 캐시 + 자동 후보 등록
   const setScanResultWithCache = useCallback((data) => {
     setScanResult(data);
-    if (data && data.stocks) saveScanCache(data);
-  }, [saveScanCache]);
+    if (data && data.stocks) {
+      saveScanCache(data);
+      // 자동 등록: 설정이 켜져있으면 스캔 결과에서 자동으로 후보 등록
+      if (candidateSettings?.auto_register && data.stocks.length > 0) {
+        autoRegisterFromScan(data.stocks, 'scan');
+      }
+    }
+  }, [saveScanCache, candidateSettings, autoRegisterFromScan]);
   const [scanError, setScanError] = useState('');
   const [scanSortKey, setScanSortKey] = useState('manip_score');
   const [scanSortDir, setScanSortDir] = useState('desc');
@@ -226,6 +232,13 @@ export default function PatternDetector() {
   const [patternSortKey, setPatternSortKey] = useState('similarity'); // 정렬 키
   const [patternSortDir, setPatternSortDir] = useState('desc'); // 'asc' | 'desc'
 
+  // ━━━ 매수 후보 풀 상태 ━━━
+  const [buyCandidates, setBuyCandidates] = useState([]);
+  const [candidatesLoading, setCandidatesLoading] = useState(false);
+  const [candidateSettings, setCandidateSettings] = useState(null);
+  const [showCandidateSettings, setShowCandidateSettings] = useState(false);
+  const [showCandidatePanel, setShowCandidatePanel] = useState(false);
+
   // ━━━ KIS 실전/모의 주문 모달 상태 ━━━
   const [showKisOrderModal, setShowKisOrderModal] = useState(false);
   const [kisOrderMode, setKisOrderMode] = useState('virtual'); // 'virtual' | 'real'
@@ -233,6 +246,132 @@ export default function PatternDetector() {
   const [kisOrderType, setKisOrderType] = useState('01'); // '00'=지정가, '01'=시장가
   const [kisOrderLoading, setKisOrderLoading] = useState(false);
   const [kisOrderResults, setKisOrderResults] = useState(null);
+
+  // ━━━ ★ 매수 후보 풀 함수 ━━━
+  const fetchCandidates = useCallback(async () => {
+    setCandidatesLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/candidates/list?status=active&sort_by=composite_score&sort_dir=desc`);
+      const data = await res.json();
+      if (data.success) setBuyCandidates(data.candidates || []);
+    } catch (e) { console.error('후보 목록 로드 실패:', e); }
+    setCandidatesLoading(false);
+  }, []);
+
+  const fetchCandidateSettings = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/candidates/settings`);
+      const data = await res.json();
+      if (data.success) setCandidateSettings(data.settings);
+    } catch (e) { console.error('후보 설정 로드 실패:', e); }
+  }, []);
+
+  const saveCandidateSettings = useCallback(async (settings) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/candidates/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setCandidateSettings(data.settings);
+        alert('설정이 저장되었습니다.');
+      }
+    } catch (e) { alert('설정 저장 실패: ' + e.message); }
+  }, []);
+
+  const registerCandidates = useCallback(async (candidates, source = 'manual') => {
+    try {
+      const expireDays = candidateSettings?.expire_days || 3;
+      const res = await fetch(`${API_BASE}/api/candidates/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          candidates: candidates.map(s => ({
+            code: s.code,
+            name: s.name,
+            composite_score: s.composite_score || s.top_manip_score || 0,
+            manip_score: s.top_manip_score || 0,
+            entry_score: s.entry_signals?.entry_score || s.entry_score || 0,
+            pattern_match_pct: s.pattern_match_pct || s.similarity || null,
+            entry_grade: s.entry_signals?.entry_grade || s.entry_grade || null,
+            current_price: s.current_price || null,
+            recommended_buy_price: s.current_price || null,
+            source,
+            reason: [
+              s.top_manip_score >= 80 ? `세력${s.top_manip_score}` : '',
+              (s.entry_signals?.entry_score || s.entry_score || 0) >= 60 ? `진입${s.entry_signals?.entry_score || s.entry_score}` : '',
+              (s.similarity || s.pattern_match_pct) ? `유사${s.similarity || s.pattern_match_pct}%` : '',
+            ].filter(Boolean).join(', ') || null,
+          })),
+          expire_days: expireDays,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert(`후보 등록 완료: ${data.inserted}개 추가, ${data.skipped}개 중복`);
+        fetchCandidates();
+      } else {
+        alert('후보 등록 실패');
+      }
+      return data;
+    } catch (e) {
+      alert('후보 등록 실패: ' + e.message);
+      return { success: false };
+    }
+  }, [candidateSettings, fetchCandidates]);
+
+  const autoRegisterFromScan = useCallback(async (stocks, source = 'scan') => {
+    try {
+      const res = await fetch(`${API_BASE}/api/candidates/auto-register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stocks, source }),
+      });
+      const data = await res.json();
+      if (data.success && data.inserted > 0) {
+        console.log(`[자동등록] ${data.inserted}개 후보 등록됨 (${data.filtered}개 필터 통과 / ${data.total_scanned}개 스캔)`);
+        fetchCandidates();
+      }
+      return data;
+    } catch (e) {
+      console.error('자동 등록 실패:', e);
+      return { success: false };
+    }
+  }, [fetchCandidates]);
+
+  const deleteCandidates = useCallback(async (ids) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/candidates/delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      });
+      const data = await res.json();
+      if (data.success) fetchCandidates();
+      return data;
+    } catch (e) { console.error('후보 삭제 실패:', e); }
+  }, [fetchCandidates]);
+
+  const updateCandidateStatus = useCallback(async (ids, status) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/candidates/update-status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids, status }),
+      });
+      const data = await res.json();
+      if (data.success) fetchCandidates();
+      return data;
+    } catch (e) { console.error('후보 상태 변경 실패:', e); }
+  }, [fetchCandidates]);
+
+  // 후보 풀 초기 로드
+  useEffect(() => {
+    fetchCandidates();
+    fetchCandidateSettings();
+  }, [fetchCandidates, fetchCandidateSettings]);
 
   // ━━━ ★ 패턴 라이브러리 함수 ━━━
   const fetchSavedPatterns = useCallback(async () => {
@@ -1315,7 +1454,144 @@ export default function PatternDetector() {
           scanChartLoading={scanChartLoading} fetchScanChart={fetchScanChart}
           scanHistoryList={scanHistoryList} showScanHistory={showScanHistory}
           setShowScanHistory={setShowScanHistory} loadingScanHistory={loadingScanHistory}
-          loadScanHistoryList={loadScanHistoryList} loadScanHistoryDetail={loadScanHistoryDetail} />}
+          loadScanHistoryList={loadScanHistoryList} loadScanHistoryDetail={loadScanHistoryDetail}
+          registerCandidates={registerCandidates} />}
+
+        {/* ━━━ 매수 후보 풀 패널 ━━━ */}
+        <div style={{ background:COLORS.card, border:`1px solid ${COLORS.cardBorder}`, borderRadius:12, padding:14, marginBottom:16, marginTop:8 }}>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', cursor:'pointer' }}
+            onClick={() => { setShowCandidatePanel(!showCandidatePanel); if (!showCandidatePanel) fetchCandidates(); }}>
+            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              <span style={{ fontSize:18 }}>📋</span>
+              <span style={{ fontSize:14, fontWeight:700, color:COLORS.text }}>매수 후보 풀</span>
+              <span style={{ fontSize:12, color:'#f59e0b', fontWeight:600 }}>
+                ({buyCandidates.length}개 대기중)
+              </span>
+            </div>
+            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              <button onClick={(e) => { e.stopPropagation(); setShowCandidateSettings(!showCandidateSettings); }}
+                style={{ padding:'4px 10px', fontSize:11, borderRadius:6, cursor:'pointer',
+                  border:`1px solid ${COLORS.cardBorder}`, background:'transparent', color:COLORS.textDim }}>
+                ⚙️ 설정
+              </button>
+              <button onClick={(e) => { e.stopPropagation(); fetchCandidates(); }}
+                style={{ padding:'4px 10px', fontSize:11, borderRadius:6, cursor:'pointer',
+                  border:`1px solid ${COLORS.cardBorder}`, background:'transparent', color:COLORS.textDim }}>
+                🔄
+              </button>
+              <span style={{ fontSize:12, color:COLORS.textDim }}>{showCandidatePanel ? '▲' : '▼'}</span>
+            </div>
+          </div>
+
+          {/* 설정 패널 */}
+          {showCandidateSettings && candidateSettings && (
+            <div style={{ marginTop:12, padding:12, background:'rgba(245,158,11,0.05)', border:'1px solid rgba(245,158,11,0.2)', borderRadius:8 }}>
+              <div style={{ fontSize:13, fontWeight:700, color:'#f59e0b', marginBottom:10 }}>⚙️ 자동 등록 설정</div>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, fontSize:12 }}>
+                <label style={{ display:'flex', alignItems:'center', gap:6, color:COLORS.text }}>
+                  <input type="checkbox" checked={candidateSettings.auto_register || false}
+                    onChange={e => setCandidateSettings({...candidateSettings, auto_register: e.target.checked})} />
+                  스캔 완료 시 자동 등록
+                </label>
+                <label style={{ display:'flex', alignItems:'center', gap:6, color:COLORS.text }}>
+                  최소 종합점수:
+                  <input type="number" value={candidateSettings.min_composite_score || 60} min={0} max={100}
+                    onChange={e => setCandidateSettings({...candidateSettings, min_composite_score: Number(e.target.value)})}
+                    style={{ width:50, padding:'2px 4px', borderRadius:4, border:`1px solid ${COLORS.cardBorder}`, background:COLORS.bg, color:COLORS.text, fontSize:12 }} />
+                </label>
+                <label style={{ display:'flex', alignItems:'center', gap:6, color:COLORS.text }}>
+                  최소 진입점수:
+                  <input type="number" value={candidateSettings.min_entry_score || 50} min={0} max={100}
+                    onChange={e => setCandidateSettings({...candidateSettings, min_entry_score: Number(e.target.value)})}
+                    style={{ width:50, padding:'2px 4px', borderRadius:4, border:`1px solid ${COLORS.cardBorder}`, background:COLORS.bg, color:COLORS.text, fontSize:12 }} />
+                </label>
+                <label style={{ display:'flex', alignItems:'center', gap:6, color:COLORS.text }}>
+                  최대 후보 수:
+                  <input type="number" value={candidateSettings.max_candidates || 10} min={1} max={50}
+                    onChange={e => setCandidateSettings({...candidateSettings, max_candidates: Number(e.target.value)})}
+                    style={{ width:50, padding:'2px 4px', borderRadius:4, border:`1px solid ${COLORS.cardBorder}`, background:COLORS.bg, color:COLORS.text, fontSize:12 }} />
+                </label>
+                <label style={{ display:'flex', alignItems:'center', gap:6, color:COLORS.text }}>
+                  유효기간(일):
+                  <input type="number" value={candidateSettings.expire_days || 3} min={1} max={30}
+                    onChange={e => setCandidateSettings({...candidateSettings, expire_days: Number(e.target.value)})}
+                    style={{ width:50, padding:'2px 4px', borderRadius:4, border:`1px solid ${COLORS.cardBorder}`, background:COLORS.bg, color:COLORS.text, fontSize:12 }} />
+                </label>
+                <label style={{ display:'flex', alignItems:'center', gap:6, color:COLORS.text }}>
+                  <input type="checkbox" checked={candidateSettings.exclude_ma5_down || false}
+                    onChange={e => setCandidateSettings({...candidateSettings, exclude_ma5_down: e.target.checked})} />
+                  MA5 하향 제외
+                </label>
+                <label style={{ display:'flex', alignItems:'center', gap:6, color:COLORS.text }}>
+                  <input type="checkbox" checked={candidateSettings.exclude_rsi_overbought || false}
+                    onChange={e => setCandidateSettings({...candidateSettings, exclude_rsi_overbought: e.target.checked})} />
+                  RSI 과매수 제외
+                </label>
+                <label style={{ display:'flex', alignItems:'center', gap:6, color:COLORS.text }}>
+                  종목당 투자금:
+                  <input type="number" value={candidateSettings.capital_per_stock || 300000} step={100000}
+                    onChange={e => setCandidateSettings({...candidateSettings, capital_per_stock: Number(e.target.value)})}
+                    style={{ width:80, padding:'2px 4px', borderRadius:4, border:`1px solid ${COLORS.cardBorder}`, background:COLORS.bg, color:COLORS.text, fontSize:12 }} />
+                </label>
+              </div>
+              <div style={{ marginTop:10, display:'flex', gap:8, justifyContent:'flex-end' }}>
+                <button onClick={() => setShowCandidateSettings(false)}
+                  style={{ padding:'5px 14px', fontSize:12, borderRadius:6, cursor:'pointer', border:`1px solid ${COLORS.cardBorder}`, background:'transparent', color:COLORS.textDim }}>닫기</button>
+                <button onClick={() => saveCandidateSettings(candidateSettings)}
+                  style={{ padding:'5px 14px', fontSize:12, fontWeight:600, borderRadius:6, cursor:'pointer', border:'none', background:'#f59e0b', color:'#000' }}>저장</button>
+              </div>
+            </div>
+          )}
+
+          {/* 후보 목록 */}
+          {showCandidatePanel && (
+            <div style={{ marginTop:12 }}>
+              {candidatesLoading ? (
+                <div style={{ textAlign:'center', padding:20, color:COLORS.textDim, fontSize:13 }}>로딩 중...</div>
+              ) : buyCandidates.length === 0 ? (
+                <div style={{ textAlign:'center', padding:20, color:COLORS.textDim, fontSize:13 }}>
+                  등록된 후보가 없습니다.<br/>
+                  <span style={{ fontSize:11 }}>스캔 결과에서 종목을 선택 후 "📋 후보등록" 버튼을 클릭하세요.</span>
+                </div>
+              ) : (
+                <div>
+                  {buyCandidates.map((c, i) => {
+                    const daysLeft = c.expires_at ? Math.max(0, Math.ceil((new Date(c.expires_at) - new Date()) / 86400000)) : 0;
+                    const scoreColor = c.composite_score >= 80 ? COLORS.red : c.composite_score >= 60 ? '#f59e0b' : COLORS.textDim;
+                    return (
+                      <div key={c.id} style={{
+                        display:'grid', gridTemplateColumns:'1fr 70px 60px 60px 50px 70px',
+                        padding:'8px 10px', fontSize:12, alignItems:'center',
+                        borderBottom: i < buyCandidates.length - 1 ? `1px solid ${COLORS.cardBorder}` : 'none',
+                        background: daysLeft <= 1 ? 'rgba(220,38,38,0.05)' : 'transparent',
+                      }}>
+                        <div>
+                          <span style={{ fontWeight:600, color:COLORS.text }}>{c.name}</span>
+                          <span style={{ color:COLORS.textDim, marginLeft:4, fontSize:10 }}>{c.code}</span>
+                          {c.source && <span style={{ marginLeft:6, fontSize:9, padding:'1px 4px', borderRadius:3, background:'rgba(245,158,11,0.15)', color:'#f59e0b' }}>{c.source}</span>}
+                        </div>
+                        <div style={{ textAlign:'right', color:COLORS.text }}>{c.current_price?.toLocaleString() || '-'}</div>
+                        <div style={{ textAlign:'center', color:scoreColor, fontWeight:600 }}>{c.composite_score || '-'}</div>
+                        <div style={{ textAlign:'center', color:COLORS.textDim }}>{c.entry_score || '-'}</div>
+                        <div style={{ textAlign:'center', color: daysLeft <= 1 ? COLORS.red : COLORS.textDim, fontSize:11 }}>D-{daysLeft}</div>
+                        <div style={{ textAlign:'right' }}>
+                          <button onClick={() => deleteCandidates([c.id])}
+                            style={{ padding:'3px 8px', fontSize:10, borderRadius:4, cursor:'pointer',
+                              border:`1px solid ${COLORS.cardBorder}`, background:'transparent', color:COLORS.textDim }}>삭제</button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {/* 헤더 */}
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 70px 60px 60px 50px 70px',
+                    padding:'6px 10px', fontSize:10, color:COLORS.textDim, fontWeight:600, borderBottom:`1px solid ${COLORS.cardBorder}`, order:-1 }}>
+                    <span>종목</span><span style={{textAlign:'right'}}>현재가</span><span style={{textAlign:'center'}}>종합</span><span style={{textAlign:'center'}}>진입</span><span style={{textAlign:'center'}}>잔여</span><span></span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
         {!scanResult && !scanning && !loadingPrev && (
           <div style={{ background:COLORS.card, border:`1px solid ${COLORS.cardBorder}`,
@@ -2158,7 +2434,7 @@ const PatternScanMatchTable = React.memo(function PatternScanMatchTable({
   );
 });
 
-function ScanResultView({ scanResult, scanSortKey, setScanSortKey, scanSortDir, setScanSortDir, scanFilterLevel, setScanFilterLevel, selectedScanStocks, toggleScanStock, selectAllVisible, setSelectedScanStocks, sendToAnalyzer, filteredScanResults, scanDate, scanSource, onReload, scanChartCode, scanChartCandles, scanChartLoading, fetchScanChart, scanHistoryList, showScanHistory, setShowScanHistory, loadingScanHistory, loadScanHistoryList, loadScanHistoryDetail }) {
+function ScanResultView({ scanResult, scanSortKey, setScanSortKey, scanSortDir, setScanSortDir, scanFilterLevel, setScanFilterLevel, selectedScanStocks, toggleScanStock, selectAllVisible, setSelectedScanStocks, sendToAnalyzer, filteredScanResults, scanDate, scanSource, onReload, scanChartCode, scanChartCandles, scanChartLoading, fetchScanChart, scanHistoryList, showScanHistory, setShowScanHistory, loadingScanHistory, loadScanHistoryList, loadScanHistoryDetail, registerCandidates }) {
   const handleSort = (key) => {
     if (scanSortKey === key) { setScanSortDir(prev => prev === 'desc' ? 'asc' : 'desc'); }
     else { setScanSortKey(key); setScanSortDir('desc'); }
@@ -2210,6 +2486,12 @@ function ScanResultView({ scanResult, scanSortKey, setScanSortKey, scanSortDir, 
       <div style={{ marginLeft:'auto', display:'flex', gap:8 }}>
         <button onClick={selectAllVisible} style={{ padding:'5px 12px', fontSize:11, borderRadius:6, cursor:'pointer', border:`1px solid ${COLORS.cardBorder}`, background:'transparent', color:COLORS.textDim }}>전체선택</button>
         <button onClick={() => setSelectedScanStocks(new Set())} style={{ padding:'5px 12px', fontSize:11, borderRadius:6, cursor:'pointer', border:`1px solid ${COLORS.cardBorder}`, background:'transparent', color:COLORS.textDim }}>선택해제</button>
+        <button onClick={() => {
+          if (selectedScanStocks.size === 0) return;
+          const scanStocks = scanResult?.stocks || [];
+          const selected = scanStocks.filter(s => selectedScanStocks.has(s.code));
+          registerCandidates(selected, 'scan');
+        }} disabled={selectedScanStocks.size===0} style={{ padding:'6px 16px', fontSize:12, fontWeight:700, borderRadius:8, border:'none', cursor:selectedScanStocks.size>0?'pointer':'default', background:selectedScanStocks.size>0?'#f59e0b':'#374151', color:selectedScanStocks.size>0?'#000':COLORS.textDim }}>📋 후보등록 ({selectedScanStocks.size})</button>
         <button onClick={sendToAnalyzer} disabled={selectedScanStocks.size===0} style={{ padding:'6px 16px', fontSize:12, fontWeight:700, borderRadius:8, border:'none', cursor:selectedScanStocks.size>0?'pointer':'default', background:selectedScanStocks.size>0?COLORS.accent:'#374151', color:selectedScanStocks.size>0?COLORS.white:COLORS.textDim }}>🔬 선택 종목 패턴분석 ({selectedScanStocks.size})</button>
       </div>
     </div>
@@ -2778,6 +3060,17 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
               transition:'all 0.2s',
             }}
           >💰 가상투자 등록 ({selectedRecStocks.size})</button>
+          <button onClick={() => {
+            if (selectedRecStocks.size === 0) return;
+            const recs2 = result?.recommendations || [];
+            const selected2 = recs2.filter(r => selectedRecStocks.has(r.code));
+            registerCandidates(selected2, 'pattern_match');
+          }} disabled={selectedRecStocks.size === 0}
+            style={{ padding:'8px 16px', fontSize:12, fontWeight:600, borderRadius:8, border:'none',
+              cursor: selectedRecStocks.size > 0 ? 'pointer' : 'default',
+              background: selectedRecStocks.size > 0 ? '#f59e0b' : '#374151',
+              color: selectedRecStocks.size > 0 ? '#000' : COLORS.textDim,
+            }}>📋 후보등록</button>
           <button onClick={() => onKisOrder('virtual')} disabled={selectedRecStocks.size === 0}
             style={{ padding:'8px 16px', fontSize:12, fontWeight:600, borderRadius:8, border:'none',
               cursor: selectedRecStocks.size > 0 ? 'pointer' : 'default',
