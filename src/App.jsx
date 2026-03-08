@@ -647,6 +647,11 @@ export function getAuthToken() {
   try { return localStorage.getItem(AUTH_TOKEN_KEY) || ""; } catch { return ""; }
 }
 
+// 공개 페이지 체크 (로그인 없이 접근 가능)
+function isPublicPage() {
+  return window.location.hash === "#/public/virtual-portfolio";
+}
+
 export default function App() {
   const [auth,setAuth]=useState(getStoredAuth);
   const [pw,setPw]=useState("");
@@ -654,6 +659,19 @@ export default function App() {
   const [page,setPage]=useState("trade-journal");
   const [vpKey,setVpKey]=useState(0);
   const [sideOpen,setSideOpen]=useState(true);
+
+  // 공개 페이지: 로그인/메뉴 없이 가상 투자만 표시
+  if(isPublicPage()) return (
+    <div style={{minHeight:"100vh",background:"radial-gradient(ellipse at 30% 20%,rgba(14,24,50,1) 0%,rgba(8,12,24,1) 70%)",fontFamily:"'Noto Sans KR',sans-serif",color:"#e0e6f0"}}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700&family=JetBrains+Mono:wght@400;600;700&family=Orbitron:wght@400;500;600;700;800;900&display=swap');*{margin:0;padding:0;box-sizing:border-box;}::-webkit-scrollbar{width:6px;}::-webkit-scrollbar-track{background:rgba(10,18,40,0.5);}::-webkit-scrollbar-thumb{background:rgba(100,140,200,0.3);border-radius:3px;}`}</style>
+      <div style={{padding:"16px 24px",borderBottom:"1px solid rgba(100,140,200,0.15)",display:"flex",alignItems:"center",gap:12}}>
+        <span style={{fontSize:24}}>💰</span>
+        <span style={{fontFamily:"'Orbitron',sans-serif",fontWeight:700,fontSize:16,color:"#64b5f6"}}>MARK 1</span>
+        <span style={{color:"#8899aa",fontSize:13}}>— 가상 투자 포트폴리오</span>
+      </div>
+      <div style={{padding:16}}><VirtualPortfolioTracker/></div>
+    </div>
+  );
 
   // 앱 로드 시 저장된 토큰 유효성 검증
   useEffect(()=>{
