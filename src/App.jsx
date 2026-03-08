@@ -155,13 +155,13 @@ function DashboardPage() {
   const todayProfit=sells.reduce((s,t)=>s+(t.net_profit||0),0);
   const wins=sells.filter(t=>(t.net_profit||0)>0).length,losses=sells.filter(t=>(t.net_profit||0)<=0).length;
   const totalUnrealized=hList.reduce((s,h)=>s+(h.unrealized_profit||0),0);
-  const initCap=strategies?.[0]?.initial_capital||1000000;
+  const initCap=strategies?.[0]?.initial_capital||3000000;
   const totalAsset=accountData?.total_eval||null;
   const cumRet=totalAsset?((totalAsset-initCap)/initCap*100):0;
-  const tgtPct=totalAsset?(totalAsset/1e9*100):0;
+  const tgtPct=totalAsset?(totalAsset/1e7*100):0;
   const hist=[];
   const chartStock=hList[0]||wList[0]||null;
-  const chartCode=mkt.isOpen?(chartStock?.stock_code||""):"";
+  const chartCode=chartStock?.stock_code||"";
 
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
@@ -221,10 +221,10 @@ function DashboardPage() {
           </div></>}
         </div>
         <div style={{flex:"1 1 400px",background:"linear-gradient(135deg,rgba(25,35,65,0.9),rgba(15,22,48,0.95))",border:"1px solid rgba(100,140,200,0.15)",borderRadius:12,padding:16}}>
-          <div style={{color:"#e0e6f0",fontWeight:600,fontSize:15,marginBottom:12}}>🎯 100만원 → 10억 여정</div>
+          <div style={{color:"#e0e6f0",fontWeight:600,fontSize:15,marginBottom:12}}>🎯 300만원 → 1천만원 여정</div>
           <MiniChart data={hist} width={420} height={130}/>
           <div style={{display:"flex",justifyContent:"space-between",marginTop:12,gap:8}}>
-            {[["시작금액",`${fmt(initCap)}원`,"#e0e6f0"],["현재자산",totalAsset?`${fmt(totalAsset)}원`:"—","#4cff8b"],["남은금액",totalAsset?`${fmt(1000000000-totalAsset)}원`:"—","#ffd54f"]].map(([l,v,c])=><div key={l} style={{flex:1}}><div style={{color:"#556677",fontSize:11}}>{l}</div><div style={{color:c,fontSize:13,fontWeight:600,fontFamily:"monospace"}}>{v}</div></div>)}
+            {[["시작금액",`${fmt(initCap)}원`,"#e0e6f0"],["현재자산",totalAsset?`${fmt(totalAsset)}원`:"—","#4cff8b"],["남은금액",totalAsset?`${fmt(10000000-totalAsset)}원`:"—","#ffd54f"]].map(([l,v,c])=><div key={l} style={{flex:1}}><div style={{color:"#556677",fontSize:11}}>{l}</div><div style={{color:c,fontSize:13,fontWeight:600,fontFamily:"monospace"}}>{v}</div></div>)}
           </div>
           <div style={{marginTop:10}}>
             <div style={{display:"flex",justifyContent:"space-between",fontSize:11}}><span style={{color:"#556677"}}>목표 진행률</span><span style={{color:"#64b5f6"}}>{tgtPct.toFixed(2)}%</span></div>
@@ -319,18 +319,152 @@ function GrowthPage() {
   const {data:st}=useApi("/api/strategy/",0);
   if(loading) return <Loader t="성장 여정 로딩..."/>;
   const hist=[];
-  const ic=st?.[0]?.initial_capital||1000000;
+  const ic=st?.[0]?.initial_capital||3000000;
   const la=accountData?.total_eval||ic;
-  const tp=la/1e9*100;
+  const tp=la/1e7*100;
   return (
     <div style={{background:"linear-gradient(135deg,rgba(25,35,65,0.9),rgba(15,22,48,0.95))",border:"1px solid rgba(100,140,200,0.15)",borderRadius:12,padding:24}}>
-      <div style={{color:"#e0e6f0",fontWeight:600,fontSize:18,marginBottom:16}}>🎯 100만원 → 10억 여정</div>
+      <div style={{color:"#e0e6f0",fontWeight:600,fontSize:18,marginBottom:16}}>🎯 300만원 → 1천만원 여정</div>
       <MiniChart data={hist} width={700} height={200}/>
       <div style={{display:"flex",justifyContent:"space-between",marginTop:20,gap:16}}>
-        {[["시작금액",`${fmt(ic)}원`,"#e0e6f0"],["현재자산",`${fmt(la)}원`,"#4cff8b"],["목표","1,000,000,000원","#ffd54f"],["남은금액",`${fmt(1e9-la)}원`,"#ff9800"]].map(([l,v,c])=><div key={l} style={{flex:1}}><div style={{color:"#556677",fontSize:12}}>{l}</div><div style={{color:c,fontSize:16,fontWeight:600,fontFamily:"monospace"}}>{v}</div></div>)}
+        {[["시작금액",`${fmt(ic)}원`,"#e0e6f0"],["현재자산",`${fmt(la)}원`,"#4cff8b"],["목표","10,000,000원","#ffd54f"],["남은금액",`${fmt(1e7-la)}원`,"#ff9800"]].map(([l,v,c])=><div key={l} style={{flex:1}}><div style={{color:"#556677",fontSize:12}}>{l}</div><div style={{color:c,fontSize:16,fontWeight:600,fontFamily:"monospace"}}>{v}</div></div>)}
       </div>
       <div style={{marginTop:16}}><div style={{display:"flex",justifyContent:"space-between",fontSize:12}}><span style={{color:"#556677"}}>목표 진행률</span><span style={{color:"#64b5f6"}}>{tp.toFixed(4)}%</span></div><div style={{background:"rgba(10,18,40,0.8)",borderRadius:6,height:10,marginTop:6,overflow:"hidden"}}><div style={{background:"linear-gradient(90deg,#4fc3f7,#4cff8b)",width:`${Math.max(tp,0.1)}%`,minWidth:4,height:"100%",borderRadius:6}}/></div></div>
       <div style={{marginTop:12,color:"#556677",fontSize:12}}>경과일: {hist.length}일</div>
+    </div>
+  );
+}
+
+function GoalChartPage() {
+  const canvasRef=React.useRef(null);
+  const STARTS=[1000000,2000000,3000000,4000000,5000000];
+  const GOAL=10000000;
+  const RATE=0.20;
+  const COLORS_LINE=['#ef4444','#f59e0b','#4cff8b','#3b82f6','#a855f7'];
+  const LABELS=['100만원','200만원','300만원','400만원','500만원'];
+
+  React.useEffect(()=>{
+    const canvas=canvasRef.current;if(!canvas)return;
+    const ctx=canvas.getContext('2d');
+    const dpr=window.devicePixelRatio||1;
+
+    // 데이터 계산
+    const datasets=STARTS.map(start=>{
+      const pts=[start];let v=start;
+      while(v<GOAL){v=Math.round(v*(1+RATE));pts.push(Math.min(v,GOAL*1.05));if(v>=GOAL)break;}
+      return pts;
+    });
+    const maxRounds=Math.max(...datasets.map(d=>d.length));
+    datasets.forEach(d=>{while(d.length<maxRounds)d.push(d[d.length-1]);});
+
+    const draw=()=>{
+      const W=canvas.parentElement.offsetWidth,H=400;
+      canvas.width=W*dpr;canvas.height=H*dpr;
+      canvas.style.width=W+'px';canvas.style.height=H+'px';
+      ctx.setTransform(dpr,0,0,dpr,0,0);
+
+      const padL=80,padR=30,padT=20,padB=50;
+      const cW=W-padL-padR,cH=H-padT-padB;
+      const maxVal=Math.max(GOAL*1.1,...datasets.flat());
+      const toX=i=>padL+(i/(maxRounds-1))*cW;
+      const toY=v=>padT+(1-v/maxVal)*cH;
+
+      // 그리드
+      ctx.strokeStyle='rgba(50,70,100,0.3)';ctx.lineWidth=0.5;ctx.setLineDash([4,4]);
+      [200,400,600,800,1000,1200].forEach(v=>{
+        const val=v*10000;if(val>maxVal)return;
+        const y=toY(val);
+        ctx.beginPath();ctx.moveTo(padL,y);ctx.lineTo(W-padR,y);ctx.stroke();
+        ctx.fillStyle='#445566';ctx.font='10px monospace';ctx.textAlign='right';
+        ctx.fillText(v+'만',padL-8,y+4);
+      });
+      ctx.setLineDash([]);
+
+      // 목표선
+      const gy=toY(GOAL);
+      ctx.strokeStyle='#ffd54f';ctx.lineWidth=1.5;ctx.setLineDash([8,4]);
+      ctx.beginPath();ctx.moveTo(padL,gy);ctx.lineTo(W-padR,gy);ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle='#ffd54f';ctx.font='bold 11px sans-serif';ctx.textAlign='left';
+      ctx.fillText('🎯 목표 1,000만원',W-padR-130,gy-8);
+
+      // X축
+      ctx.fillStyle='#556677';ctx.font='10px monospace';ctx.textAlign='center';
+      for(let i=0;i<maxRounds;i++){
+        ctx.fillText(i===0?'시작':`${i*10}일`,toX(i),H-padB+20);
+      }
+
+      // 라인
+      datasets.forEach((data,di)=>{
+        ctx.strokeStyle=COLORS_LINE[di];ctx.lineWidth=2.5;ctx.lineJoin='round';
+        ctx.beginPath();
+        data.forEach((v,i)=>{i===0?ctx.moveTo(toX(i),toY(v)):ctx.lineTo(toX(i),toY(v));});
+        ctx.stroke();
+        // 포인트
+        data.forEach((v,i)=>{
+          ctx.fillStyle=COLORS_LINE[di];ctx.beginPath();ctx.arc(toX(i),toY(v),4,0,Math.PI*2);ctx.fill();
+          ctx.fillStyle='#0a0f1e';ctx.beginPath();ctx.arc(toX(i),toY(v),2,0,Math.PI*2);ctx.fill();
+        });
+        // 도달 표시
+        const ri=data.findIndex(v=>v>=GOAL);
+        if(ri>0){
+          const rx=toX(ri),ry=toY(data[ri]);
+          ctx.fillStyle=COLORS_LINE[di];ctx.beginPath();ctx.arc(rx,ry,7,0,Math.PI*2);ctx.fill();
+          ctx.fillStyle='#fff';ctx.font='bold 8px sans-serif';ctx.textAlign='center';ctx.fillText('✓',rx,ry+3);
+          ctx.fillStyle=COLORS_LINE[di];ctx.font='bold 11px sans-serif';ctx.fillText(`${ri*10}일`,rx,ry-14);
+        }
+      });
+    };
+    draw();
+    const ro=new ResizeObserver(draw);ro.observe(canvas.parentElement);
+    return()=>ro.disconnect();
+  },[]);
+
+  // 테이블 데이터
+  const datasets=STARTS.map(start=>{
+    const pts=[start];let v=start;
+    while(v<GOAL){v=Math.round(v*(1+RATE));pts.push(v);if(v>=GOAL)break;}
+    return pts;
+  });
+  const maxR=Math.max(...datasets.map(d=>d.length));
+  datasets.forEach(d=>{while(d.length<maxR)d.push(d[d.length-1]);});
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:16}}>
+      <div style={{background:"linear-gradient(135deg,rgba(25,35,65,0.9),rgba(15,22,48,0.95))",border:"1px solid rgba(100,140,200,0.15)",borderRadius:12,padding:20}}>
+        <div style={{color:"#e0e6f0",fontWeight:600,fontSize:17,marginBottom:4}}>📈 시작금액별 1천만원 도달 비교</div>
+        <div style={{color:"#6688aa",fontSize:12,marginBottom:16}}>10일마다 수익률 20% 복리 적용 | 목표: 10,000,000원</div>
+        <canvas ref={canvasRef} style={{display:"block",width:"100%"}}/>
+        <div style={{display:"flex",gap:16,justifyContent:"center",marginTop:16,flexWrap:"wrap"}}>
+          {LABELS.map((l,i)=>{
+            const ri=datasets[i].findIndex(v=>v>=GOAL);
+            return <div key={l} style={{display:"flex",alignItems:"center",gap:6,fontSize:12}}>
+              <div style={{width:12,height:12,borderRadius:3,background:COLORS_LINE[i]}}/>
+              <span>{l} → <strong>{ri>0?`${ri*10}일`:'—'}</strong></span>
+            </div>;
+          })}
+        </div>
+      </div>
+      <div style={{background:"linear-gradient(135deg,rgba(25,35,65,0.9),rgba(15,22,48,0.95))",border:"1px solid rgba(100,140,200,0.15)",borderRadius:12,padding:20}}>
+        <div style={{color:"#e0e6f0",fontWeight:600,fontSize:15,marginBottom:12}}>📊 상세 데이터</div>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+          <thead><tr style={{borderBottom:"1px solid rgba(100,140,200,0.2)"}}>
+            <th style={{padding:"8px 6px",color:"#6688aa",textAlign:"center"}}>회차 (10일)</th>
+            {LABELS.map(l=><th key={l} style={{padding:"8px 6px",color:"#6688aa",textAlign:"center"}}>{l}</th>)}
+          </tr></thead>
+          <tbody>{Array.from({length:maxR}).map((_,i)=>(
+            <tr key={i} style={{borderBottom:"1px solid rgba(100,140,200,0.08)"}}>
+              <td style={{padding:"6px",color:"#6688aa",textAlign:"center",fontFamily:"monospace"}}>{i===0?'시작':`${i}회 (${i*10}일)`}</td>
+              {datasets.map((d,di)=>{
+                const v=d[i],reached=v>=GOAL,firstReach=reached&&(i===0||d[i-1]<GOAL);
+                return <td key={di} style={{padding:"6px",textAlign:"center",fontFamily:"monospace",color:COLORS_LINE[di],fontWeight:firstReach?700:400}}>
+                  {(v/10000).toLocaleString(undefined,{maximumFractionDigits:0})}만원{firstReach?' 🎯':''}
+                </td>;
+              })}
+            </tr>
+          ))}</tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -495,6 +629,7 @@ const MENU=[
   {id:"kis-trading",icon:"🏦",label:"KIS 모의투자",bold:true},
   {id:"kis-real",icon:"🔴",label:"KIS 실전투자",bold:true},
   {id:"trade-journal",icon:"📋",label:"매매 일지",bold:true},
+  {id:"goal-chart",icon:"📉",label:"목표차트"},
   {id:"market-analysis",icon:"🔥",label:"시장 분석"},
   {id:"backup",icon:"💾",label:"DB 백업"},
   {id:"settings",icon:"⚙️",label:"설정"},
@@ -522,7 +657,7 @@ export default function App() {
   const [sideOpen,setSideOpen]=useState(true);
   const {data:appAccount}=useApi("/api/trading/account",60000);
   const ta=appAccount?.total_eval||null;
-  const tp=ta?(ta/1e9*100):0;
+  const tp=ta?(ta/1e7*100):0;
 
   // 앱 로드 시 저장된 토큰 유효성 검증
   useEffect(()=>{
@@ -558,7 +693,7 @@ export default function App() {
     <div style={{minHeight:"100vh",background:"radial-gradient(ellipse at 30% 20%,rgba(14,24,50,1) 0%,rgba(8,12,24,1) 70%)",display:"flex",alignItems:"center",justifyContent:"center"}}>
       <div style={{background:"linear-gradient(135deg,rgba(25,35,65,0.95),rgba(15,22,48,0.98))",border:"1px solid rgba(100,140,200,0.2)",borderRadius:16,padding:40,textAlign:"center",width:340}}>
         <div style={{fontSize:40,marginBottom:12}}>💰</div>
-        <div style={{color:"#e0e6f0",fontSize:20,fontWeight:700,marginBottom:4}}>10억 만들기</div>
+        <div style={{color:"#e0e6f0",fontSize:20,fontWeight:700,marginBottom:4}}>1천만원 만들기</div>
         <div style={{color:"#6688aa",fontSize:12,marginBottom:24}}>한국 주식 자동매매 시스템</div>
         <input value={pw} onChange={e=>setPw(e.target.value)} onKeyDown={e=>e.key==="Enter"&&doLogin()} type="password" placeholder="비밀번호 입력" style={{width:"100%",padding:"12px 16px",background:"rgba(10,18,40,0.8)",border:"1px solid rgba(100,140,200,0.2)",borderRadius:8,color:"#e0e6f0",fontSize:14,marginBottom:12,outline:"none"}}/>
         <button onClick={doLogin} disabled={authLoading} style={{width:"100%",padding:"12px",background:authLoading?"#333":"linear-gradient(135deg,#1a3a6e,#2a5098)",color:"#e0e6f0",border:"none",borderRadius:8,fontSize:14,fontWeight:600,cursor:authLoading?"wait":"pointer"}}>{authLoading?"인증 중...":"로그인"}</button>
@@ -584,6 +719,7 @@ export default function App() {
       case "kis-trading": return <KisTrading key="virtual" mode="virtual" />;
       case "kis-real": return <KisTrading key="real" mode="real" />;
       case "trade-journal": return <TradeJournal/>;
+      case "goal-chart": return <GoalChartPage/>;
       case "market-analysis": return <MarketAnalysis/>;
       default: return <DashboardPage/>;
     }
@@ -636,7 +772,7 @@ export default function App() {
         {MENU.map(m=>{const isInvest=m.bold;const active=page===m.id;return <div key={m.id} onClick={()=>{setPage(m.id);if(m.id==='virtual-portfolio')setVpKey(k=>k+1);}} style={{padding:sideOpen?"10px 16px":"10px 0",cursor:"pointer",background:active?"rgba(26,58,110,0.6)":isInvest?"#4caf50":"transparent",borderRadius:6,margin:"1px 6px",color:active?"#fff":isInvest?"#fff":"#6688aa",fontSize:13,fontWeight:isInvest?"bold":"normal",textAlign:sideOpen?"left":"center",transition:"background 0.15s"}}>{m.icon}{sideOpen?` ${m.label}`:""}</div>})}
         <div style={{flex:1}}/>
         <div style={{borderTop:"1px solid rgba(100,140,200,0.1)",margin:"0 8px",padding:sideOpen?16:8}}>
-          {sideOpen&&<><div style={{color:"#556677",fontSize:11}}>총 자산</div><div style={{color:"#4cff8b",fontSize:14,fontWeight:600,fontFamily:"monospace"}}>{ta?`${fmt(ta)}원`:"—"}</div><div style={{color:"#556677",fontSize:11,marginTop:8}}>목표 진행률</div><div style={{background:"rgba(10,18,40,0.8)",borderRadius:6,height:6,marginTop:4,overflow:"hidden"}}><div style={{background:"#64b5f6",width:`${Math.max(tp,0.1)}%`,minWidth:3,height:"100%",borderRadius:6}}/></div><div style={{color:"#445566",fontSize:10,marginTop:3}}>{tp.toFixed(2)}% / 10억</div>
+          {sideOpen&&<><div style={{color:"#556677",fontSize:11}}>총 자산</div><div style={{color:"#4cff8b",fontSize:14,fontWeight:600,fontFamily:"monospace"}}>{ta?`${fmt(ta)}원`:"—"}</div><div style={{color:"#556677",fontSize:11,marginTop:8}}>목표 진행률</div><div style={{background:"rgba(10,18,40,0.8)",borderRadius:6,height:6,marginTop:4,overflow:"hidden"}}><div style={{background:"#64b5f6",width:`${Math.max(tp,0.1)}%`,minWidth:3,height:"100%",borderRadius:6}}/></div><div style={{color:"#445566",fontSize:10,marginTop:3}}>{tp.toFixed(2)}% / 1천만원</div>
           <div onClick={doLogout} style={{marginTop:12,padding:"6px 0",textAlign:"center",color:"#ff6666",fontSize:11,cursor:"pointer",borderRadius:6,border:"1px solid rgba(255,100,100,0.2)"}}>로그아웃</div></>}
         </div>
       </div>

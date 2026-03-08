@@ -294,7 +294,7 @@ export default function KisTrading({ mode = "virtual" }) {
 
   const tabs = [
     { id: "config", label: "API 설정", icon: "🔑" },
-    { id: "balance", label: "잔고", icon: "💰" },
+    { id: "balance", label: "대시보드", icon: "💰" },
     { id: "autotrade", label: "자동매매", icon: "🤖" },
     { id: "order", label: "주문", icon: "📝" },
     { id: "orders", label: "체결내역", icon: "📋" },
@@ -456,29 +456,51 @@ function ConfigPanel({ mode = 'virtual', onConnect }) {
 }
 
 // ============================================================
-// Balance Panel
+// Dashboard Panel (기존 BalancePanel → 대시보드 레이아웃으로 확장)
 // ============================================================
 function BalancePanel() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [orders, setOrders] = useState([]);
+  const [ordersLoading, setOrdersLoading] = useState(true);
+  const [chartStock, setChartStock] = useState(null);
+  const [quoteData, setQuoteData] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     const r = await kisApi("balance");
     setData(r);
     setLoading(false);
+    // 보유종목 첫번째 종목 시세 조회
+    if (r?.success && r.positions?.length > 0) {
+      const first = r.positions[0];
+      setChartStock(first);
+      const q = await kisApi("quote", { code: first.stock_code });
+      if (q?.success) setQuoteData(q);
+    }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  const loadOrders = useCallback(async () => {
+    setOrdersLoading(true);
+    const r = await kisApi("orders");
+    if (r?.success) setOrders(r.orders || []);
+    setOrdersLoading(false);
+  }, []);
 
-  if (loading) return <div style={{ ...S.panel, textAlign: "center", padding: 40, color: "#6688aa" }}>잔고 조회 중...</div>;
+  useEffect(() => { load(); loadOrders(); }, [load, loadOrders]);
+
+  if (loading) return <div style={{ ...S.panel, textAlign: "center", padding: 40, color: "#6688aa" }}>대시보드 로딩 중...</div>;
   if (!data?.success) return <div style={{ ...S.panel, textAlign: "center", padding: 40, color: "#ff9800" }}>잔고 조회 실패 - KIS API 설정을 확인하세요</div>;
 
   const { positions, summary } = data;
+  const GOAL = 10000000;
+  const initCap = 3000000;
+  const tgtPct = summary.total_eval ? (summary.total_eval / GOAL * 100) : 0;
+  const remaining = Math.max(0, GOAL - (summary.total_eval || 0));
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      {/* Summary Cards */}
+      {/* ★ 상단 4개 요약 카드 */}
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
         {[
           ["💰", "총 평가액", `${fmt(summary.total_eval)}원`, clr(summary.total_profit)],
@@ -493,35 +515,159 @@ function BalancePanel() {
         ))}
       </div>
 
-      {/* Holdings Table */}
-      <div style={S.panel}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-          <div style={S.title}>보유종목 ({positions.length})</div>
-          <button onClick={load} style={{ ...S.btn(), padding: "6px 14px", fontSize: 11 }}>새로고침</button>
+      {/* ★ 중간행: 시세 정보 + 보유종목 */}
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+        {/* 실시간 시세 패널 */}
+        <div style={{ ...S.panel, flex: "1 1 550px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <div>
+              <span style={{ color: "#e0e6f0", fontWeight: 600, fontSize: 15 }}>📈 실시간 시세</span>
+              <span style={{ color: "#6688aa", fontSize: 12, marginLeft: 12 }}>
+                {chartStock ? `${chartStock.stock_name} (${chartStock.stock_code})` : "종목 없음"}
+              </span>
+            </div>
+            {chartStock && <span style={{ color: clr(chartStock.profit_rate || 0), fontSize: 16, fontWeight: 700, fontFamily: "monospace" }}>{fmt(chartStock.current_price)}원</span>}
+          </div>
+          {quoteData ? (
+            <div style={{ background: "rgba(8,15,30,0.8)", borderRadius: 8, padding: 16 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+                {[
+                  ["현재가", fmt(quoteData.price), clr(quoteData.change)],
+                  ["전일대비", `${quoteData.change >= 0 ? "+" : ""}${fmt(quoteData.change)}`, clr(quoteData.change)],
+                  ["등락률", `${quoteData.change_rate >= 0 ? "+" : ""}${quoteData.change_rate}%`, clr(quoteData.change_rate)],
+                  ["거래량", fmt(quoteData.volume), "#e0e6f0"],
+                  ["시가", fmt(quoteData.open), "#e0e6f0"],
+                  ["고가", fmt(quoteData.high), "#ff4444"],
+                  ["저가", fmt(quoteData.low), "#4488ff"],
+                  ["전일종가", fmt(quoteData.prev_close), "#6688aa"],
+                ].map(([label, val, color]) => (
+                  <div key={label}>
+                    <div style={{ color: "#556677", fontSize: 10 }}>{label}</div>
+                    <div style={{ color, fontSize: 14, fontWeight: 600, fontFamily: "monospace" }}>{val}</div>
+                  </div>
+                ))}
+              </div>
+              {/* 종목 전환 버튼 */}
+              {positions.length > 1 && (
+                <div style={{ display: "flex", gap: 6, marginTop: 12, flexWrap: "wrap" }}>
+                  {positions.map((p, i) => (
+                    <button key={i} onClick={async () => {
+                      setChartStock(p);
+                      const q = await kisApi("quote", { code: p.stock_code });
+                      if (q?.success) setQuoteData(q);
+                    }} style={{
+                      background: chartStock?.stock_code === p.stock_code ? "rgba(79,195,247,0.2)" : "transparent",
+                      color: chartStock?.stock_code === p.stock_code ? "#4fc3f7" : "#556677",
+                      border: `1px solid ${chartStock?.stock_code === p.stock_code ? "rgba(79,195,247,0.3)" : "transparent"}`,
+                      borderRadius: 6, padding: "4px 10px", fontSize: 11, cursor: "pointer",
+                    }}>{p.stock_name}</button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div style={{ height: 200, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(8,15,30,0.8)", borderRadius: 8 }}>
+              <span style={{ color: "#556677", fontSize: 12 }}>{positions.length > 0 ? "시세 조회 중..." : "보유 종목이 없습니다"}</span>
+            </div>
+          )}
         </div>
-        {positions.length === 0 ? (
-          <div style={{ textAlign: "center", padding: 30, color: "#6688aa" }}>보유 종목 없음</div>
-        ) : (
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>{["종목", "코드", "수량", "평균단가", "현재가", "평가금액", "손익", "수익률"].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
-            </thead>
-            <tbody>
-              {positions.map((p, i) => (
-                <tr key={i} style={{ background: i % 2 === 0 ? "rgba(10,18,40,0.3)" : "transparent" }}>
-                  <td style={{ ...S.td, color: "#e0e6f0", fontWeight: 600 }}>{p.stock_name}</td>
-                  <td style={{ ...S.td, color: "#6688aa", fontFamily: "monospace" }}>{p.stock_code}</td>
-                  <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace" }}>{fmt(p.qty)}</td>
-                  <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace" }}>{fmt(Math.round(p.avg_price))}</td>
-                  <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace" }}>{fmt(p.current_price)}</td>
-                  <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace" }}>{fmt(p.eval_amount)}</td>
-                  <td style={{ ...S.td, color: clr(p.profit_loss), fontFamily: "monospace", fontWeight: 600 }}>{fmtWon(p.profit_loss)}</td>
-                  <td style={{ ...S.td, color: clr(p.profit_rate), fontFamily: "monospace", fontWeight: 600 }}>{fmtPct(p.profit_rate)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+
+        {/* 보유종목 테이블 */}
+        <div style={{ ...S.panel, flex: "1 1 400px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <div style={S.title}>💼 보유종목 ({positions.length})</div>
+            <button onClick={load} style={{ ...S.btn(), padding: "6px 12px", fontSize: 11 }}>새로고침</button>
+          </div>
+          {positions.length === 0 ? (
+            <div style={{ textAlign: "center", padding: 30, color: "#6688aa" }}>보유 종목 없음</div>
+          ) : (
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>{["종목", "수량", "평균가", "현재가", "손익", "수익률"].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
+              </thead>
+              <tbody>
+                {positions.map((p, i) => (
+                  <tr key={i} style={{ borderBottom: "1px solid rgba(100,140,200,0.08)", cursor: "pointer" }}
+                    onClick={async () => { setChartStock(p); const q = await kisApi("quote", { code: p.stock_code }); if (q?.success) setQuoteData(q); }}>
+                    <td style={{ ...S.td, color: "#e0e6f0", fontWeight: 600 }}>{p.stock_name}({p.stock_code})</td>
+                    <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace" }}>{fmt(p.qty)}</td>
+                    <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace" }}>{fmt(Math.round(p.avg_price))}</td>
+                    <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace" }}>{fmt(p.current_price)}</td>
+                    <td style={{ ...S.td, color: clr(p.profit_loss), fontFamily: "monospace", fontWeight: 600 }}>{fmtWon(p.profit_loss)}</td>
+                    <td style={{ ...S.td, color: clr(p.profit_rate), fontFamily: "monospace", fontWeight: 600 }}>{fmtPct(p.profit_rate)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+
+      {/* ★ 하단행: 오늘 체결내역 + 목표 여정 */}
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+        {/* 오늘 체결내역 */}
+        <div style={{ ...S.panel, flex: "1 1 500px" }}>
+          <div style={S.title}>📋 오늘 체결내역</div>
+          {ordersLoading ? (
+            <div style={{ textAlign: "center", padding: 20, color: "#6688aa", fontSize: 12 }}>체결내역 로딩 중...</div>
+          ) : orders.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "20px 0", color: "#6688aa", fontSize: 12 }}>오늘 체결내역 없음</div>
+          ) : (
+            <><table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>{["시간", "종목", "구분", "수량", "체결가", "상태"].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
+              </thead>
+              <tbody>
+                {orders.slice(0, 10).map((o, i) => (
+                  <tr key={i} style={{ borderBottom: "1px solid rgba(100,140,200,0.08)" }}>
+                    <td style={{ ...S.td, color: "#6688aa", fontFamily: "monospace" }}>{o.order_time?.slice(0, 4) ? `${o.order_time.slice(0, 2)}:${o.order_time.slice(2, 4)}` : o.order_time}</td>
+                    <td style={{ ...S.td, color: "#e0e6f0", fontWeight: 600 }}>{o.stock_name}</td>
+                    <td style={{ ...S.td, color: o.side === "매수" ? "#ff4444" : "#4488ff", fontWeight: 600 }}>{o.side}</td>
+                    <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace" }}>{fmt(o.exec_qty || o.order_qty)}</td>
+                    <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace" }}>{fmt(o.exec_price || o.order_price)}</td>
+                    <td style={{ ...S.td, color: o.exec_qty > 0 ? "#4cff8b" : "#ff9800" }}>{o.exec_qty > 0 ? "체결" : "미체결"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div style={{ borderTop: "1px solid rgba(100,140,200,0.15)", marginTop: 8, paddingTop: 8, display: "flex", gap: 20 }}>
+              <span style={{ color: "#6688aa", fontSize: 12 }}>
+                체결 {orders.filter(o => o.exec_qty > 0).length}건 | 매수 {orders.filter(o => o.side === "매수").length}건 매도 {orders.filter(o => o.side === "매도").length}건
+              </span>
+            </div></>
+          )}
+        </div>
+
+        {/* 300만원 → 1천만원 여정 */}
+        <div style={{ ...S.panel, flex: "1 1 400px" }}>
+          <div style={S.title}>🎯 300만원 → 1천만원 여정</div>
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, gap: 8 }}>
+            {[
+              ["시작금액", `${fmt(initCap)}원`, "#e0e6f0"],
+              ["현재자산", `${fmt(summary.total_eval)}원`, "#4cff8b"],
+              ["남은금액", `${fmt(remaining)}원`, "#ffd54f"],
+            ].map(([l, v, c]) => (
+              <div key={l} style={{ flex: 1 }}>
+                <div style={{ color: "#556677", fontSize: 11 }}>{l}</div>
+                <div style={{ color: c, fontSize: 13, fontWeight: 600, fontFamily: "'JetBrains Mono',monospace" }}>{v}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
+              <span style={{ color: "#556677" }}>목표 진행률</span>
+              <span style={{ color: "#64b5f6" }}>{tgtPct.toFixed(2)}%</span>
+            </div>
+            <div style={{ background: "rgba(10,18,40,0.8)", borderRadius: 6, height: 8, marginTop: 4, overflow: "hidden" }}>
+              <div style={{ background: "linear-gradient(90deg,#4fc3f7,#4cff8b)", width: `${Math.min(Math.max(tgtPct, 0.1), 100)}%`, minWidth: 4, height: "100%", borderRadius: 6 }} />
+            </div>
+          </div>
+          {tgtPct >= 100 && (
+            <div style={{ marginTop: 12, padding: 10, borderRadius: 8, background: "rgba(76,255,139,0.1)", border: "1px solid rgba(76,255,139,0.2)", textAlign: "center" }}>
+              <span style={{ color: "#4cff8b", fontSize: 14, fontWeight: 700 }}>🎉 목표 달성!</span>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
