@@ -616,19 +616,18 @@ function SettingsPage() {
 // Main App
 // ============================================================
 const MENU=[
-  {id:"dashboard",icon:"📊",label:"대시보드"},
+  {id:"trade-journal",icon:"📊",label:"대시보드",bold:true},
   {id:"compare",icon:"⚖️",label:"전략 비교"},
   {id:"history",icon:"📋",label:"매매이력"},
   {id:"watchlist",icon:"🔍",label:"감시종목"},
   {id:"performance",icon:"📈",label:"수익분석"},
   {id:"growth",icon:"🎯",label:"성장여정"},
   {id:"strategy",icon:"📖",label:"전략정리"},
-   {id:"swing",icon:"📊",label:"스윙백테스트"},
+  {id:"swing",icon:"📊",label:"스윙백테스트"},
   {id:"pattern",icon:"🔍",label:"패턴탐지기",bold:true},
   {id:"virtual-portfolio",icon:"📊",label:"가상투자",bold:true},
   {id:"kis-trading",icon:"🏦",label:"KIS 모의투자",bold:true},
   {id:"kis-real",icon:"🔴",label:"KIS 실전투자",bold:true},
-  {id:"trade-journal",icon:"📋",label:"매매 일지",bold:true},
   {id:"goal-chart",icon:"📉",label:"목표차트"},
   {id:"market-analysis",icon:"🔥",label:"시장 분석"},
   {id:"backup",icon:"💾",label:"DB 백업"},
@@ -652,7 +651,7 @@ export default function App() {
   const [auth,setAuth]=useState(getStoredAuth);
   const [pw,setPw]=useState("");
   const [authLoading,setAuthLoading]=useState(false);
-  const [page,setPage]=useState("dashboard");
+  const [page,setPage]=useState("trade-journal");
   const [vpKey,setVpKey]=useState(0);
   const [sideOpen,setSideOpen]=useState(true);
   const {data:appAccount}=useApi("/api/trading/account",60000);
@@ -703,7 +702,7 @@ export default function App() {
 
   const render=()=>{
     switch(page){
-      case "dashboard": return <DashboardPage/>;
+      case "dashboard": return <TradeJournal/>;
       case "compare": return <ComparePage/>;
       case "history": return <HistoryPage/>;
       case "watchlist": return <WatchlistPage/>;
@@ -721,7 +720,7 @@ export default function App() {
       case "trade-journal": return <TradeJournal/>;
       case "goal-chart": return <GoalChartPage/>;
       case "market-analysis": return <MarketAnalysis/>;
-      default: return <DashboardPage/>;
+      default: return <TradeJournal/>;
     }
   };
  
