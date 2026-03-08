@@ -161,7 +161,7 @@ function DashboardPage() {
   const tgtPct=totalAsset?(totalAsset/1e9*100):0;
   const hist=[];
   const chartStock=hList[0]||wList[0]||null;
-  const chartCode=mkt.isOpen?(chartStock?.stock_code||""):"";
+  const chartCode=chartStock?.stock_code||"";
 
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
