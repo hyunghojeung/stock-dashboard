@@ -808,19 +808,21 @@ export default function PatternDetector() {
   }, []);
 
   // 스캔 결과를 Supabase에 직접 저장 (백엔드 미배포 대응)
+  // 스캔 결과를 Supabase에 저장 (백엔드가 세션만 만들고 종목 저장 실패하는 문제 대응)
   const saveScanToHistory = useCallback(async (resultData) => {
     if (!resultData || !resultData.stocks || resultData.stocks.length === 0) {
       await loadScanHistoryList();
       return;
     }
     try {
-      // 1) 기존 백엔드 저장 확인 — 최근 세션에 종목 데이터가 있으면 스킵
+      // 1) 최근 done/stopped 세션 확인
       const { data: recentSessions } = await supabase
         .from('surge_scan_sessions')
         .select('id')
         .in('status', ['done', 'stopped'])
         .order('id', { ascending: false })
         .limit(1);
+      let sessionId = null;
       if (recentSessions && recentSessions.length > 0) {
         const { data: stockCheck } = await supabase
           .from('surge_scan_stocks')
@@ -828,27 +830,31 @@ export default function PatternDetector() {
           .eq('session_id', recentSessions[0].id)
           .limit(1);
         if (stockCheck && stockCheck.length > 0) {
-          // 백엔드가 이미 저장함 → 목록만 갱신
+          // 백엔드가 이미 종목까지 저장함 → 스킵
           await loadScanHistoryList();
           return;
         }
+        // 세션은 있지만 종목이 없음 → 이 세션에 종목 저장
+        sessionId = recentSessions[0].id;
       }
-      // 2) 세션 생성
-      const stats = resultData.stats || {};
-      const sessionRow = {
-        scan_date: resultData.scan_date || new Date().toISOString(),
-        market: resultData.market || 'ALL',
-        status: resultData.stopped ? 'stopped' : 'done',
-        total_scanned: stats.total_scanned || 0,
-        total_found: stats.total_found || 0,
-        total_surges: stats.total_surges || 0,
-        high_manip_count: stats.high_manip_count || 0,
-        medium_manip_count: stats.medium_manip_count || 0,
-      };
-      const { data: sessData, error: sessErr } = await supabase
-        .from('surge_scan_sessions').insert(sessionRow).select('id').single();
-      if (sessErr || !sessData) throw sessErr || new Error('세션 생성 실패');
-      const sessionId = sessData.id;
+      // 2) 세션이 없으면 새로 생성
+      if (!sessionId) {
+        const stats = resultData.stats || {};
+        const sessionRow = {
+          scan_date: resultData.scan_date || new Date().toISOString(),
+          market: resultData.market || 'ALL',
+          status: resultData.stopped ? 'stopped' : 'done',
+          total_scanned: stats.total_scanned || 0,
+          total_found: stats.total_found || 0,
+          total_surges: stats.total_surges || 0,
+          high_manip_count: stats.high_manip_count || 0,
+          medium_manip_count: stats.medium_manip_count || 0,
+        };
+        const { data: sessData, error: sessErr } = await supabase
+          .from('surge_scan_sessions').insert(sessionRow).select('id').single();
+        if (sessErr || !sessData) throw sessErr || new Error('세션 생성 실패');
+        sessionId = sessData.id;
+      }
       // 3) 종목 데이터 50개씩 배치 저장
       const stocks = resultData.stocks;
       for (let i = 0; i < stocks.length; i += 50) {
@@ -871,9 +877,9 @@ export default function PatternDetector() {
         const { error: stockErr } = await supabase.from('surge_scan_stocks').insert(batch);
         if (stockErr) console.error('[scan-history] 종목 배치 저장 실패:', stockErr);
       }
-      console.log(`[scan-history] 프론트엔드 직접 저장 완료: session_id=${sessionId}, ${stocks.length}개 종목`);
+      console.log(`[scan-history] 저장 완료: session_id=${sessionId}, ${stocks.length}개 종목`);
     } catch (e) {
-      console.error('[scan-history] 프론트엔드 저장 실패:', e);
+      console.error('[scan-history] 저장 실패:', e);
     }
     await loadScanHistoryList();
   }, [loadScanHistoryList]);
