@@ -335,6 +335,140 @@ function GrowthPage() {
   );
 }
 
+function GoalChartPage() {
+  const canvasRef=React.useRef(null);
+  const STARTS=[1000000,2000000,3000000,4000000,5000000];
+  const GOAL=10000000;
+  const RATE=0.20;
+  const COLORS_LINE=['#ef4444','#f59e0b','#4cff8b','#3b82f6','#a855f7'];
+  const LABELS=['100만원','200만원','300만원','400만원','500만원'];
+
+  React.useEffect(()=>{
+    const canvas=canvasRef.current;if(!canvas)return;
+    const ctx=canvas.getContext('2d');
+    const dpr=window.devicePixelRatio||1;
+
+    // 데이터 계산
+    const datasets=STARTS.map(start=>{
+      const pts=[start];let v=start;
+      while(v<GOAL){v=Math.round(v*(1+RATE));pts.push(Math.min(v,GOAL*1.05));if(v>=GOAL)break;}
+      return pts;
+    });
+    const maxRounds=Math.max(...datasets.map(d=>d.length));
+    datasets.forEach(d=>{while(d.length<maxRounds)d.push(d[d.length-1]);});
+
+    const draw=()=>{
+      const W=canvas.parentElement.offsetWidth,H=400;
+      canvas.width=W*dpr;canvas.height=H*dpr;
+      canvas.style.width=W+'px';canvas.style.height=H+'px';
+      ctx.setTransform(dpr,0,0,dpr,0,0);
+
+      const padL=80,padR=30,padT=20,padB=50;
+      const cW=W-padL-padR,cH=H-padT-padB;
+      const maxVal=Math.max(GOAL*1.1,...datasets.flat());
+      const toX=i=>padL+(i/(maxRounds-1))*cW;
+      const toY=v=>padT+(1-v/maxVal)*cH;
+
+      // 그리드
+      ctx.strokeStyle='rgba(50,70,100,0.3)';ctx.lineWidth=0.5;ctx.setLineDash([4,4]);
+      [200,400,600,800,1000,1200].forEach(v=>{
+        const val=v*10000;if(val>maxVal)return;
+        const y=toY(val);
+        ctx.beginPath();ctx.moveTo(padL,y);ctx.lineTo(W-padR,y);ctx.stroke();
+        ctx.fillStyle='#445566';ctx.font='10px monospace';ctx.textAlign='right';
+        ctx.fillText(v+'만',padL-8,y+4);
+      });
+      ctx.setLineDash([]);
+
+      // 목표선
+      const gy=toY(GOAL);
+      ctx.strokeStyle='#ffd54f';ctx.lineWidth=1.5;ctx.setLineDash([8,4]);
+      ctx.beginPath();ctx.moveTo(padL,gy);ctx.lineTo(W-padR,gy);ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle='#ffd54f';ctx.font='bold 11px sans-serif';ctx.textAlign='left';
+      ctx.fillText('🎯 목표 1,000만원',W-padR-130,gy-8);
+
+      // X축
+      ctx.fillStyle='#556677';ctx.font='10px monospace';ctx.textAlign='center';
+      for(let i=0;i<maxRounds;i++){
+        ctx.fillText(i===0?'시작':`${i*10}일`,toX(i),H-padB+20);
+      }
+
+      // 라인
+      datasets.forEach((data,di)=>{
+        ctx.strokeStyle=COLORS_LINE[di];ctx.lineWidth=2.5;ctx.lineJoin='round';
+        ctx.beginPath();
+        data.forEach((v,i)=>{i===0?ctx.moveTo(toX(i),toY(v)):ctx.lineTo(toX(i),toY(v));});
+        ctx.stroke();
+        // 포인트
+        data.forEach((v,i)=>{
+          ctx.fillStyle=COLORS_LINE[di];ctx.beginPath();ctx.arc(toX(i),toY(v),4,0,Math.PI*2);ctx.fill();
+          ctx.fillStyle='#0a0f1e';ctx.beginPath();ctx.arc(toX(i),toY(v),2,0,Math.PI*2);ctx.fill();
+        });
+        // 도달 표시
+        const ri=data.findIndex(v=>v>=GOAL);
+        if(ri>0){
+          const rx=toX(ri),ry=toY(data[ri]);
+          ctx.fillStyle=COLORS_LINE[di];ctx.beginPath();ctx.arc(rx,ry,7,0,Math.PI*2);ctx.fill();
+          ctx.fillStyle='#fff';ctx.font='bold 8px sans-serif';ctx.textAlign='center';ctx.fillText('✓',rx,ry+3);
+          ctx.fillStyle=COLORS_LINE[di];ctx.font='bold 11px sans-serif';ctx.fillText(`${ri*10}일`,rx,ry-14);
+        }
+      });
+    };
+    draw();
+    const ro=new ResizeObserver(draw);ro.observe(canvas.parentElement);
+    return()=>ro.disconnect();
+  },[]);
+
+  // 테이블 데이터
+  const datasets=STARTS.map(start=>{
+    const pts=[start];let v=start;
+    while(v<GOAL){v=Math.round(v*(1+RATE));pts.push(v);if(v>=GOAL)break;}
+    return pts;
+  });
+  const maxR=Math.max(...datasets.map(d=>d.length));
+  datasets.forEach(d=>{while(d.length<maxR)d.push(d[d.length-1]);});
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:16}}>
+      <div style={{background:"linear-gradient(135deg,rgba(25,35,65,0.9),rgba(15,22,48,0.95))",border:"1px solid rgba(100,140,200,0.15)",borderRadius:12,padding:20}}>
+        <div style={{color:"#e0e6f0",fontWeight:600,fontSize:17,marginBottom:4}}>📈 시작금액별 1천만원 도달 비교</div>
+        <div style={{color:"#6688aa",fontSize:12,marginBottom:16}}>10일마다 수익률 20% 복리 적용 | 목표: 10,000,000원</div>
+        <canvas ref={canvasRef} style={{display:"block",width:"100%"}}/>
+        <div style={{display:"flex",gap:16,justifyContent:"center",marginTop:16,flexWrap:"wrap"}}>
+          {LABELS.map((l,i)=>{
+            const ri=datasets[i].findIndex(v=>v>=GOAL);
+            return <div key={l} style={{display:"flex",alignItems:"center",gap:6,fontSize:12}}>
+              <div style={{width:12,height:12,borderRadius:3,background:COLORS_LINE[i]}}/>
+              <span>{l} → <strong>{ri>0?`${ri*10}일`:'—'}</strong></span>
+            </div>;
+          })}
+        </div>
+      </div>
+      <div style={{background:"linear-gradient(135deg,rgba(25,35,65,0.9),rgba(15,22,48,0.95))",border:"1px solid rgba(100,140,200,0.15)",borderRadius:12,padding:20}}>
+        <div style={{color:"#e0e6f0",fontWeight:600,fontSize:15,marginBottom:12}}>📊 상세 데이터</div>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+          <thead><tr style={{borderBottom:"1px solid rgba(100,140,200,0.2)"}}>
+            <th style={{padding:"8px 6px",color:"#6688aa",textAlign:"center"}}>회차 (10일)</th>
+            {LABELS.map(l=><th key={l} style={{padding:"8px 6px",color:"#6688aa",textAlign:"center"}}>{l}</th>)}
+          </tr></thead>
+          <tbody>{Array.from({length:maxR}).map((_,i)=>(
+            <tr key={i} style={{borderBottom:"1px solid rgba(100,140,200,0.08)"}}>
+              <td style={{padding:"6px",color:"#6688aa",textAlign:"center",fontFamily:"monospace"}}>{i===0?'시작':`${i}회 (${i*10}일)`}</td>
+              {datasets.map((d,di)=>{
+                const v=d[i],reached=v>=GOAL,firstReach=reached&&(i===0||d[i-1]<GOAL);
+                return <td key={di} style={{padding:"6px",textAlign:"center",fontFamily:"monospace",color:COLORS_LINE[di],fontWeight:firstReach?700:400}}>
+                  {(v/10000).toLocaleString(undefined,{maximumFractionDigits:0})}만원{firstReach?' 🎯':''}
+                </td>;
+              })}
+            </tr>
+          ))}</tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function ComparePage() {
   const {data,loading,error}=useApi("/api/strategy/compare/all",0);
   if(loading) return <Loader t="전략 비교 로딩..."/>;
@@ -495,6 +629,7 @@ const MENU=[
   {id:"kis-trading",icon:"🏦",label:"KIS 모의투자",bold:true},
   {id:"kis-real",icon:"🔴",label:"KIS 실전투자",bold:true},
   {id:"trade-journal",icon:"📋",label:"매매 일지",bold:true},
+  {id:"goal-chart",icon:"📉",label:"목표차트"},
   {id:"market-analysis",icon:"🔥",label:"시장 분석"},
   {id:"backup",icon:"💾",label:"DB 백업"},
   {id:"settings",icon:"⚙️",label:"설정"},
@@ -584,6 +719,7 @@ export default function App() {
       case "kis-trading": return <KisTrading key="virtual" mode="virtual" />;
       case "kis-real": return <KisTrading key="real" mode="real" />;
       case "trade-journal": return <TradeJournal/>;
+      case "goal-chart": return <GoalChartPage/>;
       case "market-analysis": return <MarketAnalysis/>;
       default: return <DashboardPage/>;
     }
