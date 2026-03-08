@@ -518,7 +518,7 @@ function PortfolioList({ portfolios, loading, onSelect, onRefresh, onRename, onB
 
       {/* 포트폴리오 리스트 */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {portfolios.map(pf => {
+        {portfolios.map((pf, pfIdx) => {
           const isActive = pf.status === 'active';
           const isProfit = (pf.total_return_won || 0) >= 0;
           const pcts = pf.total_return_pct || 0;
