@@ -157,6 +157,7 @@ def _create_scan_session(scan_params: Dict) -> Optional[int]:
             "high_manip_count": 0,
             "medium_manip_count": 0,
             "status": "running",
+            "scan_date": datetime.now(KST).isoformat(),
         }
         resp = db.table("surge_scan_sessions").insert(session_data).execute()
         if not resp.data:
@@ -218,6 +219,7 @@ def _finalize_scan_session(session_id: int, stats: Dict, status: str = "done"):
             "high_manip_count": stats.get("high_manip_count", 0),
             "medium_manip_count": stats.get("medium_manip_count", 0),
             "status": status,
+            "scan_date": datetime.now(KST).isoformat(),
         }).eq("id", session_id).execute()
         logger.info(f"세션 {status} 처리: session_id={session_id}")
     except Exception as e:
@@ -239,6 +241,7 @@ def _save_scan_to_db(scan_params: Dict, stocks: List[Dict], stats: Dict) -> Opti
             "high_manip_count": stats.get("high_manip_count", 0),
             "medium_manip_count": stats.get("medium_manip_count", 0),
             "status": "done",
+            "scan_date": datetime.now(KST).isoformat(),
         }
         resp = db.table("surge_scan_sessions").insert(session_data).execute()
         if not resp.data:
@@ -288,7 +291,7 @@ def _load_latest_scan_from_db() -> Optional[Dict]:
             resp = db.table("surge_scan_sessions") \
                 .select("*") \
                 .eq("status", status) \
-                .order("scan_date", desc=True) \
+                .order("id", desc=True) \
                 .limit(1) \
                 .execute()
             if resp.data:
@@ -833,7 +836,7 @@ async def get_scan_history():
         resp = db.table("surge_scan_sessions") \
             .select("id, scan_date, status, market, period_days, rise_pct, rise_window, min_volume_ratio, total_scanned, total_found, total_surges, high_manip_count, medium_manip_count") \
             .in_("status", ["done", "stopped"]) \
-            .order("scan_date", desc=True) \
+            .order("id", desc=True) \
             .limit(20) \
             .execute()
         return {"status": "ok", "data": resp.data or []}
