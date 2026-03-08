@@ -78,17 +78,11 @@ export default function PatternDetector() {
     } catch (e) { console.log('스캔 캐시 로드 실패:', e); }
     return null;
   };
-  // setScanResult를 래핑하여 자동 캐시 + 자동 후보 등록
+  // setScanResult를 래핑하여 자동 캐시
   const setScanResultWithCache = useCallback((data) => {
     setScanResult(data);
-    if (data && data.stocks) {
-      saveScanCache(data);
-      // 자동 등록: 설정이 켜져있으면 스캔 결과에서 자동으로 후보 등록
-      if (candidateSettings?.auto_register && data.stocks.length > 0) {
-        autoRegisterFromScan(data.stocks, 'scan');
-      }
-    }
-  }, [saveScanCache, candidateSettings, autoRegisterFromScan]);
+    if (data && data.stocks) saveScanCache(data);
+  }, [saveScanCache]);
   const [scanError, setScanError] = useState('');
   const [scanSortKey, setScanSortKey] = useState('manip_score');
   const [scanSortDir, setScanSortDir] = useState('desc');
@@ -372,6 +366,17 @@ export default function PatternDetector() {
     fetchCandidates();
     fetchCandidateSettings();
   }, [fetchCandidates, fetchCandidateSettings]);
+
+  // 스캔 완료 시 자동 후보 등록
+  const prevScanStocksRef = useRef(null);
+  useEffect(() => {
+    if (!scanResult?.stocks || !candidateSettings?.auto_register) return;
+    // 같은 스캔 결과에 대해 중복 실행 방지
+    const key = scanResult.stocks.length + '_' + (scanResult.scan_date || '');
+    if (prevScanStocksRef.current === key) return;
+    prevScanStocksRef.current = key;
+    autoRegisterFromScan(scanResult.stocks, 'scan');
+  }, [scanResult, candidateSettings, autoRegisterFromScan]);
 
   // ━━━ ★ 패턴 라이브러리 함수 ━━━
   const fetchSavedPatterns = useCallback(async () => {
