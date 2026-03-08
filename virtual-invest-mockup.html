@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>가상투자 현재 화면 목업</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#0a0e1a; color:#e5e7eb; font-family:'Noto Sans KR','Segoe UI',sans-serif; font-size:13px; min-height:100vh; padding:20px; }
+  .wrap { max-width:1200px; margin:0 auto; }
+
+  /* 헤더 */
+  .header { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; }
+  .header h1 { font-size:22px; font-weight:800; color:#f9fafb; }
+  .header p { font-size:12px; color:#9ca3af; margin-top:4px; }
+
+  /* 요약 카드 4개 */
+  .summary-cards { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:20px; }
+  .s-card { background:#111827; border:1px solid #1e293b; border-radius:10px; padding:14px 16px; text-align:center; }
+  .s-card .label { font-size:10px; color:#9ca3af; margin-bottom:4px; }
+  .s-card .value { font-size:20px; font-weight:700; font-family:'JetBrains Mono',monospace; }
+
+  /* 포트폴리오 카드 */
+  .pf-list { display:flex; flex-direction:column; gap:10px; }
+  .pf-card { background:#111827; border:1px solid #1e293b; border-radius:12px; padding:16px 20px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; transition:all 0.2s; }
+  .pf-card:hover { border-color:rgba(59,130,246,0.4); background:rgba(59,130,246,0.03); }
+  .pf-left { display:flex; align-items:center; gap:14px; flex:1; }
+  .pf-date { font-size:12px; font-weight:700; font-family:'JetBrains Mono',monospace; padding:8px 12px; border-radius:8px; min-width:60px; text-align:center; }
+  .pf-date.profit { background:rgba(16,185,129,0.15); color:#10b981; }
+  .pf-date.loss { background:rgba(239,68,68,0.15); color:#ef4444; }
+  .pf-info { flex:1; }
+  .pf-name { font-size:14px; font-weight:700; color:#f9fafb; display:flex; align-items:center; gap:6px; }
+  .pf-meta { font-size:11px; color:#9ca3af; margin-top:2px; }
+  .pf-chips { display:flex; gap:4px; flex-wrap:wrap; margin-top:6px; }
+  .chip { font-size:10px; padding:2px 6px; border-radius:4px; }
+  .chip-hold { background:rgba(255,152,0,0.15); color:#ff9800; }
+  .chip-profit { background:rgba(16,185,129,0.15); color:#10b981; }
+  .chip-loss { background:rgba(239,68,68,0.15); color:#ef4444; }
+  .pf-right { display:flex; align-items:center; gap:16px; }
+  .pf-pct { font-size:18px; font-weight:700; font-family:'JetBrains Mono',monospace; }
+  .pf-won { font-size:11px; font-family:'JetBrains Mono',monospace; color:#9ca3af; }
+  .pf-status { font-size:11px; font-weight:600; padding:4px 10px; border-radius:6px; }
+  .status-active { background:rgba(16,185,129,0.15); color:#10b981; }
+  .status-closed { background:rgba(107,114,128,0.15); color:#6b7280; }
+
+  /* 뱃지 */
+  .badge-pattern { font-size:10px; padding:2px 8px; border-radius:4px; background:rgba(139,92,246,0.15); border:1px solid rgba(139,92,246,0.25); color:#8b5cf6; font-weight:600; }
+  .badge-strategy { font-size:10px; padding:2px 8px; border-radius:4px; background:rgba(59,130,246,0.15); color:#3b82f6; font-weight:600; }
+
+  /* 컨트롤 바 */
+  .controls { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
+  .ctrl-left { display:flex; align-items:center; gap:10px; font-size:12px; color:#9ca3af; }
+  .ctrl-right { display:flex; gap:8px; }
+  .btn-refresh { background:rgba(16,185,129,0.15); color:#10b981; border:1px solid rgba(16,185,129,0.25); border-radius:8px; padding:6px 14px; font-size:12px; font-weight:600; cursor:pointer; }
+  .btn-delete { background:rgba(239,68,68,0.15); color:#ef4444; border:1px solid rgba(239,68,68,0.25); border-radius:8px; padding:6px 14px; font-size:12px; font-weight:600; cursor:pointer; }
+
+  .checkbox { accent-color:#3b82f6; width:18px; height:18px; cursor:pointer; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- 헤더 -->
+  <div class="header">
+    <div>
+      <h1>📊 가상투자추적</h1>
+      <p>매수추천 종목으로 가상 포트폴리오를 만들고 실시간으로 수익을 추적합니다</p>
+    </div>
+  </div>
+
+  <!-- 요약 카드 4개 -->
+  <div class="summary-cards">
+    <div class="s-card">
+      <div class="label">전체</div>
+      <div class="value" style="color:#3b82f6;">15</div>
+      <div class="label">개</div>
+    </div>
+    <div class="s-card">
+      <div class="label">추적중</div>
+      <div class="value" style="color:#10b981;">3</div>
+      <div class="label">개</div>
+    </div>
+    <div class="s-card">
+      <div class="label">종료</div>
+      <div class="value" style="color:#6b7280;">12</div>
+      <div class="label">개</div>
+    </div>
+    <div class="s-card">
+      <div class="label">총 수익</div>
+      <div class="value" style="color:#ef4444;">+245,000원</div>
+    </div>
+  </div>
+
+  <!-- 컨트롤 바 -->
+  <div class="controls">
+    <div class="ctrl-left">
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+        <input type="checkbox" class="checkbox"> 전체 선택
+      </label>
+    </div>
+    <div class="ctrl-right">
+      <button class="btn-refresh">🔄 전체 갱신</button>
+    </div>
+  </div>
+
+  <!-- 포트폴리오 리스트 -->
+  <div class="pf-list">
+
+    <!-- 포트폴리오 1: 추적중, 수익 -->
+    <div class="pf-card">
+      <div class="pf-left">
+        <input type="checkbox" class="checkbox">
+        <div class="pf-date profit">03/07</div>
+        <div class="pf-info">
+          <div class="pf-name">
+            3월1주차_공격형 🔥
+            <span class="badge-pattern">📚 V자반등</span>
+            <span class="badge-strategy">🔥 공격형</span>
+          </div>
+          <div class="pf-meta">4종목 · 투자금 500,000원 · 🔥 공격형</div>
+          <div class="pf-chips">
+            <span class="chip chip-hold">삼성전자</span>
+            <span class="chip chip-hold">SK하이닉스</span>
+            <span class="chip chip-profit">카카오</span>
+            <span class="chip chip-hold">LG에너지솔루션</span>
+          </div>
+        </div>
+      </div>
+      <div class="pf-right">
+        <div style="text-align:right;">
+          <div class="pf-pct" style="color:#ef4444;">+4.0%</div>
+          <div class="pf-won">+20,000원</div>
+        </div>
+        <div class="pf-status status-active">● 추적중</div>
+      </div>
+    </div>
+
+    <!-- 포트폴리오 2: 추적중, 수익 -->
+    <div class="pf-card">
+      <div class="pf-left">
+        <input type="checkbox" class="checkbox">
+        <div class="pf-date profit">03/06</div>
+        <div class="pf-info">
+          <div class="pf-name">
+            3월1주차_스마트형 🧠
+            <span class="badge-pattern">📚 급등돌파</span>
+          </div>
+          <div class="pf-meta">3종목 · 투자금 400,000원 · 🧠 스마트형</div>
+          <div class="pf-chips">
+            <span class="chip chip-hold">현대차</span>
+            <span class="chip chip-profit">NAVER</span>
+            <span class="chip chip-hold">셀트리온</span>
+          </div>
+        </div>
+      </div>
+      <div class="pf-right">
+        <div style="text-align:right;">
+          <div class="pf-pct" style="color:#ef4444;">+7.5%</div>
+          <div class="pf-won">+30,000원</div>
+        </div>
+        <div class="pf-status status-active">● 추적중</div>
+      </div>
+    </div>
+
+    <!-- 포트폴리오 3: 추적중, 손실 -->
+    <div class="pf-card">
+      <div class="pf-left">
+        <input type="checkbox" class="checkbox">
+        <div class="pf-date loss">03/03</div>
+        <div class="pf-info">
+          <div class="pf-name">
+            2월4주차_보수형 🛡️
+          </div>
+          <div class="pf-meta">1종목 · 투자금 300,000원 · ⚖️ 기본형</div>
+          <div class="pf-chips">
+            <span class="chip chip-loss">LG전자</span>
+          </div>
+        </div>
+      </div>
+      <div class="pf-right">
+        <div style="text-align:right;">
+          <div class="pf-pct" style="color:#3b82f6;">-2.3%</div>
+          <div class="pf-won">-6,900원</div>
+        </div>
+        <div class="pf-status status-active">● 추적중</div>
+      </div>
+    </div>
+
+    <!-- 포트폴리오 4: 종료, 수익 -->
+    <div class="pf-card" style="opacity:0.7;">
+      <div class="pf-left">
+        <input type="checkbox" class="checkbox">
+        <div class="pf-date profit">02/28</div>
+        <div class="pf-info">
+          <div class="pf-name">
+            2월4주차_공격형 🔥
+          </div>
+          <div class="pf-meta">5종목 · 투자금 500,000원 · 🔥 공격형</div>
+          <div class="pf-chips">
+            <span class="chip chip-profit">삼성전자</span>
+            <span class="chip chip-profit">기아</span>
+            <span class="chip chip-loss">한화오션</span>
+            <span class="chip chip-profit">에코프로</span>
+            <span class="chip chip-profit">크래프톤</span>
+          </div>
+        </div>
+      </div>
+      <div class="pf-right">
+        <div style="text-align:right;">
+          <div class="pf-pct" style="color:#ef4444;">+12.8%</div>
+          <div class="pf-won">+64,000원</div>
+        </div>
+        <div class="pf-status status-closed">종료됨</div>
+      </div>
+    </div>
+
+    <!-- 포트폴리오 5: 종료, 손실 -->
+    <div class="pf-card" style="opacity:0.7;">
+      <div class="pf-left">
+        <input type="checkbox" class="checkbox">
+        <div class="pf-date loss">02/25</div>
+        <div class="pf-info">
+          <div class="pf-name">
+            2월3주차_스마트형 🧠
+          </div>
+          <div class="pf-meta">4종목 · 투자금 400,000원 · 🧠 스마트형</div>
+          <div class="pf-chips">
+            <span class="chip chip-loss">삼성SDI</span>
+            <span class="chip chip-loss">LG화학</span>
+            <span class="chip chip-profit">포스코홀딩스</span>
+            <span class="chip chip-loss">현대건설</span>
+          </div>
+        </div>
+      </div>
+      <div class="pf-right">
+        <div style="text-align:right;">
+          <div class="pf-pct" style="color:#3b82f6;">-4.2%</div>
+          <div class="pf-won">-16,800원</div>
+        </div>
+        <div class="pf-status status-closed">종료됨</div>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+</body>
+</html>
