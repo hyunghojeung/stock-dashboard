@@ -316,7 +316,7 @@ export default function VirtualPortfolioTracker() {
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: COLORS.white, margin: 0 }}>
-            📊 가상투자추적
+            📊 가상투자
           </h1>
           <p style={{ fontSize: 12, color: COLORS.textDim, marginTop: 4 }}>
             매수추천 종목으로 가상 포트폴리오를 만들고 실시간으로 수익을 추적합니다
@@ -510,7 +510,7 @@ function PortfolioList({ portfolios, loading, onSelect, onRefresh, onRename, onB
 
       {/* 포트폴리오 리스트 */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {portfolios.map(pf => {
+        {portfolios.map((pf, pfIdx) => {
           const isActive = pf.status === 'active';
           const isProfit = (pf.total_return_won || 0) >= 0;
           const pcts = pf.total_return_pct || 0;
@@ -540,6 +540,13 @@ function PortfolioList({ portfolios, loading, onSelect, onRefresh, onRename, onB
                     });
                   }}
                   style={{ accentColor: COLORS.accent, width: 18, height: 18, cursor: 'pointer', flexShrink: 0 }} />
+                {/* 고유번호 뱃지 */}
+                <div style={{
+                  background: COLORS.accentDim,
+                  color: COLORS.accent,
+                  fontSize: 11, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace',
+                  padding: '8px 10px', borderRadius: 8, minWidth: 52, textAlign: 'center',
+                }}>P{String(pfIdx + 1).padStart(4, '0')}</div>
                 {/* 날짜 뱃지 */}
                 <div style={{
                   background: isProfit ? COLORS.greenDim : COLORS.redDim,
