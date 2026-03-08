@@ -365,8 +365,8 @@ function PortfolioList({ portfolios, loading, onSelect, onRefresh, onRename, onB
   });
   const getFilters = (pf) => pf.filters || pfFiltersCache[pf.id] || [];
 
-  // ★ DB id 자체를 고유번호로 사용 (삭제해도 번호 불변)
-  const getSeqNo = (id) => `P${String(id).padStart(4, '0')}`;
+  // ★ DB seq_no 기반 고유번호 (삭제해도 번호 불변)
+  const getSeqNo = (pf) => pf.seq_no ? `P${String(pf.seq_no).padStart(4, '0')}` : `P${String(pf.id).padStart(4, '0')}`;
   if (loading) {
     return (
       <div>
@@ -549,7 +549,7 @@ function PortfolioList({ portfolios, loading, onSelect, onRefresh, onRename, onB
                   color: COLORS.accent,
                   fontSize: 11, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace',
                   padding: '8px 10px', borderRadius: 8, minWidth: 52, textAlign: 'center',
-                }}>{getSeqNo(pf.id)}</div>
+                }}>{getSeqNo(pf)}</div>
                 {/* 날짜 뱃지 */}
                 <div style={{
                   background: isProfit ? COLORS.greenDim : COLORS.redDim,
