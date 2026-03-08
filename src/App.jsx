@@ -799,7 +799,7 @@ export default function App() {
           )}
         </div>
         <div style={{borderBottom:"1px solid rgba(100,140,200,0.1)",margin:"0 8px 8px"}}/>
-        {MENU.map(m=>{const isInvest=m.bold;const active=page===m.id;return <div key={m.id} onClick={()=>{setPage(m.id);if(m.id==='virtual-portfolio')setVpKey(k=>k+1);}} style={{padding:sideOpen?"10px 16px":"10px 0",cursor:"pointer",background:active?"rgba(26,58,110,0.6)":isInvest?"#4caf50":"transparent",borderRadius:6,margin:"1px 6px",color:active?"#fff":isInvest?"#fff":"#6688aa",fontSize:13,fontWeight:isInvest?"bold":"normal",textAlign:sideOpen?"left":"center",transition:"background 0.15s"}}>{m.icon}{sideOpen?` ${m.label}`:""}</div>})}
+        {MENU.map(m=>{const isInvest=m.bold;const isPattern=m.id==='pattern';const active=page===m.id;return <div key={m.id} onClick={()=>{setPage(m.id);if(m.id==='virtual-portfolio')setVpKey(k=>k+1);}} style={{padding:sideOpen?"10px 16px":"10px 0",cursor:"pointer",background:active?"rgba(26,58,110,0.6)":isPattern?"linear-gradient(135deg,#c62828,#f0a500)":isInvest?"#4caf50":"transparent",borderRadius:6,margin:"1px 6px",color:active?"#fff":isInvest?"#fff":"#6688aa",fontSize:13,fontWeight:isInvest?"bold":"normal",textAlign:sideOpen?"left":"center",transition:"background 0.15s"}}>{m.icon}{sideOpen?` ${m.label}`:""}</div>})}
         <div style={{flex:1}}/>
         <div style={{borderTop:"1px solid rgba(100,140,200,0.1)",margin:"0 8px",padding:sideOpen?16:8}}>
           {sideOpen&&<><div onClick={doLogout} style={{padding:"6px 0",textAlign:"center",color:"#ff6666",fontSize:11,cursor:"pointer",borderRadius:6,border:"1px solid rgba(255,100,100,0.2)"}}>로그아웃</div></>}
