@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import SwingBacktest from "./SwingBacktest";
 import PatternDetector from "./PatternDetector";
 import VirtualPortfolioTracker from "./VirtualPortfolioTracker";
@@ -336,14 +336,14 @@ function GrowthPage() {
 }
 
 function GoalChartPage() {
-  const canvasRef=React.useRef(null);
+  const canvasRef=useRef(null);
   const STARTS=[1000000,2000000,3000000,4000000,5000000];
   const GOAL=10000000;
   const RATE=0.20;
   const COLORS_LINE=['#ef4444','#f59e0b','#4cff8b','#3b82f6','#a855f7'];
   const LABELS=['100만원','200만원','300만원','400만원','500만원'];
 
-  React.useEffect(()=>{
+  useEffect(()=>{
     const canvas=canvasRef.current;if(!canvas)return;
     const ctx=canvas.getContext('2d');
     const dpr=window.devicePixelRatio||1;
