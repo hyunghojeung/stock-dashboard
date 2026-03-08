@@ -12,6 +12,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import VirtualInvestTab from "./VirtualInvestTab";
 import { kisApi, getKisCredentials, loadKisCredentials, activateKisMode, refreshKisToken } from "./KisTrading";
+import { supabase } from "./supabaseClient";
 
 const API_BASE = "https://web-production-139e9.up.railway.app";
 
@@ -241,75 +242,89 @@ export default function PatternDetector() {
   const [kisOrderLoading, setKisOrderLoading] = useState(false);
   const [kisOrderResults, setKisOrderResults] = useState(null);
 
-  // ━━━ ★ 매수 후보 풀 함수 ━━━
+  // ━━━ ★ 매수 후보 풀 함수 (Supabase 직접 호출) ━━━
   const fetchCandidates = useCallback(async () => {
     setCandidatesLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/candidates/list?status=active&sort_by=composite_score&sort_dir=desc`);
-      const data = await res.json();
-      if (data.success) setBuyCandidates(data.candidates || []);
+      const { data, error } = await supabase
+        .from('buy_candidates')
+        .select('*')
+        .eq('status', 'active')
+        .order('composite_score', { ascending: false })
+        .limit(50);
+      if (!error) setBuyCandidates(data || []);
     } catch (e) { console.error('후보 목록 로드 실패:', e); }
     setCandidatesLoading(false);
   }, []);
 
   const fetchCandidateSettings = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/candidates/settings`);
-      const data = await res.json();
-      if (data.success) setCandidateSettings(data.settings);
+      const { data, error } = await supabase
+        .from('candidate_settings')
+        .select('*')
+        .eq('id', 1)
+        .single();
+      if (!error && data) setCandidateSettings(data);
+      else setCandidateSettings({
+        auto_register: false, min_composite_score: 60, min_entry_score: 50,
+        required_entry_grades: ['auto_buy'], max_candidates: 10, expire_days: 3,
+        auto_buy_virtual: false, auto_buy_kis: false, capital_per_stock: 300000,
+        exclude_ma5_down: true, exclude_rsi_overbought: true, min_trading_value: 500000000,
+      });
     } catch (e) { console.error('후보 설정 로드 실패:', e); }
   }, []);
 
   const saveCandidateSettings = useCallback(async (settings) => {
     try {
-      const res = await fetch(`${API_BASE}/api/candidates/settings`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(settings),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setCandidateSettings(data.settings);
-        alert('설정이 저장되었습니다.');
-      }
+      const { error } = await supabase
+        .from('candidate_settings')
+        .upsert({ id: 1, ...settings, updated_at: new Date().toISOString() });
+      if (error) throw error;
+      setCandidateSettings(settings);
+      alert('설정이 저장되었습니다.');
     } catch (e) { alert('설정 저장 실패: ' + e.message); }
   }, []);
 
   const registerCandidates = useCallback(async (candidates, source = 'manual') => {
     try {
       const expireDays = candidateSettings?.expire_days || 3;
-      const res = await fetch(`${API_BASE}/api/candidates/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          candidates: candidates.map(s => ({
-            code: s.code,
-            name: s.name,
-            composite_score: s.composite_score || s.top_manip_score || 0,
-            manip_score: s.top_manip_score || 0,
-            entry_score: s.entry_signals?.entry_score || s.entry_score || 0,
-            pattern_match_pct: s.pattern_match_pct || s.similarity || null,
-            entry_grade: s.entry_signals?.entry_grade || s.entry_grade || null,
-            current_price: s.current_price || null,
-            recommended_buy_price: s.current_price || null,
-            source,
-            reason: [
-              s.top_manip_score >= 80 ? `세력${s.top_manip_score}` : '',
-              (s.entry_signals?.entry_score || s.entry_score || 0) >= 60 ? `진입${s.entry_signals?.entry_score || s.entry_score}` : '',
-              (s.similarity || s.pattern_match_pct) ? `유사${s.similarity || s.pattern_match_pct}%` : '',
-            ].filter(Boolean).join(', ') || null,
-          })),
-          expire_days: expireDays,
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        alert(`후보 등록 완료: ${data.inserted}개 추가, ${data.skipped}개 중복`);
-        fetchCandidates();
-      } else {
-        alert('후보 등록 실패');
+      const expiresAt = new Date(Date.now() + expireDays * 86400000).toISOString();
+
+      // 기존 active 후보 코드 조회 (중복 방지)
+      const { data: existing } = await supabase
+        .from('buy_candidates').select('code').eq('status', 'active');
+      const existingCodes = new Set((existing || []).map(r => r.code));
+
+      const toInsert = candidates
+        .filter(s => !existingCodes.has(s.code))
+        .map(s => ({
+          code: s.code,
+          name: s.name,
+          composite_score: s.composite_score || s.top_manip_score || 0,
+          manip_score: s.top_manip_score || 0,
+          entry_score: s.entry_signals?.entry_score || s.entry_score || 0,
+          pattern_match_pct: s.pattern_match_pct || s.similarity || null,
+          entry_grade: s.entry_signals?.entry_grade || s.entry_grade || null,
+          current_price: s.current_price || null,
+          recommended_buy_price: s.current_price || null,
+          source,
+          reason: [
+            s.top_manip_score >= 80 ? `세력${s.top_manip_score}` : '',
+            (s.entry_signals?.entry_score || s.entry_score || 0) >= 60 ? `진입${s.entry_signals?.entry_score || s.entry_score}` : '',
+            (s.similarity || s.pattern_match_pct) ? `유사${s.similarity || s.pattern_match_pct}%` : '',
+          ].filter(Boolean).join(', ') || null,
+          status: 'active',
+          expires_at: expiresAt,
+        }));
+
+      const skipped = candidates.length - toInsert.length;
+      if (toInsert.length > 0) {
+        const { error } = await supabase.from('buy_candidates').insert(toInsert);
+        if (error) throw error;
       }
-      return data;
+      alert(`후보 등록 완료: ${toInsert.length}개 추가, ${skipped}개 중복`);
+      fetchCandidates();
+      return { success: true, inserted: toInsert.length, skipped };
     } catch (e) {
       alert('후보 등록 실패: ' + e.message);
       return { success: false };
@@ -318,46 +333,69 @@ export default function PatternDetector() {
 
   const autoRegisterFromScan = useCallback(async (stocks, source = 'scan') => {
     try {
-      const res = await fetch(`${API_BASE}/api/candidates/auto-register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ stocks, source }),
-      });
-      const data = await res.json();
-      if (data.success && data.inserted > 0) {
-        console.log(`[자동등록] ${data.inserted}개 후보 등록됨 (${data.filtered}개 필터 통과 / ${data.total_scanned}개 스캔)`);
-        fetchCandidates();
-      }
-      return data;
+      if (!candidateSettings) return { success: false };
+      const { min_composite_score = 60, min_entry_score = 50, max_candidates = 10,
+        expire_days = 3, required_entry_grades = ['auto_buy'] } = candidateSettings;
+      const expiresAt = new Date(Date.now() + expire_days * 86400000).toISOString();
+
+      // 현재 active 후보
+      const { data: existing } = await supabase
+        .from('buy_candidates').select('code').eq('status', 'active');
+      const existingCodes = new Set((existing || []).map(r => r.code));
+      const remainingSlots = Math.max(0, max_candidates - existingCodes.size);
+      if (remainingSlots === 0) return { success: true, inserted: 0 };
+
+      // 필터링
+      const filtered = stocks.filter(s => {
+        if (existingCodes.has(s.code)) return false;
+        const composite = s.composite_score || s.top_manip_score || 0;
+        if (composite < min_composite_score) return false;
+        const entryScore = s.entry_signals?.entry_score || 0;
+        if (entryScore < min_entry_score) return false;
+        const grade = s.entry_signals?.entry_grade || '';
+        if (grade && !required_entry_grades.includes(grade)) return false;
+        return true;
+      }).sort((a, b) => (b.composite_score || b.top_manip_score || 0) - (a.composite_score || a.top_manip_score || 0))
+        .slice(0, remainingSlots);
+
+      if (filtered.length === 0) return { success: true, inserted: 0 };
+
+      const toInsert = filtered.map(s => ({
+        code: s.code, name: s.name,
+        composite_score: s.composite_score || s.top_manip_score || 0,
+        manip_score: s.top_manip_score || 0,
+        entry_score: s.entry_signals?.entry_score || 0,
+        entry_grade: s.entry_signals?.entry_grade || null,
+        current_price: s.current_price || null,
+        source, status: 'active', expires_at: expiresAt,
+      }));
+
+      const { error } = await supabase.from('buy_candidates').insert(toInsert);
+      if (error) throw error;
+      console.log(`[자동등록] ${toInsert.length}개 후보 등록됨`);
+      fetchCandidates();
+      return { success: true, inserted: toInsert.length };
     } catch (e) {
       console.error('자동 등록 실패:', e);
       return { success: false };
     }
-  }, [fetchCandidates]);
+  }, [candidateSettings, fetchCandidates]);
 
   const deleteCandidates = useCallback(async (ids) => {
     try {
-      const res = await fetch(`${API_BASE}/api/candidates/delete`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids }),
-      });
-      const data = await res.json();
-      if (data.success) fetchCandidates();
-      return data;
+      for (const id of ids) {
+        await supabase.from('buy_candidates').delete().eq('id', id);
+      }
+      fetchCandidates();
     } catch (e) { console.error('후보 삭제 실패:', e); }
   }, [fetchCandidates]);
 
   const updateCandidateStatus = useCallback(async (ids, status) => {
     try {
-      const res = await fetch(`${API_BASE}/api/candidates/update-status`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids, status }),
-      });
-      const data = await res.json();
-      if (data.success) fetchCandidates();
-      return data;
+      for (const id of ids) {
+        await supabase.from('buy_candidates').update({ status }).eq('id', id);
+      }
+      fetchCandidates();
     } catch (e) { console.error('후보 상태 변경 실패:', e); }
   }, [fetchCandidates]);
 
