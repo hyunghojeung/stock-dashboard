@@ -365,13 +365,8 @@ function PortfolioList({ portfolios, loading, onSelect, onRefresh, onRename, onB
   });
   const getFilters = (pf) => pf.filters || pfFiltersCache[pf.id] || [];
 
-  // ★ id(DB auto-increment) 오름차순으로 고유번호 맵 생성 (P0001~)
-  const seqMap = React.useMemo(() => {
-    const sorted = [...portfolios].sort((a, b) => a.id - b.id);
-    const map = {};
-    sorted.forEach((pf, i) => { map[pf.id] = `P${String(i + 1).padStart(4, '0')}`; });
-    return map;
-  }, [portfolios]);
+  // ★ DB id 자체를 고유번호로 사용 (삭제해도 번호 불변)
+  const getSeqNo = (id) => `P${String(id).padStart(4, '0')}`;
   if (loading) {
     return (
       <div>
@@ -554,7 +549,7 @@ function PortfolioList({ portfolios, loading, onSelect, onRefresh, onRename, onB
                   color: COLORS.accent,
                   fontSize: 11, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace',
                   padding: '8px 10px', borderRadius: 8, minWidth: 52, textAlign: 'center',
-                }}>{seqMap[pf.id] || '—'}</div>
+                }}>{getSeqNo(pf.id)}</div>
                 {/* 날짜 뱃지 */}
                 <div style={{
                   background: isProfit ? COLORS.greenDim : COLORS.redDim,
