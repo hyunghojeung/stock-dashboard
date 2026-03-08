@@ -330,7 +330,7 @@ export default function VirtualPortfolioTracker({ readOnly = false }) {
         )}
       </div>
 
-      {view === 'list' && <PortfolioList portfolios={portfolios} loading={loading} onSelect={loadDetail} onRefresh={loadList} onRename={handleRenamePortfolio} onBatchDelete={handleBatchDelete} onBatchRefresh={handleBatchRefresh} />}
+      {view === 'list' && <PortfolioList portfolios={portfolios} loading={loading} onSelect={loadDetail} onRefresh={loadList} onRename={handleRenamePortfolio} onBatchDelete={handleBatchDelete} onBatchRefresh={handleBatchRefresh} readOnly={readOnly} />}
       {view === 'detail' && detail && (
         <PortfolioDetail
           detail={detail}
@@ -340,6 +340,7 @@ export default function VirtualPortfolioTracker({ readOnly = false }) {
           onDelete={() => handleDelete(selectedId)}
           onRename={(newName) => handleRenamePortfolio(selectedId, newName)}
           onBack={() => setView('list')}
+          readOnly={readOnly}
         />
       )}
     </div>
@@ -351,7 +352,7 @@ export default function VirtualPortfolioTracker({ readOnly = false }) {
 // 포트폴리오 목록
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-function PortfolioList({ portfolios, loading, onSelect, onRefresh, onRename, onBatchDelete, onBatchRefresh }) {
+function PortfolioList({ portfolios, loading, onSelect, onRefresh, onRename, onBatchDelete, onBatchRefresh, readOnly }) {
   const [renamingId, setRenamingId] = useState(null);
   const [renameText, setRenameText] = useState('');
   const [selectedIds, setSelectedIds] = useState(new Set());
@@ -646,7 +647,7 @@ function PortfolioList({ portfolios, loading, onSelect, onRefresh, onRename, onB
 // 포트폴리오 상세
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-function PortfolioDetail({ detail, updating, onUpdate, onClose, onDelete, onRename, onBack }) {
+function PortfolioDetail({ detail, updating, onUpdate, onClose, onDelete, onRename, onBack, readOnly }) {
   const { portfolio: pf, positions } = detail;
   const [selectedCode, setSelectedCode] = useState(null);
   const [chartData, setChartData] = useState(null);
