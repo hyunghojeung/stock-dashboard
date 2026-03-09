@@ -307,6 +307,41 @@ export default async function handler(req, res) {
       return res.json({ success: true, orders });
     }
 
+    // ── pending (GET): 미체결 주문 조회 ──
+    if (routeName === "pending") {
+      const trId = isVirtual ? "VTTC8036R" : "TTTC8036R";
+      const result = await kisGet(
+        baseUrl,
+        "/uapi/domestic-stock/v1/trading/inquire-psbl-rvsecncl",
+        trId,
+        {
+          CANO: cano,
+          ACNT_PRDT_CD: acntPrdtCd,
+          CTX_AREA_FK100: "",
+          CTX_AREA_NK100: "",
+          INQR_DVSN_1: "0",
+          INQR_DVSN_2: "0",
+        },
+        token,
+        appKey,
+        appSecret
+      );
+
+      const pending = (result.output || []).map((o) => ({
+        order_no: o.odno || "",
+        order_date: o.ord_dt || "",
+        order_time: o.ord_tmd || "",
+        stock_code: o.pdno || "",
+        stock_name: o.prdt_name || "",
+        side: o.sll_buy_dvsn_cd === "02" ? "매수" : "매도",
+        order_qty: safeInt(o.ord_qty),
+        order_price: safeInt(o.ord_unpr),
+        remain_qty: safeInt(o.psbl_qty),
+        total_exec_qty: safeInt(o.ord_qty) - safeInt(o.psbl_qty),
+      }));
+      return res.json({ success: true, pending });
+    }
+
     // ── order/buy, order/sell (POST) ──
     if (
       (routeName === "order/buy" || routeName === "order/sell" ||

@@ -297,7 +297,7 @@ export default function KisTrading({ mode = "virtual" }) {
     { id: "balance", label: "대시보드", icon: "💰" },
     { id: "autotrade", label: "자동매매", icon: "🤖" },
     { id: "order", label: "주문", icon: "📝" },
-    { id: "orders", label: "체결내역", icon: "📋" },
+    { id: "orders", label: "주문내역", icon: "📋" },
     { id: "quote", label: "시세조회", icon: "📈" },
     { id: "asking", label: "호가", icon: "📊" },
     { id: "finance", label: "재무정보", icon: "📑" },
@@ -463,6 +463,8 @@ function BalancePanel() {
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(true);
+  const [pendingOrders, setPendingOrders] = useState([]);
+  const [pendingLoading, setPendingLoading] = useState(false);
   const [chartStock, setChartStock] = useState(null);
   const [quoteData, setQuoteData] = useState(null);
 
@@ -487,7 +489,24 @@ function BalancePanel() {
     setOrdersLoading(false);
   }, []);
 
-  useEffect(() => { load(); loadOrders(); }, [load, loadOrders]);
+  const loadPending = useCallback(async () => {
+    setPendingLoading(true);
+    const r = await kisApi("pending");
+    if (r?.success) setPendingOrders(r.pending || []);
+    setPendingLoading(false);
+  }, []);
+
+  const cancelOrder = async (order) => {
+    if (!confirm(`${order.stock_name} ${order.side} 주문을 취소하시겠습니까?`)) return;
+    const r = await kisApi("order/cancel", {}, {
+      method: "POST",
+      body: { org_order_no: order.order_no, qty: order.remain_qty, price: order.order_price }
+    });
+    if (r?.success) { loadPending(); loadOrders(); }
+    else alert("주문 취소 실패: " + (r?.message || ""));
+  };
+
+  useEffect(() => { load(); loadOrders(); loadPending(); }, [load, loadOrders, loadPending]);
 
   if (loading) return <div style={{ ...S.panel, textAlign: "center", padding: 40, color: "#6688aa" }}>대시보드 로딩 중...</div>;
   if (!data?.success) return <div style={{ ...S.panel, textAlign: "center", padding: 40, color: "#ff9800" }}>잔고 조회 실패 - KIS API 설정을 확인하세요</div>;
@@ -603,36 +622,61 @@ function BalancePanel() {
         </div>
       </div>
 
-      {/* ★ 하단행: 오늘 체결내역 + 목표 여정 */}
+      {/* ★ 하단행: 오늘 주문현황 + 목표 여정 */}
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-        {/* 오늘 체결내역 */}
+        {/* 오늘 주문현황 */}
         <div style={{ ...S.panel, flex: "1 1 500px" }}>
-          <div style={S.title}>📋 오늘 체결내역</div>
-          {ordersLoading ? (
-            <div style={{ textAlign: "center", padding: 20, color: "#6688aa", fontSize: 12 }}>체결내역 로딩 중...</div>
-          ) : orders.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "20px 0", color: "#6688aa", fontSize: 12 }}>오늘 체결내역 없음</div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+            <div style={S.title}>📋 오늘 주문현황</div>
+            <button onClick={() => { loadOrders(); loadPending(); }} style={{ ...S.btn(), padding: "4px 10px", fontSize: 10 }}>새로고침</button>
+          </div>
+          {/* 미체결 배너 */}
+          {pendingOrders.length > 0 && (
+            <div style={{ background: "rgba(255,152,0,0.1)", border: "1px solid rgba(255,152,0,0.25)", borderRadius: 8, padding: "8px 12px", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 14 }}>⏳</span>
+              <span style={{ color: "#ff9800", fontSize: 12, fontWeight: 600 }}>미체결 대기 {pendingOrders.length}건</span>
+              <span style={{ color: "#6688aa", fontSize: 11 }}>| 장 시작 시 체결 예정</span>
+            </div>
+          )}
+          {(ordersLoading && pendingLoading) ? (
+            <div style={{ textAlign: "center", padding: 20, color: "#6688aa", fontSize: 12 }}>주문현황 로딩 중...</div>
+          ) : (orders.length === 0 && pendingOrders.length === 0) ? (
+            <div style={{ textAlign: "center", padding: "20px 0", color: "#6688aa", fontSize: 12 }}>오늘 주문내역 없음</div>
           ) : (
             <><table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
-                <tr>{["시간", "종목", "구분", "수량", "체결가", "상태"].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
+                <tr>{["시간", "종목", "구분", "수량", "가격", "상태", ""].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
               </thead>
               <tbody>
+                {/* 미체결 주문 (상단) */}
+                {pendingOrders.map((o, i) => (
+                  <tr key={`p-${i}`} style={{ borderBottom: "1px solid rgba(100,140,200,0.08)", background: "rgba(255,152,0,0.05)" }}>
+                    <td style={{ ...S.td, color: "#ff9800", fontFamily: "monospace" }}>{o.order_time?.slice(0, 4) ? `${o.order_time.slice(0, 2)}:${o.order_time.slice(2, 4)}` : o.order_time || "--:--"}</td>
+                    <td style={{ ...S.td, color: "#e0e6f0", fontWeight: 600 }}>{o.stock_name}</td>
+                    <td style={{ ...S.td, color: o.side === "매수" ? "#ff4444" : "#4488ff", fontWeight: 600 }}>{o.side}</td>
+                    <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace" }}>{fmt(o.remain_qty)}</td>
+                    <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace" }}>{fmt(o.order_price)}</td>
+                    <td style={{ ...S.td, color: "#ff9800", fontWeight: 600 }}>⏳ 대기</td>
+                    <td style={S.td}><button onClick={() => cancelOrder(o)} style={{ background: "rgba(255,76,76,0.15)", color: "#ff4c4c", border: "1px solid rgba(255,76,76,0.3)", borderRadius: 4, padding: "2px 8px", fontSize: 10, cursor: "pointer" }}>취소</button></td>
+                  </tr>
+                ))}
+                {/* 체결 주문 */}
                 {orders.slice(0, 10).map((o, i) => (
-                  <tr key={i} style={{ borderBottom: "1px solid rgba(100,140,200,0.08)" }}>
+                  <tr key={`o-${i}`} style={{ borderBottom: "1px solid rgba(100,140,200,0.08)" }}>
                     <td style={{ ...S.td, color: "#6688aa", fontFamily: "monospace" }}>{o.order_time?.slice(0, 4) ? `${o.order_time.slice(0, 2)}:${o.order_time.slice(2, 4)}` : o.order_time}</td>
                     <td style={{ ...S.td, color: "#e0e6f0", fontWeight: 600 }}>{o.stock_name}</td>
                     <td style={{ ...S.td, color: o.side === "매수" ? "#ff4444" : "#4488ff", fontWeight: 600 }}>{o.side}</td>
                     <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace" }}>{fmt(o.exec_qty || o.order_qty)}</td>
                     <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace" }}>{fmt(o.exec_price || o.order_price)}</td>
                     <td style={{ ...S.td, color: o.exec_qty > 0 ? "#4cff8b" : "#ff9800" }}>{o.exec_qty > 0 ? "체결" : "미체결"}</td>
+                    <td style={S.td}></td>
                   </tr>
                 ))}
               </tbody>
             </table>
             <div style={{ borderTop: "1px solid rgba(100,140,200,0.15)", marginTop: 8, paddingTop: 8, display: "flex", gap: 20 }}>
               <span style={{ color: "#6688aa", fontSize: 12 }}>
-                체결 {orders.filter(o => o.exec_qty > 0).length}건 | 매수 {orders.filter(o => o.side === "매수").length}건 매도 {orders.filter(o => o.side === "매도").length}건
+                미체결 {pendingOrders.length}건 | 체결 {orders.filter(o => o.exec_qty > 0).length}건 | 매수 {orders.filter(o => o.side === "매수").length}건 매도 {orders.filter(o => o.side === "매도").length}건
               </span>
             </div></>
           )}
@@ -913,48 +957,124 @@ function OrderPanel() {
 // ============================================================
 function OrderHistoryPanel() {
   const [orders, setOrders] = useState([]);
+  const [pending, setPending] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState("all");
 
-  useEffect(() => {
-    (async () => {
-      const r = await kisApi("orders");
-      if (r?.success) setOrders(r.orders);
-      setLoading(false);
-    })();
-  }, []);
+  const loadAll = async () => {
+    setLoading(true);
+    const [ordR, penR] = await Promise.all([kisApi("orders"), kisApi("pending")]);
+    if (ordR?.success) setOrders(ordR.orders || []);
+    if (penR?.success) setPending(penR.pending || []);
+    setLoading(false);
+  };
 
-  if (loading) return <div style={{ ...S.panel, textAlign: "center", padding: 40, color: "#6688aa" }}>체결내역 조회 중...</div>;
+  useEffect(() => { loadAll(); }, []);
+
+  const cancelOrder = async (order) => {
+    if (!confirm(`${order.stock_name} ${order.side} 주문을 취소하시겠습니까?`)) return;
+    const r = await kisApi("order/cancel", {}, {
+      method: "POST",
+      body: { org_order_no: order.order_no, qty: order.remain_qty, price: order.order_price }
+    });
+    if (r?.success) loadAll();
+    else alert("주문 취소 실패: " + (r?.message || ""));
+  };
+
+  if (loading) return <div style={{ ...S.panel, textAlign: "center", padding: 40, color: "#6688aa" }}>주문내역 조회 중...</div>;
+
+  const filters = [
+    { id: "all", label: `전체 (${orders.length + pending.length})` },
+    { id: "executed", label: `체결 (${orders.filter(o => o.exec_qty > 0).length})` },
+    { id: "pending", label: `미체결 (${pending.length})` },
+  ];
 
   return (
     <div style={S.panel}>
-      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
-        <div style={S.title}>오늘의 체결내역</div>
-        <button onClick={async () => { setLoading(true); const r = await kisApi("orders"); if (r?.success) setOrders(r.orders); setLoading(false); }}
-          style={{ ...S.btn(), padding: "6px 14px", fontSize: 11 }}>새로고침</button>
-      </div>
-      {orders.length === 0 ? (
-        <div style={{ textAlign: "center", padding: 30, color: "#6688aa" }}>체결내역 없음</div>
-      ) : (
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr>{["주문번호", "시간", "구분", "종목", "주문가", "주문수량", "체결가", "체결수량", "상태"].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
-          </thead>
-          <tbody>
-            {orders.map((o, i) => (
-              <tr key={i} style={{ background: i % 2 === 0 ? "rgba(10,18,40,0.3)" : "transparent" }}>
-                <td style={{ ...S.td, color: "#6688aa", fontFamily: "monospace" }}>{o.order_no}</td>
-                <td style={{ ...S.td, color: "#6688aa", fontFamily: "monospace" }}>{o.order_time?.slice(0, 4) ? `${o.order_time.slice(0, 2)}:${o.order_time.slice(2, 4)}` : o.order_time}</td>
-                <td style={{ ...S.td, color: o.side === "매수" ? "#ff4444" : "#4488ff", fontWeight: 600 }}>{o.side}</td>
-                <td style={{ ...S.td, color: "#e0e6f0", fontWeight: 600 }}>{o.stock_name}</td>
-                <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace" }}>{fmt(o.order_price)}</td>
-                <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace" }}>{fmt(o.order_qty)}</td>
-                <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace" }}>{fmt(o.exec_price)}</td>
-                <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace" }}>{fmt(o.exec_qty)}</td>
-                <td style={{ ...S.td, color: o.exec_qty > 0 ? "#4cff8b" : "#ff9800" }}>{o.exec_qty > 0 ? "체결" : "미체결"}</td>
-              </tr>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={S.title}>오늘의 주문내역</div>
+          <div style={{ display: "flex", gap: 4 }}>
+            {filters.map(f => (
+              <button key={f.id} onClick={() => setFilter(f.id)} style={{
+                padding: "4px 10px", fontSize: 11, borderRadius: 6, cursor: "pointer",
+                background: filter === f.id ? "rgba(100,180,246,0.15)" : "transparent",
+                color: filter === f.id ? "#64b5f6" : "#6688aa",
+                border: filter === f.id ? "1px solid rgba(100,180,246,0.3)" : "1px solid rgba(100,140,200,0.1)",
+              }}>{f.label}</button>
             ))}
-          </tbody>
-        </table>
+          </div>
+        </div>
+        <button onClick={loadAll} style={{ ...S.btn(), padding: "6px 14px", fontSize: 11 }}>새로고침</button>
+      </div>
+
+      {/* 미체결 배너 */}
+      {pending.length > 0 && filter !== "executed" && (
+        <div style={{ background: "rgba(255,152,0,0.1)", border: "1px solid rgba(255,152,0,0.25)", borderRadius: 8, padding: "8px 12px", marginBottom: 10, display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 14 }}>⏳</span>
+          <span style={{ color: "#ff9800", fontSize: 12, fontWeight: 600 }}>미체결 대기 {pending.length}건</span>
+          <span style={{ color: "#6688aa", fontSize: 11 }}>| 장 시작 시 체결 예정</span>
+        </div>
+      )}
+
+      {/* 미체결 테이블 */}
+      {filter !== "executed" && pending.length > 0 && (
+        <div style={{ marginBottom: filter === "pending" ? 0 : 16 }}>
+          {filter === "all" && <div style={{ color: "#ff9800", fontSize: 11, fontWeight: 600, marginBottom: 6 }}>⏳ 미체결 주문</div>}
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>{["주문번호", "시간", "구분", "종목", "주문가", "잔여수량", ""].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
+            </thead>
+            <tbody>
+              {pending.map((o, i) => (
+                <tr key={i} style={{ background: "rgba(255,152,0,0.05)", borderBottom: "1px solid rgba(100,140,200,0.08)" }}>
+                  <td style={{ ...S.td, color: "#ff9800", fontFamily: "monospace" }}>{o.order_no}</td>
+                  <td style={{ ...S.td, color: "#ff9800", fontFamily: "monospace" }}>{o.order_time?.slice(0, 4) ? `${o.order_time.slice(0, 2)}:${o.order_time.slice(2, 4)}` : o.order_time || "--:--"}</td>
+                  <td style={{ ...S.td, color: o.side === "매수" ? "#ff4444" : "#4488ff", fontWeight: 600 }}>{o.side}</td>
+                  <td style={{ ...S.td, color: "#e0e6f0", fontWeight: 600 }}>{o.stock_name}</td>
+                  <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace" }}>{fmt(o.order_price)}</td>
+                  <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace" }}>{fmt(o.remain_qty)}</td>
+                  <td style={S.td}><button onClick={() => cancelOrder(o)} style={{ background: "rgba(255,76,76,0.15)", color: "#ff4c4c", border: "1px solid rgba(255,76,76,0.3)", borderRadius: 4, padding: "2px 8px", fontSize: 10, cursor: "pointer" }}>취소</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* 체결 테이블 */}
+      {filter !== "pending" && (
+        <>
+          {filter === "all" && orders.length > 0 && <div style={{ color: "#4cff8b", fontSize: 11, fontWeight: 600, marginBottom: 6 }}>체결 주문</div>}
+          {orders.length === 0 ? (
+            filter === "executed" && <div style={{ textAlign: "center", padding: 30, color: "#6688aa" }}>체결내역 없음</div>
+          ) : (
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>{["주문번호", "시간", "구분", "종목", "주문가", "주문수량", "체결가", "체결수량", "상태"].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
+              </thead>
+              <tbody>
+                {orders.map((o, i) => (
+                  <tr key={i} style={{ background: i % 2 === 0 ? "rgba(10,18,40,0.3)" : "transparent" }}>
+                    <td style={{ ...S.td, color: "#6688aa", fontFamily: "monospace" }}>{o.order_no}</td>
+                    <td style={{ ...S.td, color: "#6688aa", fontFamily: "monospace" }}>{o.order_time?.slice(0, 4) ? `${o.order_time.slice(0, 2)}:${o.order_time.slice(2, 4)}` : o.order_time}</td>
+                    <td style={{ ...S.td, color: o.side === "매수" ? "#ff4444" : "#4488ff", fontWeight: 600 }}>{o.side}</td>
+                    <td style={{ ...S.td, color: "#e0e6f0", fontWeight: 600 }}>{o.stock_name}</td>
+                    <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace" }}>{fmt(o.order_price)}</td>
+                    <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace" }}>{fmt(o.order_qty)}</td>
+                    <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace" }}>{fmt(o.exec_price)}</td>
+                    <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace" }}>{fmt(o.exec_qty)}</td>
+                    <td style={{ ...S.td, color: o.exec_qty > 0 ? "#4cff8b" : "#ff9800" }}>{o.exec_qty > 0 ? "체결" : "미체결"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </>
+      )}
+
+      {(orders.length === 0 && pending.length === 0) && (
+        <div style={{ textAlign: "center", padding: 30, color: "#6688aa" }}>주문내역 없음</div>
       )}
     </div>
   );
