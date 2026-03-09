@@ -1444,9 +1444,9 @@ export default function PatternDetector() {
             gap:14, marginBottom:16 }}>
             <FilterGroup label="시장 선택" options={[{v:'ALL',l:'전체'},{v:'KOSPI',l:'KOSPI'},{v:'KOSDAQ',l:'KOSDAQ'}]}
               value={scanMarket} setter={setScanMarket} color={COLORS.red} disabled={scanning} />
-            <FilterGroup label="조회 기간" options={[{v:180,l:'6개월'},{v:365,l:'1년'},{v:600,l:'2년'}]}
+            <FilterGroup label="조회 기간" options={[{v:3,l:'3일'},{v:5,l:'5일'},{v:10,l:'10일'},{v:15,l:'15일'},{v:30,l:'30일'},{v:180,l:'6개월'},{v:365,l:'1년'},{v:600,l:'2년'}]}
               value={scanPeriod} setter={setScanPeriod} color={COLORS.red} disabled={scanning} />
-            <FilterGroup label="급상승 기준" options={[{v:20,l:'+20%'},{v:30,l:'+30%'},{v:50,l:'+50%'},{v:100,l:'+100%'}]}
+            <FilterGroup label="급상승 기준" options={[{v:5,l:'+5%'},{v:10,l:'+10%'},{v:15,l:'+15%'},{v:20,l:'+20%'},{v:30,l:'+30%'},{v:50,l:'+50%'},{v:100,l:'+100%'}]}
               value={scanRisePct} setter={setScanRisePct} color={COLORS.red} disabled={scanning} />
             <FilterGroup label="상승 기간" options={[{v:3,l:'3일'},{v:5,l:'5일'},{v:10,l:'10일'}]}
               value={scanRiseWindow} setter={setScanRiseWindow} color={COLORS.red} disabled={scanning} />
