@@ -203,7 +203,9 @@ export default function PatternDetector() {
   // ━━━ 가상투자 등록 모달 상태 ━━━
   const [showRegModal, setShowRegModal] = useState(false);
   const [regTitle, setRegTitle] = useState('');
-  const [regPreset, setRegPreset] = useState('smart');
+  const [regPreset, setRegPreset] = useState(() => {
+    try { return localStorage.getItem('kis_auto_trade_preset') || 'smart'; } catch { return 'smart'; }
+  });
   const [regCapital, setRegCapital] = useState(1000000);
   const [regLoading, setRegLoading] = useState(false);
   const [newRtSessionId, setNewRtSessionId] = useState(null);
@@ -242,6 +244,20 @@ export default function PatternDetector() {
   const [kisOrderType, setKisOrderType] = useState('01'); // '00'=지정가, '01'=시장가
   const [kisOrderLoading, setKisOrderLoading] = useState(false);
   const [kisOrderResults, setKisOrderResults] = useState(null);
+
+  // regPreset 변경 시 localStorage에 전략값 저장 (자동매매 동기화용)
+  useEffect(() => {
+    const presetDefs = {
+      aggressive:   { tp:10, sl:5, days:5 },
+      standard:     { tp:7,  sl:3, days:10 },
+      conservative: { tp:5,  sl:2, days:15 },
+      longterm:     { tp:15, sl:5, days:30 },
+      smart:        { tp:15, sl:12, days:30 },
+    };
+    const p = presetDefs[regPreset] || presetDefs.smart;
+    localStorage.setItem('kis_auto_trade_preset', regPreset);
+    localStorage.setItem('kis_auto_trade_strategy', JSON.stringify({ tp: p.tp, sl: p.sl, days: p.days }));
+  }, [regPreset]);
 
   // ━━━ ★ 매수 후보 풀 함수 (Supabase 직접 호출) ━━━
   const fetchCandidates = useCallback(async () => {
@@ -775,6 +791,22 @@ export default function PatternDetector() {
 
     setKisOrderResults(results);
     setKisOrderLoading(false);
+
+    // 주문 성공 시 자동매매 전략 동기화 + 자동시작 플래그 저장
+    const successCount = results.filter(r => r.success).length;
+    if (successCount > 0) {
+      const presetDefs = {
+        aggressive:   { tp:10, sl:5, days:5 },
+        standard:     { tp:7,  sl:3, days:10 },
+        conservative: { tp:5,  sl:2, days:15 },
+        longterm:     { tp:15, sl:5, days:30 },
+        smart:        { tp:15, sl:12, days:30 },
+      };
+      const p = presetDefs[regPreset] || presetDefs.smart;
+      localStorage.setItem(`kis_auto_trade_sync_${kisOrderMode}`, JSON.stringify({
+        tp: p.tp, sl: p.sl, days: p.days, autostart: true, timestamp: Date.now(),
+      }));
+    }
   };
 
   // ━━━ 스캔 히스토리 상태 ━━━

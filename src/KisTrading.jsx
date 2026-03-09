@@ -1737,6 +1737,11 @@ function StockChart({ candles, buyDate, buyPrice, sellDate, sellPrice, pos }) {
 const AUTO_TRADE_STORAGE_KEY = "kis_auto_trade_rules";
 
 function AutoTradePanel({ mode = "virtual" }) {
+  // 패턴탐지기 전략 동기화: localStorage에서 읽기
+  const initStrategy = (() => {
+    try { return JSON.parse(localStorage.getItem('kis_auto_trade_strategy')) || {}; } catch { return {}; }
+  })();
+
   const [rules, setRules] = useState(() => {
     try { return JSON.parse(localStorage.getItem(`${AUTO_TRADE_STORAGE_KEY}_${mode}`) || "[]"); } catch { return []; }
   });
@@ -1745,10 +1750,11 @@ function AutoTradePanel({ mode = "virtual" }) {
   const [positions, setPositions] = useState([]);
   const [loadingBal, setLoadingBal] = useState(false);
   const intervalRef = useRef(null);
+  const checkRef = useRef(null); // 최신 checkAndExecute 참조용
   const [intervalSec, setIntervalSec] = useState(30);
-  const [globalTP, setGlobalTP] = useState(7);
-  const [globalSL, setGlobalSL] = useState(3);
-  const [globalMaxDays, setGlobalMaxDays] = useState(10);
+  const [globalTP, setGlobalTP] = useState(initStrategy.tp ?? 7);
+  const [globalSL, setGlobalSL] = useState(initStrategy.sl ?? 3);
+  const [globalMaxDays, setGlobalMaxDays] = useState(initStrategy.days ?? 10);
 
   // 규칙 저장
   const saveRules = useCallback((r) => {
@@ -1869,23 +1875,91 @@ function AutoTradePanel({ mode = "virtual" }) {
     addLog("체크 완료");
   }, [rules, mode, addLog, saveRules]);
 
+  // checkRef를 항상 최신 checkAndExecute로 유지 (interval 내 stale closure 방지)
+  useEffect(() => { checkRef.current = checkAndExecute; }, [checkAndExecute]);
+
   // 모니터링 시작/정지
+  const startMonitoring = useCallback((sec) => {
+    const interval = sec || intervalSec;
+    setMonitoring(true);
+    addLog(`▶️ 모니터링 시작 (${interval}초 간격)`);
+    checkRef.current?.();
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    intervalRef.current = setInterval(() => checkRef.current?.(), interval * 1000);
+  }, [intervalSec, addLog]);
+
+  const stopMonitoring = useCallback(() => {
+    clearInterval(intervalRef.current);
+    intervalRef.current = null;
+    setMonitoring(false);
+    addLog("⏹️ 모니터링 정지");
+  }, [addLog]);
+
   const toggleMonitoring = useCallback(() => {
-    if (monitoring) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-      setMonitoring(false);
-      addLog("⏹️ 모니터링 정지");
-    } else {
-      setMonitoring(true);
-      addLog(`▶️ 모니터링 시작 (${intervalSec}초 간격)`);
-      checkAndExecute();
-      intervalRef.current = setInterval(checkAndExecute, intervalSec * 1000);
-    }
-  }, [monitoring, intervalSec, checkAndExecute, addLog]);
+    if (monitoring) stopMonitoring();
+    else startMonitoring();
+  }, [monitoring, startMonitoring, stopMonitoring]);
 
   // 컴포넌트 언마운트 시 정리
   useEffect(() => () => { if (intervalRef.current) clearInterval(intervalRef.current); }, []);
+
+  // ── 마운트 시 자동 초기화: 보유종목 로드 + 전략 동기화 + 모니터링 자동 시작 ──
+  const autoInitRef = useRef(false);
+  useEffect(() => {
+    if (autoInitRef.current) return;
+    autoInitRef.current = true;
+
+    // 1. 패턴탐지기 전략값으로 기존 규칙 동기화
+    const tp = initStrategy.tp ?? 7;
+    const sl = initStrategy.sl ?? 3;
+    const days = initStrategy.days ?? 10;
+    setRules(prev => {
+      if (prev.length === 0) return prev;
+      const updated = prev.map(r => ({ ...r, take_profit_pct: tp, stop_loss_pct: sl, max_hold_days: days }));
+      try { localStorage.setItem(`${AUTO_TRADE_STORAGE_KEY}_${mode}`, JSON.stringify(updated)); } catch {}
+      return updated;
+    });
+
+    // 2. 보유종목 자동 로드 → 완료 후 모니터링 자동 시작
+    (async () => {
+      setLoadingBal(true);
+      const r = await kisApi("balance");
+      if (r?.success && r.positions) {
+        setPositions(r.positions);
+        setRules(prev => {
+          const existing = new Set(prev.map(x => x.stock_code));
+          const newRules = [...prev];
+          r.positions.forEach(p => {
+            if (!existing.has(p.stock_code)) {
+              newRules.push({
+                stock_code: p.stock_code, stock_name: p.stock_name,
+                take_profit_pct: tp, stop_loss_pct: sl, max_hold_days: days,
+                enabled: true, buy_date: new Date().toISOString().slice(0, 10),
+              });
+            }
+          });
+          if (newRules.length !== prev.length) {
+            try { localStorage.setItem(`${AUTO_TRADE_STORAGE_KEY}_${mode}`, JSON.stringify(newRules)); } catch {}
+          }
+          return newRules;
+        });
+      }
+      setLoadingBal(false);
+
+      // 3. 30초 간격 자동 모니터링 시작
+      setIntervalSec(30);
+      setMonitoring(true);
+      addLog(`▶️ 자동 모니터링 시작 (30초 간격)`);
+      // 약간 지연하여 규칙 상태가 업데이트된 후 첫 체크 실행
+      setTimeout(() => {
+        checkRef.current?.();
+        intervalRef.current = setInterval(() => checkRef.current?.(), 30 * 1000);
+      }, 500);
+    })();
+
+    // autostart 플래그 소비
+    try { localStorage.removeItem(`kis_auto_trade_sync_${mode}`); } catch {}
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 규칙 수정
   const updateRule = (code, field, value) => {
@@ -1917,7 +1991,7 @@ function AutoTradePanel({ mode = "virtual" }) {
             🤖 자동 손절/익절
           </div>
           <div style={{ fontSize: 11, color: '#6688aa' }}>
-            보유종목 수익률을 주기적으로 체크하여 조건 도달 시 자동 시장가 매도
+            보유종목 수익률을 주기적으로 체크하여 조건 도달 시 자동 시장가 매도 · 탭 진입 시 자동 시작
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1945,7 +2019,14 @@ function AutoTradePanel({ mode = "virtual" }) {
 
       {/* 전체 규칙 설정 */}
       <div style={{ ...S.panel }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: '#e0e6f0', marginBottom: 10 }}>전체 규칙 설정</div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#e0e6f0' }}>전체 규칙 설정</div>
+          {initStrategy.tp != null && (
+            <span style={{ fontSize: 10, color: '#4cff8b', opacity: 0.8 }}>
+              🔗 패턴탐지기 전략 동기화됨 (익절 {initStrategy.tp}% / 손절 {initStrategy.sl}% / {initStrategy.days}일)
+            </span>
+          )}
+        </div>
         <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
           <div>
             <label style={S.label}>익절 (%)</label>
@@ -1965,7 +2046,7 @@ function AutoTradePanel({ mode = "virtual" }) {
           <button onClick={applyGlobalSettings} style={{ ...S.btn(), padding: '8px 16px', fontSize: 12 }}>전체 적용</button>
           <button onClick={loadPositions} disabled={loadingBal}
             style={{ ...S.btn('#333', '#444'), padding: '8px 16px', fontSize: 12 }}>
-            {loadingBal ? '조회 중...' : '보유종목 불러오기'}
+            {loadingBal ? '조회 중...' : '보유종목 새로고침'}
           </button>
         </div>
       </div>
