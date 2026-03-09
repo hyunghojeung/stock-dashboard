@@ -199,6 +199,7 @@ export default function PatternDetector() {
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState(0);
   const [selectedRecStocks, setSelectedRecStocks] = useState(new Set());  // 매수추천 선택 종목
+  const [filteredRecCodes, setFilteredRecCodes] = useState(new Set());  // 현재 필터 적용 후 보이는 종목 코드
   // ━━━ 가상투자 등록 모달 상태 ━━━
   const [showRegModal, setShowRegModal] = useState(false);
   const [regTitle, setRegTitle] = useState('');
@@ -629,7 +630,7 @@ export default function PatternDetector() {
       selRecs = (patternScanResult?.matches || []).filter(r => selectedPatternStocks.has(r.code));
     } else {
       const recs = result?.recommendations || [];
-      selRecs = recs.filter(r => selectedRecStocks.has(r.code));
+      selRecs = recs.filter(r => selectedRecStocks.has(r.code) && filteredRecCodes.has(r.code));
     }
     if (selRecs.length === 0) return;
     setRegLoading(true);
@@ -708,7 +709,8 @@ export default function PatternDetector() {
   // ━━━ KIS 주문 실행 (매수) ━━━
   const executeKisOrders = async () => {
     const recs = result?.recommendations || [];
-    const selStocks = recs.filter(r => selectedRecStocks.has(r.code));
+    // 필터링된 목록에서만 선택된 종목을 가져옴 (숨겨진 종목 제외)
+    const selStocks = recs.filter(r => selectedRecStocks.has(r.code) && filteredRecCodes.has(r.code));
     if (selStocks.length === 0) return;
 
     const isVirtual = kisOrderMode === 'virtual';
@@ -2021,7 +2023,7 @@ export default function PatternDetector() {
           </div>
           {activeTab===0 && <TabSummary result={result} saveClusterPattern={saveClusterPattern} savingPattern={savingPattern} />}
           {activeTab===1 && <TabChart result={result} />}
-          {activeTab===2 && <TabRecommend result={result} selectedRecStocks={selectedRecStocks} setSelectedRecStocks={setSelectedRecStocks} onRegister={openRegModal} onKisOrder={openKisOrderModal} />}
+          {activeTab===2 && <TabRecommend result={result} selectedRecStocks={selectedRecStocks} setSelectedRecStocks={setSelectedRecStocks} setFilteredRecCodes={setFilteredRecCodes} onRegister={openRegModal} onKisOrder={openKisOrderModal} />}
           {activeTab===3 && <VirtualInvestTab recommendations={result.recommendations || []} backtestRecommendations={result.backtest_recommendations || []} selectedRecStocks={selectedRecStocks} setSelectedRecStocks={setSelectedRecStocks} newRtSessionId={newRtSessionId} setNewRtSessionId={setNewRtSessionId} />}
           {activeTab===4 && <TabPatternLibrary patterns={savedPatterns} loading={savedPatternsLoading} onRefresh={fetchSavedPatterns} onDelete={deletePattern} onToggleActive={togglePatternActive} editingId={editingPatternId} editingName={editingPatternName} setEditingId={setEditingPatternId} setEditingName={setEditingPatternName} onSaveName={savePatternName} onScanWithPattern={(id) => scanOrLoadPattern(id)} />}
         </>)}
@@ -2286,9 +2288,13 @@ export default function PatternDetector() {
 
               {/* 선택 종목 + 예상 수량 */}
               <div style={{ marginBottom:16, padding:10, borderRadius:8, background:'rgba(96,165,250,0.06)', border:'1px solid rgba(96,165,250,0.15)' }}>
-                <div style={{ fontSize:11, color:'#60a5fa', marginBottom:6 }}>📋 주문 종목 ({selectedRecStocks.size}개) · 종목당 {Math.floor(kisOrderCapital / Math.max(selectedRecStocks.size, 1)).toLocaleString()}원</div>
-                {(result?.recommendations || []).filter(r => selectedRecStocks.has(r.code)).map(r => {
-                  const perStock = Math.floor(kisOrderCapital / selectedRecStocks.size);
+                {(() => {
+                  const visibleSelected = (result?.recommendations || []).filter(r => selectedRecStocks.has(r.code) && filteredRecCodes.has(r.code));
+                  const cnt = visibleSelected.length;
+                  return (<>
+                <div style={{ fontSize:11, color:'#60a5fa', marginBottom:6 }}>📋 주문 종목 ({cnt}개) · 종목당 {Math.floor(kisOrderCapital / Math.max(cnt, 1)).toLocaleString()}원</div>
+                {visibleSelected.map(r => {
+                  const perStock = Math.floor(kisOrderCapital / cnt);
                   const qty = r.current_price > 0 ? Math.floor(perStock / r.current_price) : 0;
                   return (
                     <div key={r.code} style={{ display:'flex', justifyContent:'space-between', padding:'4px 0', fontSize:12 }}>
@@ -2297,6 +2303,7 @@ export default function PatternDetector() {
                     </div>
                   );
                 })}
+                </>); })()}
               </div>
 
               {/* 버튼 */}
@@ -2798,7 +2805,7 @@ function TabChart({ result }) {
   </div>);
 }
 
-function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegister, onKisOrder }) {
+function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, setFilteredRecCodes, onRegister, onKisOrder }) {
   const [recSortKey, setRecSortKey] = useState('composite_score');
   const [recSortDir, setRecSortDir] = useState('desc');
   const [recFilter, setRecFilter] = useState('all');
@@ -2980,11 +2987,15 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
     });
   };
 
+  // 필터 적용 후 보이는 종목 코드를 부모에 동기화
+  const filteredCodes = useMemo(() => new Set(recs.map(r => r.code)), [recs]);
+  useEffect(() => { if (setFilteredRecCodes) setFilteredRecCodes(filteredCodes); }, [filteredCodes, setFilteredRecCodes]);
+
   const toggleAll = () => {
-    if (selectedRecStocks.size === rawRecs.length) {
+    if (selectedRecStocks.size === recs.length && recs.every(r => selectedRecStocks.has(r.code))) {
       setSelectedRecStocks(new Set());
     } else {
-      setSelectedRecStocks(new Set(rawRecs.map(r => r.code)));
+      setSelectedRecStocks(new Set(recs.map(r => r.code)));
     }
   };
 
