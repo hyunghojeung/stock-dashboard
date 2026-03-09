@@ -659,7 +659,7 @@ function BalancePanel() {
       {/* ★ 중간행: 시세 정보 + 보유종목 */}
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
         {/* 실시간 시세 패널 */}
-        <div style={{ ...S.panel, flex: "1 1 550px" }}>
+        <div style={{ ...S.panel, flex: "0 1 360px", minWidth: 300 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
             <div>
               <span style={{ color: "#e0e6f0", fontWeight: 600, fontSize: 15 }}>📈 실시간 시세</span>
@@ -671,20 +671,18 @@ function BalancePanel() {
           </div>
           {quoteData ? (
             <div style={{ background: "rgba(8,15,30,0.8)", borderRadius: 8, padding: 16 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
                 {[
                   ["현재가", fmt(quoteData.price), clr(quoteData.change)],
                   ["전일대비", `${quoteData.change >= 0 ? "+" : ""}${fmt(quoteData.change)}`, clr(quoteData.change)],
                   ["등락률", `${quoteData.change_rate >= 0 ? "+" : ""}${quoteData.change_rate}%`, clr(quoteData.change_rate)],
-                  ["거래량", fmt(quoteData.volume), "#e0e6f0"],
                   ["시가", fmt(quoteData.open), "#e0e6f0"],
                   ["고가", fmt(quoteData.high), "#ff4444"],
                   ["저가", fmt(quoteData.low), "#4488ff"],
-                  ["전일종가", fmt(quoteData.prev_close), "#6688aa"],
                 ].map(([label, val, color]) => (
                   <div key={label}>
                     <div style={{ color: "#556677", fontSize: 10 }}>{label}</div>
-                    <div style={{ color, fontSize: 14, fontWeight: 600, fontFamily: "monospace" }}>{val}</div>
+                    <div style={{ color, fontSize: 13, fontWeight: 600, fontFamily: "monospace" }}>{val}</div>
                   </div>
                 ))}
               </div>
@@ -714,7 +712,7 @@ function BalancePanel() {
         </div>
 
         {/* 보유종목 테이블 */}
-        <div style={{ ...S.panel, flex: "1 1 400px" }}>
+        <div style={{ ...S.panel, flex: "1 1 600px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
             <div style={S.title}>💼 보유종목 ({positions.length})</div>
             <button onClick={load} style={{ ...S.btn(), padding: "6px 12px", fontSize: 11 }}>새로고침</button>
@@ -724,7 +722,7 @@ function BalancePanel() {
           ) : (
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
-                <tr>{["종목", "수량", "평균가", "현재가", "손익", "수익률"].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
+                <tr>{["종목", "수량", "평균가", "현재가", "손익", "수익률", "보유금액"].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
               </thead>
               <tbody>
                 {positions.map((p, i) => (
@@ -736,6 +734,7 @@ function BalancePanel() {
                     <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace" }}>{fmt(p.current_price)}</td>
                     <td style={{ ...S.td, color: clr(p.profit_loss), fontFamily: "monospace", fontWeight: 600 }}>{fmtWon(p.profit_loss)}</td>
                     <td style={{ ...S.td, color: clr(p.profit_rate), fontFamily: "monospace", fontWeight: 600 }}>{fmtPct(p.profit_rate)}</td>
+                    <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace", fontWeight: 600 }}>{fmt(p.eval_amount || (p.current_price * p.qty))}원</td>
                   </tr>
                 ))}
               </tbody>
