@@ -482,13 +482,9 @@ function BalancePanel() {
     }
   }, []);
 
-  const [ordersDebug, setOrdersDebug] = useState(null);
-  const [pendingDebug, setPendingDebug] = useState(null);
-
   const loadOrders = useCallback(async () => {
     setOrdersLoading(true);
     const r = await kisApi("orders");
-    setOrdersDebug({ success: r?.success, count: r?.orders?.length, query_date: r?.query_date, rt_cd: r?.rt_cd, msg: r?.msg, detail: r?.detail });
     if (r?.success) setOrders(r.orders || []);
     setOrdersLoading(false);
   }, []);
@@ -496,7 +492,6 @@ function BalancePanel() {
   const loadPending = useCallback(async () => {
     setPendingLoading(true);
     const r = await kisApi("pending");
-    setPendingDebug({ success: r?.success, count: r?.pending?.length, rt_cd: r?.rt_cd, msg: r?.msg, detail: r?.detail });
     if (r?.success) setPendingOrders(r.pending || []);
     setPendingLoading(false);
   }, []);
@@ -635,12 +630,6 @@ function BalancePanel() {
             <div style={S.title}>📋 오늘 주문현황</div>
             <button onClick={() => { loadOrders(); loadPending(); }} style={{ ...S.btn(), padding: "4px 10px", fontSize: 10 }}>새로고침</button>
           </div>
-          {/* API 디버그 정보 */}
-          {(ordersDebug || pendingDebug) && (
-            <div style={{ background: "rgba(100,140,200,0.06)", borderRadius: 6, padding: "6px 10px", marginBottom: 8, fontSize: 10, fontFamily: "monospace", color: "#6688aa" }}>
-              orders: {JSON.stringify(ordersDebug)} | pending: {JSON.stringify(pendingDebug)}
-            </div>
-          )}
           {/* 미체결 배너 */}
           {pendingOrders.length > 0 && (
             <div style={{ background: "rgba(255,152,0,0.1)", border: "1px solid rgba(255,152,0,0.25)", borderRadius: 8, padding: "8px 12px", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
