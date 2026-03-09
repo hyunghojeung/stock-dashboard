@@ -310,39 +310,71 @@ export default async function handler(req, res) {
     }
 
     // ── pending (GET): 미체결 주문 조회 ──
+    // 모의투자: inquire-psbl-rvsecncl 미지원 → inquire-daily-ccld + CCLD_DVSN=02 사용
+    // 실전투자: inquire-psbl-rvsecncl 사용
     if (routeName === "pending") {
-      const trId = isVirtual ? "VTTC8036R" : "TTTC8036R";
-      const result = await kisGet(
-        baseUrl,
-        "/uapi/domestic-stock/v1/trading/inquire-psbl-rvsecncl",
-        trId,
-        {
-          CANO: cano,
-          ACNT_PRDT_CD: acntPrdtCd,
-          CTX_AREA_FK100: "",
-          CTX_AREA_NK100: "",
-          INQR_DVSN_1: "0",
-          INQR_DVSN_2: "0",
-        },
-        token,
-        appKey,
-        appSecret
-      );
-
-      const rawList = result.output1 || result.output || [];
-      const pending = (Array.isArray(rawList) ? rawList : []).map((o) => ({
-        order_no: o.odno || "",
-        order_date: o.ord_dt || "",
-        order_time: o.ord_tmd || "",
-        stock_code: o.pdno || "",
-        stock_name: o.prdt_name || "",
-        side: o.sll_buy_dvsn_cd === "02" ? "매수" : "매도",
-        order_qty: safeInt(o.ord_qty),
-        order_price: safeInt(o.ord_unpr),
-        remain_qty: safeInt(o.psbl_qty),
-        total_exec_qty: safeInt(o.ord_qty) - safeInt(o.psbl_qty),
-      }));
-      return res.json({ success: true, pending, rt_cd: result.rt_cd, msg: result.msg1 });
+      if (isVirtual) {
+        // 모의투자: 체결내역 API에서 미체결만 조회 (CCLD_DVSN=02)
+        const startDate = qp.start_date || today();
+        const trId = "VTTC8001R";
+        const result = await kisGet(
+          baseUrl,
+          "/uapi/domestic-stock/v1/trading/inquire-daily-ccld",
+          trId,
+          {
+            CANO: cano, ACNT_PRDT_CD: acntPrdtCd,
+            INQR_STRT_DT: startDate, INQR_END_DT: startDate,
+            SLL_BUY_DVSN_CD: "00", INQR_DVSN: "00",
+            PDNO: "", CCLD_DVSN: "02",
+            ORD_GNO_BRNO: "", ODNO: "",
+            INQR_DVSN_3: "00", INQR_DVSN_1: "",
+            CTX_AREA_FK100: "", CTX_AREA_NK100: "",
+          },
+          token, appKey, appSecret
+        );
+        const rawList = result.output1 || [];
+        const pending = (Array.isArray(rawList) ? rawList : []).map((o) => ({
+          order_no: o.odno || "",
+          order_date: o.ord_dt || "",
+          order_time: o.ord_tmd || "",
+          stock_code: o.pdno || "",
+          stock_name: o.prdt_name || "",
+          side: o.sll_buy_dvsn_cd === "02" ? "매수" : "매도",
+          order_qty: safeInt(o.ord_qty),
+          order_price: safeInt(o.ord_unpr),
+          remain_qty: safeInt(o.ord_qty) - safeInt(o.tot_ccld_qty),
+          total_exec_qty: safeInt(o.tot_ccld_qty),
+        }));
+        return res.json({ success: true, pending, rt_cd: result.rt_cd, msg: result.msg1, query_date: startDate, method: "ccld_fallback" });
+      } else {
+        // 실전투자: 정정/취소가능 주문 조회 API 사용
+        const trId = "TTTC8036R";
+        const result = await kisGet(
+          baseUrl,
+          "/uapi/domestic-stock/v1/trading/inquire-psbl-rvsecncl",
+          trId,
+          {
+            CANO: cano, ACNT_PRDT_CD: acntPrdtCd,
+            CTX_AREA_FK100: "", CTX_AREA_NK100: "",
+            INQR_DVSN_1: "0", INQR_DVSN_2: "0",
+          },
+          token, appKey, appSecret
+        );
+        const rawList = result.output1 || result.output || [];
+        const pending = (Array.isArray(rawList) ? rawList : []).map((o) => ({
+          order_no: o.odno || "",
+          order_date: o.ord_dt || "",
+          order_time: o.ord_tmd || "",
+          stock_code: o.pdno || "",
+          stock_name: o.prdt_name || "",
+          side: o.sll_buy_dvsn_cd === "02" ? "매수" : "매도",
+          order_qty: safeInt(o.ord_qty),
+          order_price: safeInt(o.ord_unpr),
+          remain_qty: safeInt(o.psbl_qty),
+          total_exec_qty: safeInt(o.ord_qty) - safeInt(o.psbl_qty),
+        }));
+        return res.json({ success: true, pending, rt_cd: result.rt_cd, msg: result.msg1, method: "rvsecncl" });
+      }
     }
 
     // ── order/buy, order/sell (POST) ──
