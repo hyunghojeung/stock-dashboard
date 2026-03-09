@@ -257,6 +257,32 @@ const S = {
 // ============================================================
 const _autoTrade = { interval: {}, running: {}, logs: {} };
 const AUTO_TRADE_RULES_KEY = "kis_auto_trade_rules";
+const BACKEND_API = "https://web-production-139e9.up.railway.app";
+
+// 규칙을 백엔드(Railway)에 동기화하는 헬퍼
+async function syncRulesToBackend(mode, rules) {
+  try {
+    const payload = rules.filter(r => r.enabled).map(r => ({
+      mode,
+      stock_code: r.stock_code,
+      stock_name: r.stock_name || "",
+      buy_price: r.buy_price || 0,
+      quantity: r.quantity || 0,
+      tp_pct: r.take_profit_pct ?? r.tp_pct ?? 10,
+      sl_pct: r.stop_loss_pct ?? r.sl_pct ?? 5,
+      max_hold_days: r.max_hold_days ?? 30,
+      buy_date: r.buy_date || new Date().toISOString().slice(0, 10),
+      enabled: true,
+    }));
+    await fetch(`${BACKEND_API}/api/kis/auto-trade/rules/sync`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode, rules: payload }),
+    });
+  } catch (e) {
+    console.warn("[서버 자동매매] 규칙 동기화 실패:", e.message);
+  }
+}
 
 export function startKisAutoTrade(mode = 'virtual', intervalSec = 30) {
   if (_autoTrade.running[mode]) return; // already running
@@ -368,6 +394,9 @@ export function setupAutoTradeAfterBuy(mode, boughtStocks, strategy) {
   }
 
   try { localStorage.setItem(storageKey, JSON.stringify(rules)); } catch {}
+
+  // ★ 서버사이드 자동매매를 위해 백엔드에도 규칙 동기화
+  syncRulesToBackend(mode, rules);
 
   // 모니터링 시작 (이미 실행 중이면 무시)
   startKisAutoTrade(mode, 30);
@@ -1881,6 +1910,8 @@ function AutoTradePanel({ mode = "virtual" }) {
   const saveRules = useCallback((r) => {
     setRules(r);
     try { localStorage.setItem(`${AUTO_TRADE_STORAGE_KEY}_${mode}`, JSON.stringify(r)); } catch {}
+    // ★ 서버사이드 자동매매에도 동기화
+    syncRulesToBackend(mode, r);
   }, [mode]);
 
   // 잔고 조회 → 보유종목 로드
@@ -2083,6 +2114,12 @@ function AutoTradePanel({ mode = "virtual" }) {
         checkRef.current?.();
         intervalRef.current = setInterval(() => checkRef.current?.(), 30 * 1000);
       }, 500);
+
+      // 4. ★ 서버사이드 자동매매를 위해 백엔드에 규칙 동기화
+      try {
+        const currentRules = JSON.parse(localStorage.getItem(`${AUTO_TRADE_STORAGE_KEY}_${mode}`) || '[]');
+        if (currentRules.length > 0) syncRulesToBackend(mode, currentRules);
+      } catch {}
     })();
 
     // autostart 플래그 소비
@@ -2140,6 +2177,10 @@ function AutoTradePanel({ mode = "virtual" }) {
           </div>
           <div style={{ fontSize: 11, color: '#6688aa' }}>
             보유종목 수익률을 주기적으로 체크하여 조건 도달 시 자동 시장가 매도 · 탭 진입 시 자동 시작
+          </div>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 4, padding: '2px 8px', background: 'rgba(0,200,120,0.15)', borderRadius: 10, border: '1px solid rgba(0,200,120,0.3)' }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#00c878', display: 'inline-block' }} />
+            <span style={{ fontSize: 10, color: '#00c878', fontWeight: 600 }}>서버 자동매매 활성 (브라우저 종료 후에도 동작)</span>
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
