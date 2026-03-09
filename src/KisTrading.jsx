@@ -252,6 +252,128 @@ const S = {
 };
 
 // ============================================================
+// Global Auto-Trade Monitor (runs in background, independent of component)
+// 매입 완료 즉시 자동 손절/익절 모니터링 시작
+// ============================================================
+const _autoTrade = { interval: {}, running: {}, logs: {} };
+const AUTO_TRADE_RULES_KEY = "kis_auto_trade_rules";
+
+export function startKisAutoTrade(mode = 'virtual', intervalSec = 30) {
+  if (_autoTrade.running[mode]) return; // already running
+  _autoTrade.running[mode] = true;
+  _autoTrade.logs[mode] = _autoTrade.logs[mode] || [];
+
+  const atLog = (msg) => {
+    _autoTrade.logs[mode] = [{ time: new Date().toLocaleTimeString('ko-KR'), msg }, ...(_autoTrade.logs[mode] || [])].slice(0, 50);
+  };
+
+  const check = async () => {
+    let rules;
+    try { rules = JSON.parse(localStorage.getItem(`${AUTO_TRADE_RULES_KEY}_${mode}`) || '[]'); } catch { rules = []; }
+    const activeRules = rules.filter(r => r.enabled);
+    if (activeRules.length === 0) { atLog("활성 규칙 없음 (보유종목 매칭 0건)"); return; }
+
+    activateKisMode(mode);
+    atLog("잔고 조회 중...");
+    const bal = await kisApi("balance");
+    if (!bal?.success) { atLog("❌ 잔고 조회 실패"); return; }
+
+    const posMap = {};
+    (bal.positions || []).forEach(p => { posMap[p.stock_code] = p; });
+
+    atLog(`${activeRules.length}개 종목 모니터링 중...`);
+    for (const rule of activeRules) {
+      const pos = posMap[rule.stock_code];
+      if (!pos) continue;
+      const profitRate = pos.profit_rate || 0;
+      const holdDays = rule.buy_date ? Math.floor((Date.now() - new Date(rule.buy_date).getTime()) / 86400000) : 0;
+
+      let reason = null;
+      if (profitRate >= rule.take_profit_pct) reason = `익절 (${profitRate.toFixed(2)}% ≥ ${rule.take_profit_pct}%)`;
+      else if (profitRate <= -rule.stop_loss_pct) reason = `손절 (${profitRate.toFixed(2)}% ≤ -${rule.stop_loss_pct}%)`;
+      else if (rule.max_hold_days > 0 && holdDays >= rule.max_hold_days) reason = `만기매도 (${holdDays}일 ≥ ${rule.max_hold_days}일)`;
+
+      if (!reason) {
+        atLog(`  ${pos.stock_name} 수익률 ${profitRate >= 0 ? '+' : ''}${profitRate.toFixed(2)}% → 유지`);
+        continue;
+      }
+
+      atLog(`🔔 ${pos.stock_name} ${reason} → 시장가 매도 실행`);
+      const sellResult = await kisApi("order/sell", {}, {
+        method: "POST",
+        body: JSON.stringify({ stock_code: pos.stock_code, qty: pos.qty, price: 0, order_type: "01" }),
+      });
+      if (sellResult?.success) {
+        atLog(`✅ ${pos.stock_name} 매도 성공! 주문번호: ${sellResult.order_no}`);
+        // 매매 일지 기록
+        try {
+          await supabase.from('trade_journal').insert({
+            mode: mode === 'real' ? 'real' : 'mock',
+            trade_type: 'sell', stock_code: pos.stock_code, stock_name: pos.stock_name,
+            price: pos.current_price, quantity: pos.qty, amount: pos.current_price * pos.qty,
+            realized_pnl: pos.profit_loss || 0, realized_pnl_pct: Math.round((pos.profit_rate || 0) * 100) / 100,
+            cash_balance: (bal.summary?.deposit || 0) + pos.eval_amount,
+            order_no: sellResult.order_no || '', memo: `자동매매(BG) ${reason}`,
+            trade_date: new Date().toISOString(),
+          });
+        } catch {}
+        // 규칙 비활성화
+        rules = rules.map(r => r.stock_code === pos.stock_code ? { ...r, enabled: false } : r);
+        try { localStorage.setItem(`${AUTO_TRADE_RULES_KEY}_${mode}`, JSON.stringify(rules)); } catch {}
+      } else {
+        atLog(`❌ ${pos.stock_name} 매도 실패: ${sellResult?.message || '알 수 없는 오류'}`);
+      }
+    }
+    atLog("체크 완료");
+  };
+
+  atLog(`▶️ 백그라운드 자동매매 시작 (${intervalSec}초 간격)`);
+  check();
+  _autoTrade.interval[mode] = setInterval(check, intervalSec * 1000);
+}
+
+export function stopKisAutoTrade(mode) {
+  clearInterval(_autoTrade.interval[mode]);
+  _autoTrade.running[mode] = false;
+  delete _autoTrade.interval[mode];
+}
+
+export function isKisAutoTradeRunning(mode) {
+  return !!_autoTrade.running[mode];
+}
+
+export function getKisAutoTradeLogs(mode) {
+  return _autoTrade.logs[mode] || [];
+}
+
+// 매수 주문 후 자동매매 규칙 생성 + 즉시 모니터링 시작
+export function setupAutoTradeAfterBuy(mode, boughtStocks, strategy) {
+  const storageKey = `${AUTO_TRADE_RULES_KEY}_${mode}`;
+  let rules;
+  try { rules = JSON.parse(localStorage.getItem(storageKey) || '[]'); } catch { rules = []; }
+
+  const existing = new Set(rules.map(r => r.stock_code));
+  const tp = strategy?.tp ?? 7;
+  const sl = strategy?.sl ?? 3;
+  const days = strategy?.days ?? 10;
+
+  for (const stock of boughtStocks) {
+    if (!existing.has(stock.code)) {
+      rules.push({
+        stock_code: stock.code, stock_name: stock.name,
+        take_profit_pct: tp, stop_loss_pct: sl, max_hold_days: days,
+        enabled: true, buy_date: new Date().toISOString().slice(0, 10),
+      });
+    }
+  }
+
+  try { localStorage.setItem(storageKey, JSON.stringify(rules)); } catch {}
+
+  // 모니터링 시작 (이미 실행 중이면 무시)
+  startKisAutoTrade(mode, 30);
+}
+
+// ============================================================
 // KIS Trading Component
 // ============================================================
 export default function KisTrading({ mode = "virtual" }) {
@@ -1903,11 +2025,19 @@ function AutoTradePanel({ mode = "virtual" }) {
   // 컴포넌트 언마운트 시 정리
   useEffect(() => () => { if (intervalRef.current) clearInterval(intervalRef.current); }, []);
 
-  // ── 마운트 시 자동 초기화: 보유종목 로드 + 전략 동기화 + 모니터링 자동 시작 ──
+  // ── 마운트 시 자동 초기화: 백그라운드 인계 + 보유종목 로드 + 전략 동기화 + 모니터링 시작 ──
   const autoInitRef = useRef(false);
   useEffect(() => {
     if (autoInitRef.current) return;
     autoInitRef.current = true;
+
+    // 0. 백그라운드 글로벌 모니터가 실행 중이면 인계 (중복 방지)
+    if (isKisAutoTradeRunning(mode)) {
+      stopKisAutoTrade(mode);
+      // 백그라운드 로그 가져오기
+      const bgLogs = getKisAutoTradeLogs(mode);
+      if (bgLogs.length > 0) setLogs(bgLogs);
+    }
 
     // 1. 패턴탐지기 전략값으로 기존 규칙 동기화
     const tp = initStrategy.tp ?? 7;
@@ -1950,7 +2080,6 @@ function AutoTradePanel({ mode = "virtual" }) {
       setIntervalSec(30);
       setMonitoring(true);
       addLog(`▶️ 자동 모니터링 시작 (30초 간격)`);
-      // 약간 지연하여 규칙 상태가 업데이트된 후 첫 체크 실행
       setTimeout(() => {
         checkRef.current?.();
         intervalRef.current = setInterval(() => checkRef.current?.(), 30 * 1000);

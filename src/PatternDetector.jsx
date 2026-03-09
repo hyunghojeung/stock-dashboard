@@ -11,7 +11,7 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import VirtualInvestTab from "./VirtualInvestTab";
-import { kisApi, getKisCredentials, loadKisCredentials, activateKisMode, refreshKisToken } from "./KisTrading";
+import { kisApi, getKisCredentials, loadKisCredentials, activateKisMode, refreshKisToken, setupAutoTradeAfterBuy } from "./KisTrading";
 import { supabase } from "./supabaseClient";
 
 const API_BASE = "https://web-production-139e9.up.railway.app";
@@ -792,9 +792,9 @@ export default function PatternDetector() {
     setKisOrderResults(results);
     setKisOrderLoading(false);
 
-    // 주문 성공 시 자동매매 전략 동기화 + 자동시작 플래그 저장
-    const successCount = results.filter(r => r.success).length;
-    if (successCount > 0) {
+    // 주문 성공 시 자동매매 규칙 생성 + 즉시 백그라운드 모니터링 시작
+    const successStocks = results.filter(r => r.success);
+    if (successStocks.length > 0) {
       const presetDefs = {
         aggressive:   { tp:10, sl:5, days:5 },
         standard:     { tp:7,  sl:3, days:10 },
@@ -806,6 +806,8 @@ export default function PatternDetector() {
       localStorage.setItem(`kis_auto_trade_sync_${kisOrderMode}`, JSON.stringify({
         tp: p.tp, sl: p.sl, days: p.days, autostart: true, timestamp: Date.now(),
       }));
+      // 매입 즉시 자동 손절/익절 모니터링 시작
+      setupAutoTradeAfterBuy(kisOrderMode, successStocks, p);
     }
   };
 
@@ -2368,8 +2370,13 @@ export default function PatternDetector() {
                     </span>
                   </div>
                 ))}
-                <div style={{ marginTop:12, padding:10, borderRadius:8, background:'rgba(255,213,79,0.08)', border:'1px solid rgba(255,213,79,0.2)', fontSize:11, color:'#ffd54f' }}>
-                  💡 체결 확인은 {kisOrderMode === 'virtual' ? 'KIS 모의투자' : 'KIS 실전투자'} {'>'} 체결내역에서 확인하세요.
+                {kisOrderResults.some(r => r.success) && (
+                  <div style={{ marginTop:12, padding:10, borderRadius:8, background:'rgba(76,255,139,0.08)', border:'1px solid rgba(76,255,139,0.2)', fontSize:11, color:'#4cff8b' }}>
+                    🤖 자동 손절/익절 모니터링이 백그라운드에서 시작되었습니다 (30초 간격)
+                  </div>
+                )}
+                <div style={{ marginTop:8, padding:10, borderRadius:8, background:'rgba(255,213,79,0.08)', border:'1px solid rgba(255,213,79,0.2)', fontSize:11, color:'#ffd54f' }}>
+                  💡 체결 확인은 {kisOrderMode === 'virtual' ? 'KIS 모의투자' : 'KIS 실전투자'} {'>'} 주문내역에서 확인하세요.
                 </div>
                 <div style={{ display:'flex', justifyContent:'flex-end', marginTop:12 }}>
                   <button onClick={() => { setShowKisOrderModal(false); setSelectedRecStocks(new Set()); }}
