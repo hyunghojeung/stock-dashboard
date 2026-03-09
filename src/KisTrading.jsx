@@ -2108,6 +2108,26 @@ function AutoTradePanel({ mode = "virtual" }) {
     addLog(`전체 규칙 일괄 변경: 익절 ${globalTP}% / 손절 ${globalSL}% / 최대보유 ${globalMaxDays}일`);
   };
 
+  // ── 종목 차트 모달 ──
+  const [chartStock, setChartStock] = useState(null); // { stock_code, stock_name }
+  const [chartCandles, setChartCandles] = useState(null);
+  const [chartQuote, setChartQuote] = useState(null);
+  const [chartLoading, setChartLoading] = useState(false);
+
+  const openChart = async (stockCode, stockName) => {
+    setChartStock({ stock_code: stockCode, stock_name: stockName });
+    setChartCandles(null);
+    setChartQuote(null);
+    setChartLoading(true);
+    const [c, q] = await Promise.all([
+      kisApi("chart", { code: stockCode, period: "D" }),
+      kisApi("quote", { code: stockCode }),
+    ]);
+    if (c?.success) setChartCandles(c.candles);
+    if (q?.success) setChartQuote(q);
+    setChartLoading(false);
+  };
+
   const isVirtual = mode === 'virtual';
   const accent = isVirtual ? '#60a5fa' : '#ef4444';
 
@@ -2204,7 +2224,11 @@ function AutoTradePanel({ mode = "virtual" }) {
                       <input type="checkbox" checked={r.enabled} onChange={e => updateRule(r.stock_code, 'enabled', e.target.checked)} />
                     </td>
                     <td style={{ ...S.td, color: '#e0e6f0', fontWeight: 600 }}>
-                      {r.stock_name} <span style={{ color: '#6688aa', fontSize: 10 }}>{r.stock_code}</span>
+                      <span onClick={() => openChart(r.stock_code, r.stock_name)}
+                        style={{ cursor: 'pointer', borderBottom: '1px dashed rgba(100,140,200,0.3)' }}
+                        title="클릭하여 차트 보기">
+                        {r.stock_name}
+                      </span> <span style={{ color: '#6688aa', fontSize: 10 }}>{r.stock_code}</span>
                     </td>
                     <td style={S.td}>
                       <input type="number" value={r.take_profit_pct} onChange={e => updateRule(r.stock_code, 'take_profit_pct', Number(e.target.value))}
@@ -2256,6 +2280,85 @@ function AutoTradePanel({ mode = "virtual" }) {
           }
         </div>
       </div>
+
+      {/* 종목 차트 모달 */}
+      {chartStock && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.75)', zIndex: 9999,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }} onClick={() => setChartStock(null)}>
+          <div style={{
+            background: '#0d1525', border: '1px solid rgba(100,140,200,0.25)',
+            borderRadius: 16, padding: 24, width: 880, maxWidth: '95vw', maxHeight: '90vh', overflowY: 'auto',
+            boxShadow: '0 20px 60px rgba(0,0,0,0.6)',
+          }} onClick={e => e.stopPropagation()}>
+            {/* 헤더 */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <div>
+                <span style={{ fontSize: 17, fontWeight: 700, color: '#e0e6f0' }}>
+                  📊 {chartStock.stock_name}
+                </span>
+                <span style={{ fontSize: 11, color: '#6688aa', marginLeft: 8 }}>{chartStock.stock_code}</span>
+                {chartQuote && (
+                  <span style={{ marginLeft: 16, fontSize: 20, fontWeight: 700, color: clr(chartQuote.change), fontFamily: "'JetBrains Mono',monospace" }}>
+                    {fmt(chartQuote.price)}
+                    <span style={{ fontSize: 12, color: clr(chartQuote.change), marginLeft: 6 }}>
+                      {chartQuote.change > 0 ? '▲' : chartQuote.change < 0 ? '▼' : '—'} {fmt(Math.abs(chartQuote.change))} ({fmtPct(chartQuote.change_rate)})
+                    </span>
+                  </span>
+                )}
+              </div>
+              <button onClick={() => setChartStock(null)} style={{
+                background: 'transparent', border: 'none', color: '#6688aa', fontSize: 20, cursor: 'pointer',
+              }}>✕</button>
+            </div>
+
+            {/* 시세 정보 */}
+            {chartQuote && (
+              <div style={{ display: 'flex', gap: 16, marginBottom: 14, flexWrap: 'wrap' }}>
+                {[['시가', chartQuote.open], ['고가', chartQuote.high], ['저가', chartQuote.low],
+                  ['거래량', chartQuote.volume], ['PER', chartQuote.per?.toFixed(1)], ['PBR', chartQuote.pbr?.toFixed(2)]].map(([l, v]) => (
+                  <div key={l} style={{ padding: '6px 12px', background: 'rgba(25,35,65,0.6)', borderRadius: 6, border: '1px solid rgba(100,140,200,0.1)' }}>
+                    <div style={{ color: '#556677', fontSize: 9 }}>{l}</div>
+                    <div style={{ color: '#e0e6f0', fontSize: 12, fontFamily: "'JetBrains Mono',monospace" }}>{typeof v === 'number' ? fmt(v) : v || '—'}</div>
+                  </div>
+                ))}
+                {(() => {
+                  const pos = positions.find(p => p.stock_code === chartStock.stock_code);
+                  if (!pos) return null;
+                  return <>
+                    <div style={{ padding: '6px 12px', background: 'rgba(0,230,118,0.06)', borderRadius: 6, border: '1px solid rgba(0,230,118,0.15)' }}>
+                      <div style={{ color: '#00E676', fontSize: 9 }}>매수가</div>
+                      <div style={{ color: '#00E676', fontSize: 12, fontFamily: "'JetBrains Mono',monospace", fontWeight: 600 }}>{fmt(pos.buy_price)}</div>
+                    </div>
+                    <div style={{ padding: '6px 12px', background: 'rgba(25,35,65,0.6)', borderRadius: 6, border: '1px solid rgba(100,140,200,0.1)' }}>
+                      <div style={{ color: '#556677', fontSize: 9 }}>수익률</div>
+                      <div style={{ color: clr(pos.profit_rate), fontSize: 12, fontFamily: "'JetBrains Mono',monospace", fontWeight: 600 }}>{fmtPct(pos.profit_rate)}</div>
+                    </div>
+                    <div style={{ padding: '6px 12px', background: 'rgba(25,35,65,0.6)', borderRadius: 6, border: '1px solid rgba(100,140,200,0.1)' }}>
+                      <div style={{ color: '#556677', fontSize: 9 }}>평가손익</div>
+                      <div style={{ color: clr(pos.profit_loss), fontSize: 12, fontFamily: "'JetBrains Mono',monospace", fontWeight: 600 }}>{fmtWon(pos.profit_loss)}</div>
+                    </div>
+                  </>;
+                })()}
+              </div>
+            )}
+
+            {/* 차트 */}
+            {chartLoading ? (
+              <div style={{ textAlign: 'center', padding: 60, color: '#6688aa' }}>📊 차트 로딩 중...</div>
+            ) : chartCandles && chartCandles.length > 0 ? (
+              <StockChart
+                candles={chartCandles.slice(0, 100)}
+                buyPrice={positions.find(p => p.stock_code === chartStock.stock_code)?.buy_price}
+              />
+            ) : (
+              <div style={{ textAlign: 'center', padding: 60, color: '#556677' }}>차트 데이터를 불러올 수 없습니다</div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
