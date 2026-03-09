@@ -49,8 +49,10 @@ async function kisPost(baseUrl, path, trId, body, token, appKey, appSecret) {
 }
 
 function today() {
+  // KST (UTC+9) 기준 날짜 반환 — 한국 시장 기준
   const d = new Date();
-  return d.toISOString().slice(0, 10).replace(/-/g, "");
+  const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+  return kst.toISOString().slice(0, 10).replace(/-/g, "");
 }
 
 function safeInt(v, def = 0) {
@@ -304,7 +306,7 @@ export default async function handler(req, res) {
         exec_price: safeInt(o.avg_prvs),
         status: o.ord_dvsn_name || "",
       }));
-      return res.json({ success: true, orders });
+      return res.json({ success: true, orders, query_date: startDate, rt_cd: result.rt_cd, msg: result.msg1 });
     }
 
     // ── pending (GET): 미체결 주문 조회 ──
@@ -327,7 +329,8 @@ export default async function handler(req, res) {
         appSecret
       );
 
-      const pending = (result.output || []).map((o) => ({
+      const rawList = result.output1 || result.output || [];
+      const pending = (Array.isArray(rawList) ? rawList : []).map((o) => ({
         order_no: o.odno || "",
         order_date: o.ord_dt || "",
         order_time: o.ord_tmd || "",
@@ -339,7 +342,7 @@ export default async function handler(req, res) {
         remain_qty: safeInt(o.psbl_qty),
         total_exec_qty: safeInt(o.ord_qty) - safeInt(o.psbl_qty),
       }));
-      return res.json({ success: true, pending });
+      return res.json({ success: true, pending, rt_cd: result.rt_cd, msg: result.msg1 });
     }
 
     // ── order/buy, order/sell (POST) ──
