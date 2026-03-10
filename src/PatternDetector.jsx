@@ -838,12 +838,17 @@ export default function PatternDetector() {
   const addStockGetPrice = async (code) => {
     setAddStockPriceLoading(prev => ({ ...prev, [code]: true }));
     try {
-      const resp = await fetch(`${API_BASE}/api/kis/quote?code=${code}`);
+      const resp = await fetch(`${API_BASE}/api/stocks/quote/${code}`);
       const d = await resp.json();
-      if (d.price) {
-        setAddStockPrices(prev => ({ ...prev, [code]: { price: d.price, change: d.change || 0, change_pct: d.change_pct || 0 } }));
+      if (d.success && d.price) {
+        setAddStockPrices(prev => ({ ...prev, [code]: {
+          price: d.price, change: d.change || 0, change_pct: d.change_pct || 0,
+          high: d.high || 0, low: d.low || 0, open: d.open || 0, volume: d.volume || 0,
+        }}));
+      } else {
+        alert(`시세 조회 실패: ${d.error || '알 수 없는 오류'}`);
       }
-    } catch (e) { console.error('시세조회 실패:', e); }
+    } catch (e) { console.error('시세조회 실패:', e); alert('시세 조회 실패: 서버 연결 오류'); }
     finally { setAddStockPriceLoading(prev => ({ ...prev, [code]: false })); }
   };
 
