@@ -99,6 +99,13 @@ export default function PatternDetector() {
   const [scanChartLoading, setScanChartLoading] = useState(false);
   const [scanChartStock, setScanChartStock] = useState(null);
 
+  // ━━━ 개별종목추가 상태 ━━━
+  const [addStockKeyword, setAddStockKeyword] = useState('');
+  const [addStockResults, setAddStockResults] = useState([]);
+  const [addStockSearching, setAddStockSearching] = useState(false);
+  const [addStockPrices, setAddStockPrices] = useState({}); // { code: { price, change, change_pct } }
+  const [addStockPriceLoading, setAddStockPriceLoading] = useState({});
+
   // ━━━ [v3.1] 폴링 인터벌 ref — 언마운트 시 정리용 ━━━
   const scanIntervalRef = useRef(null);
   const analyzerIntervalRef = useRef(null); // ★ 분석기 폴링 ref (메모리 누수 방지)
@@ -811,6 +818,112 @@ export default function PatternDetector() {
     }
   };
 
+  // ━━━ 개별종목추가 함수 ━━━
+  const searchAddStock = async () => {
+    if (!addStockKeyword.trim()) return;
+    setAddStockSearching(true);
+    setAddStockResults([]);
+    setAddStockPrices({});
+    try {
+      const resp = await fetch(`${API_BASE}/api/pattern/search`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keyword: addStockKeyword.trim() }),
+      });
+      const data = await resp.json();
+      setAddStockResults(data.results || []);
+    } catch (e) { alert('검색 실패: ' + e.message); }
+    finally { setAddStockSearching(false); }
+  };
+
+  const addStockGetPrice = async (code) => {
+    setAddStockPriceLoading(prev => ({ ...prev, [code]: true }));
+    try {
+      const resp = await fetch(`${API_BASE}/api/kis/quote?code=${code}`);
+      const d = await resp.json();
+      if (d.price) {
+        setAddStockPrices(prev => ({ ...prev, [code]: { price: d.price, change: d.change || 0, change_pct: d.change_pct || 0 } }));
+      }
+    } catch (e) { console.error('시세조회 실패:', e); }
+    finally { setAddStockPriceLoading(prev => ({ ...prev, [code]: false })); }
+  };
+
+  const addStockRegisterVirtual = async (stock) => {
+    const priceInfo = addStockPrices[stock.code];
+    const price = priceInfo?.price || 0;
+    const confirmMsg = `🏦 가상투자 등록\n\n${stock.name}(${stock.code})\n현재가: ${price ? price.toLocaleString() + '원' : '미조회'}\n\n등록하시겠습니까?`;
+    if (!window.confirm(confirmMsg)) return;
+    try {
+      const body = {
+        title: `개별추가_${stock.name}`,
+        stocks: [{ code: stock.code, name: stock.name, buy_price: price, current_price: price }],
+        capital: price > 0 ? price * 10 : 1000000,
+        preset: 'smart',
+        take_profit_pct: 15, stop_loss_pct: 12, max_hold_days: 30,
+        trailing_stop_pct: 5, grace_days: 7,
+      };
+      const res = await fetch(`${API_BASE}/api/virtual-invest/realtime/start`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (data.error) alert('등록 실패: ' + data.error);
+      else alert(data.message || `${stock.name} 가상투자 등록 완료!`);
+    } catch (e) { alert('등록 실패: ' + e.message); }
+  };
+
+  const addStockRegisterCandidate = async (stock) => {
+    const priceInfo = addStockPrices[stock.code];
+    await registerCandidates([{
+      code: stock.code,
+      name: stock.name,
+      current_price: priceInfo?.price || 0,
+      composite_score: 0,
+      top_manip_score: 0,
+      entry_score: 0,
+    }], 'manual');
+  };
+
+  const addStockKisBuy = async (stock, mode) => {
+    const isVirtual = mode === 'virtual';
+    if (!activateKisMode(mode)) {
+      const refreshed = await refreshKisToken(mode);
+      if (!refreshed) {
+        alert(`${isVirtual ? '모의투자' : '실전투자'} API가 연결되지 않았습니다.\nKIS ${isVirtual ? '모의투자' : '실전투자'} > API 설정에서 먼저 연결해주세요.`);
+        return;
+      }
+    }
+    const creds = await loadKisCredentials();
+    const acctNo = (creds.account_no || "").replace(/-/g, "");
+    if (!acctNo || acctNo.length < 10) {
+      alert(`${isVirtual ? '모의투자' : '실전투자'} 계좌번호가 설정되지 않았습니다.`);
+      return;
+    }
+    const priceInfo = addStockPrices[stock.code];
+    const price = priceInfo?.price || 0;
+    if (price <= 0) { alert('현재가를 먼저 조회해주세요. (🔍 버튼)'); return; }
+
+    const capital = 1000000;
+    const qty = Math.floor(capital / price);
+    if (qty <= 0) { alert('1주 매수 불가 (금액 부족)'); return; }
+
+    const confirmMsg = isVirtual
+      ? `🏦 모의투자 매수\n\n${stock.name} ${qty}주 × ${price.toLocaleString()}원\n= ${(qty * price).toLocaleString()}원\n\n진행하시겠습니까?`
+      : `🔴 실전투자 매수\n\n⚠️ 실제 계좌에서 매수됩니다!\n${stock.name} ${qty}주 × ${price.toLocaleString()}원\n= ${(qty * price).toLocaleString()}원\n\n정말 진행하시겠습니까?`;
+    if (!window.confirm(confirmMsg)) return;
+
+    try {
+      const r = await kisApi("order/buy", {}, {
+        method: 'POST',
+        body: JSON.stringify({ stock_code: stock.code, qty, order_type: '01' }),
+      });
+      alert(r.success ? `${stock.name} 매수 완료! (${qty}주)` : `매수 실패: ${r.message}`);
+      if (r.success) {
+        setupAutoTradeAfterBuy(mode, [{ code: stock.code, name: stock.name, qty, price }],
+          { tp: 15, sl: 12, days: 30 });
+      }
+    } catch (e) { alert('매수 실패: ' + e.message); }
+  };
+
   // ━━━ 스캔 히스토리 상태 ━━━
   const [scanHistoryList, setScanHistoryList] = useState([]);
   const [showScanHistory, setShowScanHistory] = useState(false);
@@ -1425,6 +1538,7 @@ export default function PatternDetector() {
         {[
           { k:'scanner', l:'🚀 급상승 종목 발굴', c:COLORS.red, cd:COLORS.redDim },
           { k:'analyzer', l:'🔬 패턴 분석기', c:COLORS.accent, cd:COLORS.accentDim },
+          { k:'addstock', l:'➕ 개별종목추가', c:COLORS.green, cd:COLORS.greenDim },
         ].map(m => (
           <button key={m.k} onClick={() => setPageMode(m.k)} style={{
             flex:1, padding:'12px 0', fontSize:14, fontWeight:700, border:'none', borderRadius:10,
@@ -2076,6 +2190,161 @@ export default function PatternDetector() {
             </div>
           </div>
         )}
+      </div>)}
+
+      {/* ━━━ 페이지 3: 개별종목추가 ━━━ */}
+      {pageMode === 'addstock' && (<div>
+        <div style={{ background:COLORS.card, border:`1px solid ${COLORS.cardBorder}`,
+          borderRadius:12, padding:20, marginBottom:16 }}>
+          <div style={{ fontSize:15, fontWeight:700, marginBottom:4, color:COLORS.green }}>
+            ➕ 개별종목 추가
+          </div>
+          <div style={{ fontSize:12, color:COLORS.textDim, marginBottom:16 }}>
+            종목명 또는 종목코드로 검색하여 바로 투자 등록
+          </div>
+
+          {/* 검색창 */}
+          <div style={{ display:'flex', gap:8, marginBottom:16 }}>
+            <input
+              type="text"
+              value={addStockKeyword}
+              onChange={e => setAddStockKeyword(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && searchAddStock()}
+              placeholder="종목명 또는 종목코드 입력..."
+              style={{
+                flex:1, padding:'12px 16px', fontSize:14, borderRadius:10,
+                border:`1px solid ${COLORS.cardBorder}`, background:'#0d1117',
+                color:COLORS.text, outline:'none', fontFamily:'inherit',
+              }}
+            />
+            <button onClick={searchAddStock} disabled={addStockSearching || !addStockKeyword.trim()}
+              style={{
+                padding:'12px 24px', fontSize:14, fontWeight:700, borderRadius:10,
+                border:'none', cursor: addStockSearching ? 'default' : 'pointer',
+                background: addStockSearching ? '#374151' : `linear-gradient(135deg, ${COLORS.green}, #059669)`,
+                color: COLORS.white, fontFamily:'inherit',
+              }}>
+              {addStockSearching ? '⏳ 검색 중...' : '🔍 검색'}
+            </button>
+          </div>
+
+          {/* 검색 결과 */}
+          {addStockResults.length > 0 && (
+            <div>
+              <div style={{ fontSize:13, fontWeight:600, color:COLORS.text, marginBottom:10 }}>
+                검색결과 ({addStockResults.length}건)
+              </div>
+              <div style={{ overflowX:'auto' }}>
+                <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+                  <thead>
+                    <tr style={{ borderBottom:`1px solid ${COLORS.cardBorder}` }}>
+                      <th style={{ textAlign:'left', padding:'8px 6px', color:COLORS.textDim, fontWeight:500 }}>종목명</th>
+                      <th style={{ textAlign:'left', padding:'8px 6px', color:COLORS.textDim, fontWeight:500 }}>코드</th>
+                      <th style={{ textAlign:'left', padding:'8px 6px', color:COLORS.textDim, fontWeight:500 }}>시장</th>
+                      <th style={{ textAlign:'right', padding:'8px 6px', color:COLORS.textDim, fontWeight:500 }}>현재가</th>
+                      <th style={{ textAlign:'right', padding:'8px 6px', color:COLORS.textDim, fontWeight:500 }}>등락</th>
+                      <th style={{ textAlign:'center', padding:'8px 6px', color:COLORS.textDim, fontWeight:500 }}>액션</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {addStockResults.map(stock => {
+                      const pi = addStockPrices[stock.code];
+                      const priceLoading = addStockPriceLoading[stock.code];
+                      return (
+                        <tr key={stock.code} style={{ borderBottom:`1px solid ${COLORS.cardBorder}22` }}>
+                          <td style={{ padding:'10px 6px', color:COLORS.text, fontWeight:600 }}>{stock.name}</td>
+                          <td style={{ padding:'10px 6px', color:COLORS.gray, fontFamily:'monospace', fontSize:11 }}>{stock.code}</td>
+                          <td style={{ padding:'10px 6px' }}>
+                            <span style={{ fontSize:10, padding:'2px 6px', borderRadius:4,
+                              background: stock.market === 'KOSPI' ? 'rgba(59,130,246,0.15)' : 'rgba(168,85,247,0.15)',
+                              color: stock.market === 'KOSPI' ? '#3b82f6' : '#a855f7' }}>
+                              {stock.market || '-'}
+                            </span>
+                          </td>
+                          <td style={{ padding:'10px 6px', textAlign:'right', fontFamily:'monospace', color: COLORS.text }}>
+                            {priceLoading ? <span style={{ color:COLORS.gray }}>⏳</span>
+                              : pi?.price ? pi.price.toLocaleString() + '원' : <span style={{ color:COLORS.gray }}>-</span>}
+                          </td>
+                          <td style={{ padding:'10px 6px', textAlign:'right', fontFamily:'monospace' }}>
+                            {pi?.change_pct ? (
+                              <span style={{ color: pi.change_pct > 0 ? COLORS.red : pi.change_pct < 0 ? '#3b82f6' : COLORS.gray }}>
+                                {pi.change_pct > 0 ? '+' : ''}{pi.change_pct.toFixed(2)}%
+                              </span>
+                            ) : <span style={{ color:COLORS.gray }}>-</span>}
+                          </td>
+                          <td style={{ padding:'6px 4px', textAlign:'center' }}>
+                            <div style={{ display:'flex', gap:4, justifyContent:'center', flexWrap:'wrap' }}>
+                              <button onClick={() => addStockGetPrice(stock.code)}
+                                disabled={priceLoading}
+                                title="현재가 조회"
+                                style={{ padding:'4px 8px', fontSize:11, borderRadius:6, border:`1px solid ${COLORS.accent}`,
+                                  background:COLORS.accentDim, color:COLORS.accent, cursor:'pointer', fontFamily:'inherit', fontWeight:600 }}>
+                                🔍 시세
+                              </button>
+                              <button onClick={() => addStockRegisterVirtual(stock)}
+                                title="가상투자 등록"
+                                style={{ padding:'4px 8px', fontSize:11, borderRadius:6, border:`1px solid ${COLORS.yellow}`,
+                                  background:COLORS.yellowDim, color:COLORS.yellow, cursor:'pointer', fontFamily:'inherit', fontWeight:600 }}>
+                                💰 가상투자
+                              </button>
+                              <button onClick={() => addStockRegisterCandidate(stock)}
+                                title="예비 후보 등록"
+                                style={{ padding:'4px 8px', fontSize:11, borderRadius:6, border:`1px solid ${COLORS.purple}`,
+                                  background:COLORS.purpleDim, color:COLORS.purple, cursor:'pointer', fontFamily:'inherit', fontWeight:600 }}>
+                                🎯 후보등록
+                              </button>
+                              <button onClick={() => addStockKisBuy(stock, 'virtual')}
+                                title="KIS 모의투자 매수"
+                                style={{ padding:'4px 8px', fontSize:11, borderRadius:6, border:`1px solid ${COLORS.accent}`,
+                                  background:COLORS.accentDim, color:COLORS.accent, cursor:'pointer', fontFamily:'inherit', fontWeight:600 }}>
+                                🏦 모의투자
+                              </button>
+                              <button onClick={() => addStockKisBuy(stock, 'real')}
+                                title="KIS 실전투자 매수"
+                                style={{ padding:'4px 8px', fontSize:11, borderRadius:6, border:`1px solid ${COLORS.red}`,
+                                  background:COLORS.redDim, color:COLORS.red, cursor:'pointer', fontFamily:'inherit', fontWeight:600 }}>
+                                🔴 실전투자
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* 검색 결과 없음 */}
+          {addStockResults.length === 0 && !addStockSearching && addStockKeyword.trim() && (
+            <div style={{ textAlign:'center', padding:20, color:COLORS.gray, fontSize:13 }}>
+              검색 결과가 없습니다
+            </div>
+          )}
+
+          {/* 초기 안내 */}
+          {addStockResults.length === 0 && !addStockSearching && !addStockKeyword.trim() && (
+            <div style={{ textAlign:'center', padding:40 }}>
+              <div style={{ fontSize:40, marginBottom:12 }}>🔍</div>
+              <div style={{ fontSize:14, color:COLORS.textDim, marginBottom:8 }}>종목을 검색하여 바로 투자 등록하세요</div>
+              <div style={{ fontSize:12, color:COLORS.gray }}>
+                검색 후 각 종목별로 가상투자, 후보등록, KIS 모의/실전투자를 바로 실행할 수 있습니다
+              </div>
+            </div>
+          )}
+
+          {/* 사용 안내 */}
+          <div style={{ marginTop:16, padding:12, borderRadius:8, background:'rgba(16,185,129,0.06)',
+            border:'1px solid rgba(16,185,129,0.15)', fontSize:11, color:COLORS.gray, lineHeight:1.6 }}>
+            💡 <b style={{ color:COLORS.green }}>사용 안내</b><br/>
+            • <b>🔍 시세</b>: 현재가/등락률 조회 (장중에만 실시간)<br/>
+            • <b>💰 가상투자</b>: 가상 포트폴리오에 등록 (수익률 추적)<br/>
+            • <b>🎯 후보등록</b>: 예비 매수 후보로 저장<br/>
+            • <b>🏦 모의투자</b>: KIS 모의계좌로 실제 주문 (100만원 기준)<br/>
+            • <b>🔴 실전투자</b>: KIS 실계좌로 실제 주문 (100만원 기준)
+          </div>
+        </div>
       </div>)}
 
       {/* ━━━ 가상투자 등록 모달 / Virtual Invest Registration Modal ━━━ */}
