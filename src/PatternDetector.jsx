@@ -105,6 +105,10 @@ export default function PatternDetector() {
   const [addStockSearching, setAddStockSearching] = useState(false);
   const [addStockPrices, setAddStockPrices] = useState({}); // { code: { price, change, change_pct } }
   const [addStockPriceLoading, setAddStockPriceLoading] = useState({});
+  const [addStockChartCode, setAddStockChartCode] = useState(null);
+  const [addStockChartName, setAddStockChartName] = useState('');
+  const [addStockCandles, setAddStockCandles] = useState([]);
+  const [addStockChartLoading, setAddStockChartLoading] = useState(false);
 
   // ━━━ [v3.1] 폴링 인터벌 ref — 언마운트 시 정리용 ━━━
   const scanIntervalRef = useRef(null);
@@ -850,6 +854,21 @@ export default function PatternDetector() {
       }
     } catch (e) { console.error('시세조회 실패:', e); alert('시세 조회 실패: 서버 연결 오류'); }
     finally { setAddStockPriceLoading(prev => ({ ...prev, [code]: false })); }
+  };
+
+  const addStockOpenChart = async (code, name) => {
+    setAddStockChartCode(code);
+    setAddStockChartName(name);
+    setAddStockChartLoading(true);
+    setAddStockCandles([]);
+    try {
+      const resp = await fetch(`${API_BASE}/api/virtual-invest/candles/${code}`);
+      const d = await resp.json();
+      setAddStockCandles(d.candles || []);
+      // 시세도 같이 조회
+      if (!addStockPrices[code]) addStockGetPrice(code);
+    } catch (e) { console.error('차트 로드 실패:', e); }
+    finally { setAddStockChartLoading(false); }
   };
 
   const addStockRegisterVirtual = async (stock) => {
@@ -2257,7 +2276,13 @@ export default function PatternDetector() {
                       const priceLoading = addStockPriceLoading[stock.code];
                       return (
                         <tr key={stock.code} style={{ borderBottom:`1px solid ${COLORS.cardBorder}22` }}>
-                          <td style={{ padding:'10px 6px', color:COLORS.text, fontWeight:600 }}>{stock.name}</td>
+                          <td style={{ padding:'10px 6px', fontWeight:600 }}>
+                            <span onClick={() => addStockOpenChart(stock.code, stock.name)}
+                              style={{ color: addStockChartCode === stock.code ? COLORS.green : COLORS.text,
+                                cursor:'pointer', textDecoration: addStockChartCode === stock.code ? 'underline' : 'none',
+                                borderBottom: addStockChartCode === stock.code ? `2px solid ${COLORS.green}` : 'none',
+                              }}>{stock.name}</span>
+                          </td>
                           <td style={{ padding:'10px 6px', color:COLORS.gray, fontFamily:'monospace', fontSize:11 }}>{stock.code}</td>
                           <td style={{ padding:'10px 6px' }}>
                             <span style={{ fontSize:10, padding:'2px 6px', borderRadius:4,
@@ -2318,6 +2343,30 @@ export default function PatternDetector() {
                   </tbody>
                 </table>
               </div>
+            </div>
+          )}
+
+          {/* 차트 영역 */}
+          {addStockChartCode && (
+            <div style={{ marginTop:16, background:'rgba(8,15,30,0.5)', borderRadius:12, padding:16,
+              border:`1px solid ${COLORS.cardBorder}` }}>
+              {addStockChartLoading ? (
+                <div style={{ textAlign:'center', padding:40, color:COLORS.accent }}>
+                  <div style={{ fontSize:16, marginBottom:8 }}>📊 차트 로딩 중...</div>
+                  <div style={{ fontSize:12, color:COLORS.gray }}>{addStockChartName} ({addStockChartCode})</div>
+                </div>
+              ) : addStockCandles.length >= 5 ? (
+                <AddStockChart
+                  candles={addStockCandles}
+                  stockName={addStockChartName}
+                  stockCode={addStockChartCode}
+                  priceInfo={addStockPrices[addStockChartCode]}
+                />
+              ) : (
+                <div style={{ textAlign:'center', padding:20, color:COLORS.gray, fontSize:13 }}>
+                  차트 데이터가 부족합니다
+                </div>
+              )}
             </div>
           )}
 
@@ -2662,6 +2711,173 @@ export default function PatternDetector() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ━━━ 개별종목추가 기본차트 (영웅문 스타일) ━━━
+function AddStockChart({ candles, stockName, stockCode, priceInfo }) {
+  if (!candles || candles.length < 5) return null;
+
+  const fDate = (d) => { const s = (d||'').replace(/-/g,''); return s.length>=8 ? `${s.slice(4,6)}/${s.slice(6,8)}` : d||'-'; };
+
+  const MAX_CANDLES = 90;
+  const raw = candles.length > MAX_CANDLES ? candles.slice(candles.length - MAX_CANDLES) : [...candles];
+  const offsetIdx = candles.length > MAX_CANDLES ? candles.length - MAX_CANDLES : 0;
+
+  const vis = raw.map(c => {
+    const cl = c.close || 0;
+    if (cl <= 0) return c;
+    return { ...c, open: c.open>0?c.open:cl, high: c.high>0?Math.max(c.high,cl):cl, low: c.low>0?Math.min(c.low,cl):cl, volume: c.volume||0 };
+  });
+  if (vis.length < 5) return null;
+
+  const W = 780, H_CHART = 280, H_VOL = 55, GAP = 20;
+  const PAD = { t: 28, b: 40, l: 62, r: 80 };
+  const TOTAL_H = PAD.t + H_CHART + GAP + H_VOL + PAD.b;
+  const plotW = W - PAD.l - PAD.r;
+  const cw = plotW / vis.length;
+
+  const allP = vis.flatMap(c => [c.high, c.low]).filter(p => p > 0);
+  const pMin = Math.min(...allP), pMax = Math.max(...allP);
+  const pPad = (pMax - pMin) * 0.08 || 100;
+  const pLow = pMin - pPad, pHigh = pMax + pPad, pRange = pHigh - pLow || 1;
+  const maxVol = Math.max(...vis.map(c => c.volume || 0), 1);
+
+  const toX = (i) => PAD.l + i * cw;
+  const toY = (p) => PAD.t + (1 - (p - pLow) / pRange) * H_CHART;
+  const volBase = PAD.t + H_CHART + GAP + H_VOL;
+
+  const calcMA = (period) => {
+    return vis.map((_, i) => {
+      const gi = offsetIdx + i;
+      if (gi < period - 1) return null;
+      let sum = 0;
+      for (let j = 0; j < period; j++) sum += candles[gi - j].close;
+      return sum / period;
+    });
+  };
+  const ma5 = calcMA(5);
+  const ma20 = calcMA(20);
+
+  const lastPrice = vis[vis.length - 1].close;
+  const firstPrice = vis[0].open || vis[0].close;
+  const totalChange = lastPrice - firstPrice;
+  const totalChangePct = firstPrice > 0 ? ((totalChange / firstPrice) * 100).toFixed(2) : 0;
+  const profitColor = totalChange >= 0 ? '#FF0000' : '#0050FF';
+
+  const svg = [];
+
+  // 배경
+  svg.push(<rect key="bg" x={0} y={0} width={W} height={TOTAL_H} fill="rgba(8,15,30,0.95)" rx={8} />);
+
+  // 가격 눈금 (6단계)
+  for (let i = 0; i <= 5; i++) {
+    const p = pLow + pRange * (i / 5);
+    const y = toY(p);
+    svg.push(<line key={`pg-${i}`} x1={PAD.l} y1={y} x2={W-PAD.r} y2={y} stroke="rgba(50,70,100,0.25)" strokeDasharray="3,3" />);
+    svg.push(<text key={`pl-${i}`} x={PAD.l-8} y={y+4} fill="#c8d0e0" fontSize={11}
+      fontFamily="JetBrains Mono, monospace" textAnchor="end" fontWeight={500}>{Math.round(p).toLocaleString()}</text>);
+  }
+
+  // X축 날짜
+  const dateStep = Math.max(1, Math.floor(vis.length / 14));
+  vis.forEach((c, i) => {
+    if (i % dateStep === 0) {
+      svg.push(<text key={`dt-${i}`} x={toX(i)+cw/2} y={TOTAL_H-6}
+        fill="#c0c8d8" fontSize={9} fontFamily="JetBrains Mono, monospace" textAnchor="middle">{fDate(c.date)}</text>);
+    }
+  });
+
+  // 거래량 구분선 + 라벨
+  svg.push(<line key="vol-sep" x1={PAD.l} y1={PAD.t+H_CHART+GAP/2} x2={W-PAD.r} y2={PAD.t+H_CHART+GAP/2}
+    stroke="rgba(50,70,100,0.3)" />);
+  svg.push(<text key="vol-lbl" x={PAD.l-8} y={volBase-H_VOL+12} fill="#556677" fontSize={9} fontFamily="monospace" textAnchor="end">VOL</text>);
+
+  // 거래량 바
+  vis.forEach((c, i) => {
+    const isUp = c.close >= c.open;
+    const color = isUp ? '#FF0000' : '#0050FF';
+    const vol = c.volume || 0;
+    const barH = vol > 0 ? Math.max((vol / maxVol) * H_VOL, 2) : (c.close > 0 ? 2 : 0);
+    svg.push(<rect key={`vol-${i}`} x={toX(i)+1} y={volBase-barH}
+      width={Math.max(cw-2,2)} height={barH} fill={color} opacity={0.75} rx={1} />);
+  });
+
+  // 캔들스틱
+  vis.forEach((c, i) => {
+    const x = toX(i);
+    const isUp = c.close >= c.open;
+    const color = isUp ? '#FF0000' : '#0050FF';
+    const bodyTop = toY(Math.max(c.open, c.close));
+    const bodyBot = toY(Math.min(c.open, c.close));
+    const bodyH = Math.max(bodyBot - bodyTop, 3);
+    const cx = x + cw / 2;
+    svg.push(
+      <g key={`c-${i}`}>
+        <line x1={cx} y1={toY(c.high)} x2={cx} y2={toY(c.low)} stroke={color} strokeWidth={1} />
+        <rect x={x+2} y={bodyTop} width={Math.max(cw-4,3)} height={bodyH} fill={color} rx={1} />
+      </g>
+    );
+  });
+
+  // MA5
+  let ma5d = '';
+  ma5.forEach((v, i) => { if (v !== null) ma5d += (ma5d ? 'L' : 'M') + `${toX(i)+cw/2},${toY(v)} `; });
+  if (ma5d) svg.push(<path key="ma5" d={ma5d} fill="none" stroke="#ffcc00" strokeWidth={1.5} opacity={0.8} />);
+
+  // MA20
+  let ma20d = '';
+  ma20.forEach((v, i) => { if (v !== null) ma20d += (ma20d ? 'L' : 'M') + `${toX(i)+cw/2},${toY(v)} `; });
+  if (ma20d) svg.push(<path key="ma20" d={ma20d} fill="none" stroke="#ff6699" strokeWidth={1.5} opacity={0.7} />);
+
+  // 현재가 수평선 + 우측 태그
+  if (lastPrice > 0 && lastPrice >= pLow && lastPrice <= pHigh) {
+    const curY = toY(lastPrice);
+    svg.push(<line key="cur-line" x1={PAD.l} y1={curY} x2={W-PAD.r} y2={curY}
+      stroke={profitColor} strokeWidth={1} strokeDasharray="5,3" opacity={0.5} />);
+    svg.push(<rect key="cur-bg" x={W-PAD.r+2} y={curY-10} width={PAD.r-6} height={20}
+      fill={profitColor} rx={3} />);
+    svg.push(<text key="cur-txt" x={W-PAD.r/2+1} y={curY+4} fill="white" fontSize={10}
+      fontFamily="JetBrains Mono, monospace" textAnchor="middle" fontWeight={600}>{Math.round(lastPrice).toLocaleString()}</text>);
+  }
+
+  const pi = priceInfo || {};
+
+  return (
+    <div>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8, flexWrap:'wrap', gap:6 }}>
+        <div style={{ fontSize:14, fontWeight:700 }}>
+          <span style={{ color:'#e0e6f0' }}>📊 {stockName}</span>
+          <span style={{ color:'#6688aa', fontSize:11, marginLeft:8 }}>({stockCode})</span>
+          <span style={{ color: profitColor, fontSize:12, marginLeft:12, fontWeight:700 }}>
+            {lastPrice?.toLocaleString()}원 ({totalChange >= 0 ? '+' : ''}{totalChangePct}%)
+          </span>
+        </div>
+        <div style={{ display:'flex', gap:12, fontSize:11, flexWrap:'wrap' }}>
+          <span><span style={{ color:'#FF0000' }}>■</span> 양봉</span>
+          <span><span style={{ color:'#0050FF' }}>■</span> 음봉</span>
+          <span style={{ color:'#ffcc00' }}>── MA5</span>
+          <span style={{ color:'#ff6699' }}>── MA20</span>
+        </div>
+      </div>
+
+      <svg width={W} height={TOTAL_H} style={{ display:'block', maxWidth:'100%' }}>
+        {svg}
+      </svg>
+
+      <div style={{
+        display:'flex', justifyContent:'space-between', marginTop:10, padding:'8px 14px',
+        background:'rgba(15,22,42,0.6)', borderRadius:8, fontSize:11,
+        fontFamily:'JetBrains Mono, monospace', border:'1px solid rgba(50,70,100,0.2)',
+      }}>
+        <span><span style={{ color:'#556677' }}>현재가 </span><span style={{ color: profitColor }}>{(pi.price || lastPrice)?.toLocaleString()}</span></span>
+        <span><span style={{ color:'#556677' }}>전일대비 </span><span style={{ color: (pi.change||0)>=0?'#FF0000':'#0050FF' }}>{(pi.change||0)>=0?'+':''}{(pi.change||0).toLocaleString()}</span></span>
+        <span><span style={{ color:'#556677' }}>등락률 </span><span style={{ color: (pi.change_pct||0)>=0?'#FF0000':'#0050FF' }}>{(pi.change_pct||0)>=0?'+':''}{(pi.change_pct||0).toFixed(2)}%</span></span>
+        <span><span style={{ color:'#556677' }}>시가 </span><span style={{ color:'#c8d0e0' }}>{(pi.open||vis[vis.length-1].open)?.toLocaleString()}</span></span>
+        <span><span style={{ color:'#556677' }}>고가 </span><span style={{ color:'#FFD600' }}>{(pi.high||vis[vis.length-1].high)?.toLocaleString()}</span></span>
+        <span><span style={{ color:'#556677' }}>저가 </span><span style={{ color:'#4fc3f7' }}>{(pi.low||vis[vis.length-1].low)?.toLocaleString()}</span></span>
+      </div>
     </div>
   );
 }
