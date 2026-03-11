@@ -100,6 +100,44 @@ async function saveKisCredentials(creds) {
   try { localStorage.setItem(KIS_ACTIVE_MODE_KEY, mode); } catch {}
   // 클라우드에도 동기화 (비동기, 실패해도 무시)
   cloudSave(creds, mode);
+  // ★ Supabase kis_credentials 테이블에도 동기화 (서버사이드 자동매매용)
+  syncCredentialsToSupabase(creds, mode);
+}
+
+// ★ 서버사이드 자동매매를 위해 KIS 인증정보를 Supabase에 저장
+async function syncCredentialsToSupabase(creds, mode) {
+  try {
+    if (!creds.app_key || !creds.app_secret) return;
+    const isVirtual = mode === 'virtual';
+    const accountNo = (creds.account_no || '').replace(/-/g, '');
+
+    const payload = {
+      mode,
+      app_key: creds.app_key,
+      app_secret: creds.app_secret,
+      access_token: creds.access_token || '',
+      account_no: accountNo,
+      is_virtual: isVirtual,
+      updated_at: new Date().toISOString(),
+    };
+
+    // upsert: mode 기준으로 있으면 update, 없으면 insert
+    const { data: existing } = await supabase
+      .from('kis_credentials')
+      .select('id')
+      .eq('mode', mode)
+      .limit(1);
+
+    if (existing && existing.length > 0) {
+      await supabase.from('kis_credentials').update(payload).eq('mode', mode);
+    } else {
+      payload.created_at = new Date().toISOString();
+      await supabase.from('kis_credentials').insert(payload);
+    }
+    console.log(`[KIS] Supabase 인증정보 동기화 완료 (${mode})`);
+  } catch (e) {
+    console.warn('[KIS] Supabase 인증정보 동기화 실패:', e.message);
+  }
 }
 
 // 특정 모드의 크레덴셜을 활성화
@@ -387,6 +425,7 @@ export function setupAutoTradeAfterBuy(mode, boughtStocks, strategy) {
     if (!existing.has(stock.code)) {
       rules.push({
         stock_code: stock.code, stock_name: stock.name,
+        buy_price: stock.price || 0, quantity: stock.qty || 0,
         take_profit_pct: tp, stop_loss_pct: sl, max_hold_days: days,
         enabled: true, buy_date: new Date().toISOString().slice(0, 10),
       });
