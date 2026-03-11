@@ -259,15 +259,18 @@ export default function PatternDetector() {
   // regPreset 변경 시 localStorage에 전략값 저장 (자동매매 동기화용)
   useEffect(() => {
     const presetDefs = {
-      aggressive:   { tp:10, sl:5, days:5 },
-      standard:     { tp:7,  sl:3, days:10 },
-      conservative: { tp:5,  sl:2, days:15 },
-      longterm:     { tp:15, sl:5, days:30 },
-      smart:        { tp:15, sl:12, days:30 },
+      aggressive:   { tp:10, sl:5, days:5, trailing:0, grace:0, activation:0 },
+      standard:     { tp:7,  sl:3, days:10, trailing:0, grace:0, activation:0 },
+      conservative: { tp:5,  sl:2, days:15, trailing:0, grace:0, activation:0 },
+      longterm:     { tp:15, sl:5, days:30, trailing:0, grace:0, activation:0 },
+      smart:        { tp:15, sl:12, days:30, trailing:5, grace:7, activation:15 },
     };
     const p = presetDefs[regPreset] || presetDefs.smart;
     localStorage.setItem('kis_auto_trade_preset', regPreset);
-    localStorage.setItem('kis_auto_trade_strategy', JSON.stringify({ tp: p.tp, sl: p.sl, days: p.days }));
+    localStorage.setItem('kis_auto_trade_strategy', JSON.stringify({
+      tp: p.tp, sl: p.sl, days: p.days,
+      trailing: p.trailing || 0, grace: p.grace || 0, activation: p.activation || 15,
+    }));
   }, [regPreset]);
 
   // ━━━ ★ 매수 후보 풀 함수 (Supabase 직접 호출) ━━━
@@ -663,11 +666,11 @@ export default function PatternDetector() {
     setRegLoading(true);
     try {
       const presetDefs = {
-        aggressive:   { tp:10, sl:5, days:5, trailing:0, grace:0 },
-        standard:     { tp:7,  sl:3, days:10, trailing:0, grace:0 },
-        conservative: { tp:5,  sl:2, days:15, trailing:0, grace:0 },
-        longterm:     { tp:15, sl:5, days:30, trailing:0, grace:0 },
-        smart:        { tp:15, sl:12, days:30, trailing:5, grace:7 },
+        aggressive:   { tp:10, sl:5, days:5, trailing:0, grace:0, activation:0 },
+        standard:     { tp:7,  sl:3, days:10, trailing:0, grace:0, activation:0 },
+        conservative: { tp:5,  sl:2, days:15, trailing:0, grace:0, activation:0 },
+        longterm:     { tp:15, sl:5, days:30, trailing:0, grace:0, activation:0 },
+        smart:        { tp:15, sl:12, days:30, trailing:5, grace:7, activation:15 },
       };
       const p = presetDefs[regPreset] || presetDefs.smart;
       const filtersPayload = regActiveFilters.map(f => ({ label: f.label, color: f.color }));
@@ -807,15 +810,17 @@ export default function PatternDetector() {
     const successStocks = results.filter(r => r.success);
     if (successStocks.length > 0) {
       const presetDefs = {
-        aggressive:   { tp:10, sl:5, days:5 },
-        standard:     { tp:7,  sl:3, days:10 },
-        conservative: { tp:5,  sl:2, days:15 },
-        longterm:     { tp:15, sl:5, days:30 },
-        smart:        { tp:15, sl:12, days:30 },
+        aggressive:   { tp:10, sl:5, days:5, trailing:0, grace:0, activation:0 },
+        standard:     { tp:7,  sl:3, days:10, trailing:0, grace:0, activation:0 },
+        conservative: { tp:5,  sl:2, days:15, trailing:0, grace:0, activation:0 },
+        longterm:     { tp:15, sl:5, days:30, trailing:0, grace:0, activation:0 },
+        smart:        { tp:15, sl:12, days:30, trailing:5, grace:7, activation:15 },
       };
       const p = presetDefs[regPreset] || presetDefs.smart;
       localStorage.setItem(`kis_auto_trade_sync_${kisOrderMode}`, JSON.stringify({
-        tp: p.tp, sl: p.sl, days: p.days, autostart: true, timestamp: Date.now(),
+        tp: p.tp, sl: p.sl, days: p.days,
+        trailing: p.trailing || 0, grace: p.grace || 0, activation: p.activation || 15,
+        autostart: true, timestamp: Date.now(),
       }));
       // 매입 즉시 자동 손절/익절 모니터링 시작
       setupAutoTradeAfterBuy(kisOrderMode, successStocks, p);
@@ -943,7 +948,7 @@ export default function PatternDetector() {
       alert(r.success ? `${stock.name} 매수 완료! (${qty}주)` : `매수 실패: ${r.message}`);
       if (r.success) {
         setupAutoTradeAfterBuy(mode, [{ code: stock.code, name: stock.name, qty, price }],
-          { tp: 15, sl: 12, days: 30 });
+          { tp: 15, sl: 12, days: 30, trailing: 5, grace: 7, activation: 15 });
       }
     } catch (e) { alert('매수 실패: ' + e.message); }
   };

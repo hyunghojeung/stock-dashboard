@@ -311,6 +311,12 @@ async function syncRulesToBackend(mode, rules) {
       max_hold_days: r.max_hold_days ?? 30,
       buy_date: r.buy_date || new Date().toISOString().slice(0, 10),
       enabled: true,
+      // ★ 스마트형 트레일링 스탑 필드
+      strategy: r.strategy || 'fixed',
+      trailing_stop_pct: r.trailing_stop_pct ?? 5,
+      profit_activation_pct: r.profit_activation_pct ?? 15,
+      grace_days: r.grace_days ?? 7,
+      peak_price: r.peak_price ?? 0,
     }));
     await fetch(`${BACKEND_API}/api/kis/auto-trade/rules/sync`, {
       method: "POST",
@@ -351,14 +357,48 @@ export function startKisAutoTrade(mode = 'virtual', intervalSec = 30) {
       if (!pos) continue;
       const profitRate = pos.profit_rate || 0;
       const holdDays = rule.buy_date ? Math.floor((Date.now() - new Date(rule.buy_date).getTime()) / 86400000) : 0;
+      const stratType = rule.strategy || 'fixed';
 
       let reason = null;
-      if (profitRate >= rule.take_profit_pct) reason = `익절 (${profitRate.toFixed(2)}% ≥ ${rule.take_profit_pct}%)`;
-      else if (profitRate <= -rule.stop_loss_pct) reason = `손절 (${profitRate.toFixed(2)}% ≤ -${rule.stop_loss_pct}%)`;
-      else if (rule.max_hold_days > 0 && holdDays >= rule.max_hold_days) reason = `만기매도 (${holdDays}일 ≥ ${rule.max_hold_days}일)`;
+
+      if (stratType === 'smart') {
+        // ━━━ 스마트형: 트레일링 스탑 (클라이언트사이드 보조) ━━━
+        const grace = rule.grace_days ?? 7;
+        const sl = rule.stop_loss_pct ?? 12;
+        const trailing = rule.trailing_stop_pct ?? 5;
+        const activation = rule.profit_activation_pct ?? 15;
+        let peak = rule.peak_price ?? 0;
+        // peak_price 업데이트 (로컬)
+        if (pos.current_price > peak) {
+          peak = pos.current_price;
+          rule.peak_price = peak;
+          try { localStorage.setItem(`${AUTO_TRADE_RULES_KEY}_${mode}`, JSON.stringify(rules)); } catch {}
+        }
+        if (holdDays > grace) {
+          const peakProfit = peak > 0 && rule.buy_price > 0 ? ((peak - rule.buy_price) / rule.buy_price * 100) : 0;
+          if (peakProfit >= activation && peak > 0) {
+            const dropFromPeak = ((pos.current_price - peak) / peak * 100);
+            if (dropFromPeak <= -trailing) {
+              reason = `트레일링 (최고${peakProfit.toFixed(1)}%→현재${profitRate.toFixed(1)}%, 하락${dropFromPeak.toFixed(1)}%)`;
+            }
+          }
+          if (!reason && profitRate <= -sl) {
+            reason = `손절 (${profitRate.toFixed(2)}% ≤ -${sl}%)`;
+          }
+        }
+        if (!reason && rule.max_hold_days > 0 && holdDays >= rule.max_hold_days) {
+          reason = `만기매도 (${holdDays}일 ≥ ${rule.max_hold_days}일)`;
+        }
+      } else {
+        // ━━━ 고정형: 기존 로직 ━━━
+        if (profitRate >= rule.take_profit_pct) reason = `익절 (${profitRate.toFixed(2)}% ≥ ${rule.take_profit_pct}%)`;
+        else if (profitRate <= -rule.stop_loss_pct) reason = `손절 (${profitRate.toFixed(2)}% ≤ -${rule.stop_loss_pct}%)`;
+        else if (rule.max_hold_days > 0 && holdDays >= rule.max_hold_days) reason = `만기매도 (${holdDays}일 ≥ ${rule.max_hold_days}일)`;
+      }
 
       if (!reason) {
-        atLog(`  ${pos.stock_name} 수익률 ${profitRate >= 0 ? '+' : ''}${profitRate.toFixed(2)}% → 유지`);
+        const tag = stratType === 'smart' ? '[스마트]' : '[고정]';
+        atLog(`  ${pos.stock_name} ${tag} 수익률 ${profitRate >= 0 ? '+' : ''}${profitRate.toFixed(2)}% → 유지`);
         continue;
       }
 
@@ -420,6 +460,11 @@ export function setupAutoTradeAfterBuy(mode, boughtStocks, strategy) {
   const tp = strategy?.tp ?? 7;
   const sl = strategy?.sl ?? 3;
   const days = strategy?.days ?? 10;
+  // ★ 스마트형 트레일링 스탑 파라미터
+  const trailing = strategy?.trailing ?? 0;
+  const grace = strategy?.grace ?? 0;
+  const activation = strategy?.activation ?? 15;
+  const strategyType = trailing > 0 ? 'smart' : 'fixed';
 
   for (const stock of boughtStocks) {
     if (!existing.has(stock.code)) {
@@ -428,6 +473,12 @@ export function setupAutoTradeAfterBuy(mode, boughtStocks, strategy) {
         buy_price: stock.price || 0, quantity: stock.qty || 0,
         take_profit_pct: tp, stop_loss_pct: sl, max_hold_days: days,
         enabled: true, buy_date: new Date().toISOString().slice(0, 10),
+        // ★ 전략 필드
+        strategy: strategyType,
+        trailing_stop_pct: trailing,
+        profit_activation_pct: activation,
+        grace_days: grace,
+        peak_price: 0,
       });
     }
   }
@@ -2050,19 +2101,52 @@ function AutoTradePanel({ mode = "virtual" }) {
       const holdDays = rule.buy_date
         ? Math.floor((Date.now() - new Date(rule.buy_date).getTime()) / 86400000)
         : 0;
+      const stratType = rule.strategy || 'fixed';
 
       let reason = null;
-      if (profitRate >= rule.take_profit_pct) reason = `익절 (수익률 ${profitRate.toFixed(2)}% ≥ ${rule.take_profit_pct}%)`;
-      else if (profitRate <= -rule.stop_loss_pct) reason = `손절 (수익률 ${profitRate.toFixed(2)}% ≤ -${rule.stop_loss_pct}%)`;
-      else if (rule.max_hold_days > 0 && holdDays >= rule.max_hold_days) reason = `만기매도 (보유 ${holdDays}일 ≥ ${rule.max_hold_days}일)`;
+
+      if (stratType === 'smart') {
+        // ━━━ 스마트형: 트레일링 스탑 ━━━
+        const graceD = rule.grace_days ?? 7;
+        const slPct = rule.stop_loss_pct ?? 12;
+        const trailingPct = rule.trailing_stop_pct ?? 5;
+        const activationPct = rule.profit_activation_pct ?? 15;
+        let peak = rule.peak_price ?? 0;
+        // peak_price 업데이트
+        if (pos.current_price > peak) {
+          peak = pos.current_price;
+          saveRules(rules.map(r => r.stock_code === rule.stock_code ? { ...r, peak_price: peak } : r));
+        }
+        if (holdDays > graceD) {
+          const peakProfit = peak > 0 && rule.buy_price > 0 ? ((peak - rule.buy_price) / rule.buy_price * 100) : 0;
+          if (peakProfit >= activationPct && peak > 0) {
+            const dropFromPeak = ((pos.current_price - peak) / peak * 100);
+            if (dropFromPeak <= -trailingPct) {
+              reason = `트레일링 (최고${peakProfit.toFixed(1)}%→현재${profitRate.toFixed(1)}%, 하락${dropFromPeak.toFixed(1)}%)`;
+            }
+          }
+          if (!reason && profitRate <= -slPct) {
+            reason = `손절 (수익률 ${profitRate.toFixed(2)}% ≤ -${slPct}%)`;
+          }
+        }
+        if (!reason && rule.max_hold_days > 0 && holdDays >= rule.max_hold_days) {
+          reason = `만기매도 (보유 ${holdDays}일 ≥ ${rule.max_hold_days}일)`;
+        }
+      } else {
+        // ━━━ 고정형: 기존 로직 ━━━
+        if (profitRate >= rule.take_profit_pct) reason = `익절 (수익률 ${profitRate.toFixed(2)}% ≥ ${rule.take_profit_pct}%)`;
+        else if (profitRate <= -rule.stop_loss_pct) reason = `손절 (수익률 ${profitRate.toFixed(2)}% ≤ -${rule.stop_loss_pct}%)`;
+        else if (rule.max_hold_days > 0 && holdDays >= rule.max_hold_days) reason = `만기매도 (보유 ${holdDays}일 ≥ ${rule.max_hold_days}일)`;
+      }
 
       if (!reason) {
-        addLog(`  ${pos.stock_name}(${pos.stock_code}) 수익률 ${profitRate >= 0 ? '+' : ''}${profitRate.toFixed(2)}% → 유지`);
+        const tag = stratType === 'smart' ? '[스마트]' : '[고정]';
+        addLog(`  ${pos.stock_name}(${pos.stock_code}) ${tag} 수익률 ${profitRate >= 0 ? '+' : ''}${profitRate.toFixed(2)}% → 유지`);
         continue;
       }
 
       // 자동 매도 실행
-      addLog(`🔔 ${pos.stock_name}(${pos.stock_code}) ${reason} → 시장가 매도 실행`);
+      addLog(`🔔 ${pos.stock_name}(${pos.stock_code}) [${stratType}] ${reason} → 시장가 매도 실행`);
       const sellResult = await kisApi("order/sell", {}, {
         method: "POST",
         body: JSON.stringify({
@@ -2155,9 +2239,18 @@ function AutoTradePanel({ mode = "virtual" }) {
     const tp = initStrategy.tp ?? 7;
     const sl = initStrategy.sl ?? 3;
     const days = initStrategy.days ?? 10;
+    // ★ 스마트형 트레일링 스탑 파라미터
+    const trailing = initStrategy.trailing ?? 0;
+    const grace = initStrategy.grace ?? 0;
+    const activation = initStrategy.activation ?? 15;
+    const strategyType = trailing > 0 ? 'smart' : 'fixed';
     setRules(prev => {
       if (prev.length === 0) return prev;
-      const updated = prev.map(r => ({ ...r, take_profit_pct: tp, stop_loss_pct: sl, max_hold_days: days }));
+      const updated = prev.map(r => ({
+        ...r, take_profit_pct: tp, stop_loss_pct: sl, max_hold_days: days,
+        strategy: strategyType, trailing_stop_pct: trailing,
+        profit_activation_pct: activation, grace_days: grace,
+      }));
       try { localStorage.setItem(`${AUTO_TRADE_STORAGE_KEY}_${mode}`, JSON.stringify(updated)); } catch {}
       return updated;
     });
@@ -2331,7 +2424,7 @@ function AutoTradePanel({ mode = "virtual" }) {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr>
-                {['활성', '종목', '익절%', '손절%', '최대보유일', '현재수익률', '삭제'].map(h =>
+                {['활성', '종목', '전략', '익절%', '손절%', '최대보유일', '현재수익률', '삭제'].map(h =>
                   <th key={h} style={S.th}>{h}</th>
                 )}
               </tr>
@@ -2351,6 +2444,15 @@ function AutoTradePanel({ mode = "virtual" }) {
                         title="클릭하여 차트 보기">
                         {r.stock_name}
                       </span> <span style={{ color: '#6688aa', fontSize: 10 }}>{r.stock_code}</span>
+                    </td>
+                    <td style={{ ...S.td, fontSize: 10 }}>
+                      <span style={{
+                        padding: '2px 6px', borderRadius: 4, fontSize: 10, fontWeight: 600,
+                        background: r.strategy === 'smart' ? 'rgba(255,152,0,0.2)' : 'rgba(100,140,200,0.15)',
+                        color: r.strategy === 'smart' ? '#ff9800' : '#8899bb',
+                      }}>
+                        {r.strategy === 'smart' ? '🧠스마트' : '📊고정'}
+                      </span>
                     </td>
                     <td style={S.td}>
                       <input type="number" value={r.take_profit_pct} onChange={e => updateRule(r.stock_code, 'take_profit_pct', Number(e.target.value))}
