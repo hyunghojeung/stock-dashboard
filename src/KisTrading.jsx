@@ -471,13 +471,26 @@ export default function KisTrading({ mode = "virtual" }) {
       updateStatus(creds);
       setLoading(false);
 
+      // ★ KIS 페이지 진입 시 자동으로 Supabase에 인증정보 동기화 (서버사이드 자동매매용)
+      if (configured) {
+        syncCredentialsToSupabase(creds, mode);
+      }
+
       if (configured && !tokenValid) {
         const ok = await refreshKisToken(mode);
-        if (ok) updateStatus(await loadKisCredentials(mode));
+        if (ok) {
+          const refreshedCreds = await loadKisCredentials(mode);
+          updateStatus(refreshedCreds);
+          syncCredentialsToSupabase(refreshedCreds, mode);
+        }
       } else if (configured && tokenValid) {
         setTab("balance");
         const ok = await refreshKisToken(mode);
-        if (ok) updateStatus(await loadKisCredentials(mode));
+        if (ok) {
+          const refreshedCreds = await loadKisCredentials(mode);
+          updateStatus(refreshedCreds);
+          syncCredentialsToSupabase(refreshedCreds, mode);
+        }
       }
     })();
   }, [mode]);
