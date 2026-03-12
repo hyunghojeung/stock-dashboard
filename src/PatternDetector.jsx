@@ -693,6 +693,7 @@ export default function PatternDetector() {
           preset: regPreset,
           take_profit_pct: p.tp, stop_loss_pct: p.sl,
           max_hold_days: p.days, trailing_stop_pct: p.trailing, grace_days: p.grace,
+          profit_activation_pct: p.activation ?? 15,
           filters: filtersPayload,
         };
         const res = await fetch(`${API_BASE}/api/virtual-invest/realtime/start`, {
@@ -888,7 +889,7 @@ export default function PatternDetector() {
         capital: price > 0 ? price * 10 : 1000000,
         preset: 'smart',
         take_profit_pct: 15, stop_loss_pct: 12, max_hold_days: 30,
-        trailing_stop_pct: 5, grace_days: 7,
+        trailing_stop_pct: 5, grace_days: 7, profit_activation_pct: 15,
       };
       const res = await fetch(`${API_BASE}/api/virtual-invest/realtime/start`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },

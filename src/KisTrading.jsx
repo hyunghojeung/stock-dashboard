@@ -2058,6 +2058,11 @@ function AutoTradePanel({ mode = "virtual" }) {
       const newRules = [...rules];
       r.positions.forEach(p => {
         if (!existing.has(p.stock_code)) {
+          // ★ initStrategy에서 스마트형 파라미터 가져오기
+          const _tr = initStrategy.trailing ?? 0;
+          const _gr = initStrategy.grace ?? 0;
+          const _act = initStrategy.activation ?? 15;
+          const _stType = _tr > 0 ? 'smart' : 'fixed';
           newRules.push({
             stock_code: p.stock_code,
             stock_name: p.stock_name,
@@ -2066,6 +2071,11 @@ function AutoTradePanel({ mode = "virtual" }) {
             max_hold_days: globalMaxDays,
             enabled: true,
             buy_date: new Date().toISOString().slice(0, 10),
+            strategy: _stType,
+            trailing_stop_pct: _tr,
+            profit_activation_pct: _act,
+            grace_days: _gr,
+            peak_price: 0,
           });
         }
       });
@@ -2270,6 +2280,11 @@ function AutoTradePanel({ mode = "virtual" }) {
                 stock_code: p.stock_code, stock_name: p.stock_name,
                 take_profit_pct: tp, stop_loss_pct: sl, max_hold_days: days,
                 enabled: true, buy_date: new Date().toISOString().slice(0, 10),
+                strategy: strategyType,
+                trailing_stop_pct: trailing,
+                profit_activation_pct: activation,
+                grace_days: grace,
+                peak_price: 0,
               });
             }
           });
@@ -2310,13 +2325,22 @@ function AutoTradePanel({ mode = "virtual" }) {
 
   // 전체 일괄 설정
   const applyGlobalSettings = () => {
+    // ★ 현재 전략 설정도 함께 반영
+    const _tr = initStrategy.trailing ?? 0;
+    const _gr = initStrategy.grace ?? 0;
+    const _act = initStrategy.activation ?? 15;
+    const _stType = _tr > 0 ? 'smart' : 'fixed';
     saveRules(rules.map(r => ({
       ...r,
       take_profit_pct: globalTP,
       stop_loss_pct: globalSL,
       max_hold_days: globalMaxDays,
+      strategy: _stType,
+      trailing_stop_pct: _tr,
+      profit_activation_pct: _act,
+      grace_days: _gr,
     })));
-    addLog(`전체 규칙 일괄 변경: 익절 ${globalTP}% / 손절 ${globalSL}% / 최대보유 ${globalMaxDays}일`);
+    addLog(`전체 규칙 일괄 변경: 익절 ${globalTP}% / 손절 ${globalSL}% / 최대보유 ${globalMaxDays}일 / 전략: ${_stType}`);
   };
 
   // ── 종목 차트 모달 ──
