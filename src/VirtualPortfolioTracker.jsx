@@ -835,7 +835,7 @@ function PortfolioDetail({ detail, updating, onUpdate, onClose, onDelete, onRena
       }}>
         {/* 테이블 헤더 */}
         <div style={{
-          display: 'grid', gridTemplateColumns: '1.5fr 70px 55px 85px 75px 75px 70px 75px 45px 80px',
+          display: 'grid', gridTemplateColumns: '1.5fr 70px 55px 85px 75px 75px 70px 70px 75px 45px 80px',
           padding: '12px 16px', fontSize: 11, color: COLORS.textDim, fontWeight: 600,
           background: '#0d1321', borderBottom: `1px solid ${COLORS.cardBorder}`,
         }}>
@@ -845,6 +845,7 @@ function PortfolioDetail({ detail, updating, onUpdate, onClose, onDelete, onRena
           <span style={{ textAlign: 'right' }}>평가금</span>
           <span style={{ textAlign: 'right' }}>매수가</span>
           <span style={{ textAlign: 'right' }}>현재가</span>
+          <span style={{ textAlign: 'right' }}>매도가</span>
           <span style={{ textAlign: 'right' }}>수익률</span>
           <span style={{ textAlign: 'right' }}>수익금</span>
           <span style={{ textAlign: 'center' }}>일수</span>
@@ -862,7 +863,7 @@ function PortfolioDetail({ detail, updating, onUpdate, onClose, onDelete, onRena
           return (
             <React.Fragment key={i}>
               <div onClick={() => handleStockClick(pos)} style={{
-                display: 'grid', gridTemplateColumns: '1.5fr 70px 55px 85px 75px 75px 70px 75px 45px 80px',
+                display: 'grid', gridTemplateColumns: '1.5fr 70px 55px 85px 75px 75px 70px 70px 75px 45px 80px',
                 padding: '12px 16px', alignItems: 'center',
                 borderBottom: `1px solid ${COLORS.cardBorder}`,
                 background: isSelected ? 'rgba(59,130,246,0.08)' : i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)',
@@ -900,8 +901,12 @@ function PortfolioDetail({ detail, updating, onUpdate, onClose, onDelete, onRena
                 <div style={{ textAlign: 'right', fontSize: 12, fontFamily: 'JetBrains Mono, monospace', color: COLORS.text }}>
                   {fmt(pos.buy_price)}
                 </div>
-                <div style={{ textAlign: 'right', fontSize: 12, fontFamily: 'JetBrains Mono, monospace', fontWeight: 700, color: profitColor }}>
-                  {fmt(pos.status === 'holding' ? pos.current_price : pos.sell_price || pos.current_price)}
+                <div style={{ textAlign: 'right', fontSize: 12, fontFamily: 'JetBrains Mono, monospace', fontWeight: 700, color: COLORS.text }}>
+                  {fmt(pos.current_price)}
+                </div>
+                <div style={{ textAlign: 'right', fontSize: 12, fontFamily: 'JetBrains Mono, monospace', fontWeight: 700,
+                  color: pos.status !== 'holding' && pos.sell_price ? '#f59e0b' : COLORS.textDim }}>
+                  {pos.status !== 'holding' && pos.sell_price ? fmt(pos.sell_price) : '-'}
                 </div>
                 <div style={{ textAlign: 'right', fontSize: 12, fontFamily: 'JetBrains Mono, monospace', fontWeight: 700, color: profitColor }}>
                   {isProfit ? '+' : ''}{pos.profit_pct || 0}%

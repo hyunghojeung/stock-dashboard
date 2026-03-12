@@ -884,7 +884,7 @@ function BalancePanel() {
           ) : (
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
-                <tr>{["종목", "수량", "평균가", "현재가", "손익", "수익률", "보유금액"].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
+                <tr>{["종목", "수량", "평균가", "현재가", "매도가", "손익", "수익률", "보유금액"].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
               </thead>
               <tbody>
                 {positions.map((p, i) => (
@@ -894,6 +894,7 @@ function BalancePanel() {
                     <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace" }}>{fmt(p.qty)}</td>
                     <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace" }}>{fmt(Math.round(p.avg_price))}</td>
                     <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace" }}>{fmt(p.current_price)}</td>
+                    <td style={{ ...S.td, color: p.sell_price ? "#f59e0b" : "#556677", fontFamily: "monospace", fontWeight: p.sell_price ? 700 : 400 }}>{p.sell_price ? fmt(p.sell_price) : '-'}</td>
                     <td style={{ ...S.td, color: clr(p.profit_loss), fontFamily: "monospace", fontWeight: 600 }}>{fmtWon(p.profit_loss)}</td>
                     <td style={{ ...S.td, color: clr(p.profit_rate), fontFamily: "monospace", fontWeight: 600 }}>{fmtPct(p.profit_rate)}</td>
                     <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace", fontWeight: 600 }}>{fmt(p.eval_amount || (p.current_price * p.qty))}원</td>
