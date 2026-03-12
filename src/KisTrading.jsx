@@ -1516,15 +1516,36 @@ function OrderPanel() {
       )}
       </div>{/* 상단 flex 닫기 */}
 
-      {/* ★ 하단: 후보종목 차트 */}
-      {chartCode && (
+      {/* ★ 하단: 후보종목 차트 (기본 차트 스킬 사양) */}
+      {chartCode && (() => {
+        const cand = candidates.find(c => c.code === chartCode.code);
+        const lastCandle = chartCandles && chartCandles.length > 0 ? chartCandles[0] : null;
+        const prevCandle = chartCandles && chartCandles.length > 1 ? chartCandles[1] : null;
+        const curP = lastCandle?.close || cand?.current_price || 0;
+        const prevP = prevCandle?.close || curP;
+        const chgPct = prevP > 0 ? ((curP - prevP) / prevP * 100) : 0;
+        const chgColor = chgPct >= 0 ? '#FF0000' : '#0050FF';
+        const highP = chartCandles ? Math.max(...chartCandles.map(c => c.high || 0)) : 0;
+        const lowP = chartCandles ? Math.min(...chartCandles.filter(c => c.low > 0).map(c => c.low)) : 0;
+        return (
         <div style={S.panel}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-            <div style={S.title}>
-              📊 {chartCode.name} <span style={{ color: "#64b5f6", fontFamily: "monospace", fontSize: 12, fontWeight: 400 }}>{chartCode.code}</span>
+          {/* 헤더: 기본 차트 스킬 형식 (📊 종목명 (코드) + 범례 7개) */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 6 }}>
+            <div style={{ fontSize: 14, fontWeight: 700 }}>
+              <span style={{ color: '#e0e6f0' }}>📊 {chartCode.name}</span>
+              <span style={{ color: '#6688aa', fontSize: 11, marginLeft: 8 }}>({chartCode.code})</span>
+              {curP > 0 && (
+                <span style={{ color: chgColor, fontSize: 12, marginLeft: 12, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' }}>
+                  {fmt(curP)}원 ({chgPct >= 0 ? '+' : ''}{chgPct.toFixed(2)}%)
+                </span>
+              )}
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              {/* 후보 종목 빠른 전환 버튼 */}
+            <div style={{ display: 'flex', gap: 12, fontSize: 11, alignItems: 'center', flexWrap: 'wrap' }}>
+              <span><span style={{ color: '#FF0000' }}>■</span> 양봉</span>
+              <span><span style={{ color: '#0050FF' }}>■</span> 음봉</span>
+              <span style={{ color: '#ffcc00' }}>── MA5</span>
+              <span style={{ color: '#ff6699' }}>── MA20</span>
+              {/* 후보 종목 빠른 전환 */}
               {candidates.length > 1 && candidates.slice(0, 8).map((c) => (
                 <button key={c.id} onClick={() => openCandChart(c)} style={{
                   background: chartCode?.code === c.code ? "rgba(79,195,247,0.2)" : "transparent",
@@ -1537,6 +1558,8 @@ function OrderPanel() {
                 style={{ background: "transparent", border: "1px solid rgba(255,76,76,0.3)", borderRadius: 6, padding: "3px 8px", fontSize: 10, cursor: "pointer", color: "#ff4c4c" }}>✕</button>
             </div>
           </div>
+
+          {/* 차트 SVG */}
           {chartLoading ? (
             <div style={{ height: 300, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(8,15,30,0.6)", borderRadius: 8 }}>
               <span style={{ color: "#6688aa", fontSize: 13 }}>📊 차트 로딩 중...</span>
@@ -1548,8 +1571,25 @@ function OrderPanel() {
               <span style={{ color: "#556677", fontSize: 12 }}>차트 데이터를 불러올 수 없습니다</span>
             </div>
           )}
+
+          {/* 하단 정보 바 (기본 차트 스킬 사양) */}
+          {curP > 0 && (
+            <div style={{
+              display: 'flex', justifyContent: 'space-between', marginTop: 10, padding: '8px 14px',
+              background: 'rgba(15,22,42,0.6)', borderRadius: 8, fontSize: 11,
+              fontFamily: 'JetBrains Mono, monospace', border: '1px solid rgba(50,70,100,0.2)', flexWrap: 'wrap', gap: 6,
+            }}>
+              <span><span style={{ color: '#556677' }}>현재가 </span><span style={{ color: chgColor }}>{fmt(curP)}</span></span>
+              <span><span style={{ color: '#556677' }}>전일대비 </span><span style={{ color: chgColor }}>{chgPct >= 0 ? '+' : ''}{chgPct.toFixed(2)}%</span></span>
+              <span><span style={{ color: '#556677' }}>고가 </span><span style={{ color: '#FF0000' }}>{fmt(highP)}</span></span>
+              <span><span style={{ color: '#556677' }}>저가 </span><span style={{ color: '#0050FF' }}>{fmt(lowP)}</span></span>
+              {cand?.composite_score != null && <span><span style={{ color: '#556677' }}>종합점수 </span><span style={{ color: cand.composite_score >= 80 ? '#ff4444' : cand.composite_score >= 60 ? '#f59e0b' : '#6688aa' }}>{cand.composite_score}</span></span>}
+              {cand?.entry_score != null && <span><span style={{ color: '#556677' }}>진입점수 </span><span style={{ color: '#4fc3f7' }}>{cand.entry_score}</span></span>}
+            </div>
+          )}
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
