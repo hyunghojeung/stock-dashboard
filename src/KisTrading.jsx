@@ -1185,14 +1185,40 @@ function OrderPanel() {
   const [result, setResult] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [quoteData, setQuoteData] = useState(null);
+  // ★ 후보종목 리스트
+  const [candidates, setCandidates] = useState([]);
+  const [candLoading, setCandLoading] = useState(true);
 
-  const fetchQuote = async () => {
-    if (stockCode.length < 6) return;
-    const r = await kisApi("quote", { code: stockCode });
+  const loadCandidates = useCallback(async () => {
+    setCandLoading(true);
+    try {
+      const { data: cands } = await supabase.from('buy_candidates')
+        .select('*').eq('status', 'active')
+        .order('composite_score', { ascending: false }).limit(30);
+      setCandidates(cands || []);
+    } catch (e) { console.error('후보 로드 실패:', e); }
+    setCandLoading(false);
+  }, []);
+
+  useEffect(() => { loadCandidates(); }, [loadCandidates]);
+
+  const fetchQuote = async (code) => {
+    const target = code || stockCode;
+    if (target.length < 6) return;
+    const r = await kisApi("quote", { code: target });
     if (r?.success) {
       setQuoteData(r);
       if (!price) setPrice(String(r.price));
     }
+  };
+
+  // ★ 후보종목 클릭 → 종목코드 자동 입력 + 시세 조회
+  const selectCandidate = (c) => {
+    setStockCode(c.code);
+    setSide("buy");
+    setQuoteData(null);
+    setResult(null);
+    fetchQuote(c.code);
   };
 
   const fetchBuyable = async () => {
@@ -1275,7 +1301,59 @@ function OrderPanel() {
 
   return (
     <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-      {/* Order Form */}
+      {/* ★ 후보종목 리스트 (좌측) */}
+      <div style={{ ...S.panel, flex: "0 0 280px", minWidth: 260 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: '#e0e6f0' }}>
+            🎯 후보종목 <span style={{ color: "#6688aa", fontSize: 11, fontWeight: 400 }}>({candidates.length})</span>
+          </div>
+          <button onClick={loadCandidates} style={{ ...S.btn(), padding: "4px 8px", fontSize: 10 }}>새로고침</button>
+        </div>
+        {candLoading ? (
+          <div style={{ textAlign: "center", padding: 30, color: "#6688aa", fontSize: 12 }}>로딩 중...</div>
+        ) : candidates.length === 0 ? (
+          <div style={{ textAlign: "center", padding: 30, color: "#556677", fontSize: 12 }}>
+            패턴탐지기에서<br/>후보를 등록하세요
+          </div>
+        ) : (
+          <div style={{ maxHeight: 460, overflowY: "auto" }}>
+            {candidates.map((c, i) => {
+              const daysLeft = c.expires_at ? Math.max(0, Math.ceil((new Date(c.expires_at) - new Date()) / 86400000)) : 0;
+              const scoreColor = c.composite_score >= 80 ? "#ff4444" : c.composite_score >= 60 ? "#f59e0b" : "#6688aa";
+              const isSelected = stockCode === c.code;
+              return (
+                <div key={c.id} onClick={() => selectCandidate(c)} style={{
+                  padding: "8px 10px", cursor: "pointer",
+                  borderBottom: i < candidates.length - 1 ? "1px solid rgba(100,140,200,0.08)" : "none",
+                  background: isSelected ? "rgba(100,181,246,0.15)" : daysLeft <= 1 ? "rgba(220,38,38,0.05)" : "transparent",
+                  borderLeft: isSelected ? "3px solid #64b5f6" : "3px solid transparent",
+                  transition: "background 0.15s",
+                }}
+                onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = "rgba(100,181,246,0.08)"; }}
+                onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = daysLeft <= 1 ? "rgba(220,38,38,0.05)" : "transparent"; }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+                      <span style={{ fontWeight: 600, color: "#e0e6f0", fontSize: 12 }}>{c.name}</span>
+                    </div>
+                    <span style={{ color: "#64b5f6", fontFamily: "monospace", fontSize: 11, fontWeight: 600, marginLeft: 6, flexShrink: 0 }}>{c.code}</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 3 }}>
+                    <span style={{ color: "#8899aa", fontSize: 10 }}>{c.current_price?.toLocaleString() || "-"}원</span>
+                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                      <span style={{ color: scoreColor, fontSize: 10, fontWeight: 600 }}>종합 {c.composite_score || "-"}</span>
+                      <span style={{ color: "#6688aa", fontSize: 10 }}>진입 {c.entry_score || "-"}</span>
+                      <span style={{ color: daysLeft <= 1 ? "#ff4444" : "#6688aa", fontSize: 10 }}>D-{daysLeft}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Order Form (중앙) */}
       <div style={{ ...S.panel, flex: "1 1 400px" }}>
         <div style={S.title}>주문하기</div>
 
@@ -1300,13 +1378,14 @@ function OrderPanel() {
             <label style={S.label}>종목코드</label>
             <div style={{ display: "flex", gap: 8 }}>
               <input style={{ ...S.input, flex: 1 }} value={stockCode} onChange={e => setStockCode(e.target.value)} placeholder="005930" />
-              <button onClick={fetchQuote} style={{ ...S.btn(), padding: "8px 14px", fontSize: 11 }}>조회</button>
+              <button onClick={() => fetchQuote()} style={{ ...S.btn(), padding: "8px 14px", fontSize: 11 }}>조회</button>
             </div>
           </div>
 
           {quoteData && (
             <div style={{ padding: 10, background: "rgba(10,18,40,0.5)", borderRadius: 8, fontSize: 12 }}>
               <span style={{ color: "#e0e6f0", fontWeight: 600 }}>{quoteData.name}</span>
+              <span style={{ color: "#64b5f6", fontFamily: "monospace", fontSize: 10, marginLeft: 6 }}>{stockCode}</span>
               <span style={{ color: clr(quoteData.change), marginLeft: 12, fontFamily: "monospace" }}>
                 {fmt(quoteData.price)}원 ({fmtPct(quoteData.change_rate)})
               </span>
@@ -1377,10 +1456,10 @@ function OrderPanel() {
         </div>
       </div>
 
-      {/* Quick Quote */}
+      {/* Quick Quote (우측) */}
       {quoteData && (
         <div style={{ ...S.panel, flex: "1 1 300px" }}>
-          <div style={S.title}>{quoteData.name} 상세</div>
+          <div style={S.title}>{quoteData.name} <span style={{ color: "#64b5f6", fontFamily: "monospace", fontSize: 12, fontWeight: 400 }}>{stockCode}</span> 상세</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
             {[
               ["현재가", `${fmt(quoteData.price)}원`, clr(quoteData.change)],
