@@ -248,7 +248,7 @@ const STOCK_MAP = [
 
 function localStockSearch(keyword) {
   const kw = keyword.toLowerCase();
-  return STOCK_MAP.filter(([, name]) => name.toLowerCase().includes(kw))
+  return STOCK_MAP.filter(([code, name]) => name.toLowerCase().includes(kw) || code.includes(kw))
     .map(([code, name]) => ({ code, name }));
 }
 
@@ -260,12 +260,9 @@ async function resolveStockCode(input) {
   // 1차: 로컬 매핑에서 검색
   const local = localStockSearch(v);
   if (local.length > 0) return local[0].code;
-  // 2차: 서버 API 검색 (KRX)
+  // 2차: 백엔드 종목 마스터파일 검색
   try {
-    const url = new URL("/api/kis", window.location.origin);
-    url.searchParams.set("_route", "search");
-    url.searchParams.set("keyword", v);
-    const r = await fetch(url).then(r => r.json());
+    const r = await fetch(`${BACKEND_API}/api/stock-search?keyword=${encodeURIComponent(v)}&limit=5`).then(r => r.json());
     if (r.results?.length) return r.results[0].code;
   } catch {}
   return v;
@@ -1807,6 +1804,7 @@ function TradeLogPanel({ mode }) {
 function StockSearchInput({ value, onChange, onSelect, placeholder }) {
   const [suggestions, setSuggestions] = useState([]);
   const [showSugg, setShowSugg] = useState(false);
+  const [searching, setSearching] = useState(false);
   const timerRef = useRef(null);
   const wrapRef = useRef(null);
 
@@ -1818,10 +1816,7 @@ function StockSearchInput({ value, onChange, onSelect, placeholder }) {
 
   const searchByKeyword = async (keyword) => {
     try {
-      const url = new URL("/api/kis", window.location.origin);
-      url.searchParams.set("_route", "search");
-      url.searchParams.set("keyword", keyword);
-      const r = await fetch(url).then(r => r.json());
+      const r = await fetch(`${BACKEND_API}/api/stock-search?keyword=${encodeURIComponent(keyword)}&limit=20`).then(r => r.json());
       return r.results || [];
     } catch { return []; }
   };
@@ -1830,20 +1825,26 @@ function StockSearchInput({ value, onChange, onSelect, placeholder }) {
     const v = e.target.value;
     onChange(v);
     clearTimeout(timerRef.current);
-    if (v.trim() && !/^\d{1,6}$/.test(v.trim())) {
-      // 즉시 로컬 매핑에서 검색
-      const local = localStockSearch(v.trim());
-      if (local.length) { setSuggestions(local); setShowSugg(true); }
-      else {
-        // 로컬에 없으면 서버 검색
-        timerRef.current = setTimeout(async () => {
-          const results = await searchByKeyword(v.trim());
-          if (results.length) { setSuggestions(results); setShowSugg(true); }
-          else setShowSugg(false);
-        }, 300);
-      }
+    const trimmed = v.trim();
+    if (!trimmed) { setShowSugg(false); setSearching(false); return; }
+
+    // 1차: 로컬 매핑에서 검색 (코드+이름 모두 지원)
+    const local = localStockSearch(trimmed);
+    if (local.length) {
+      setSuggestions(local);
+      setShowSugg(true);
+      setSearching(false);
     } else {
-      setShowSugg(false);
+      // 2차: 서버 검색 (KIS 마스터파일 기반)
+      setSearching(true);
+      setSuggestions([]);
+      setShowSugg(true);
+      timerRef.current = setTimeout(async () => {
+        const results = await searchByKeyword(trimmed);
+        setSuggestions(results);
+        setShowSugg(true);
+        setSearching(false);
+      }, 300);
     }
   };
 
@@ -1852,7 +1853,13 @@ function StockSearchInput({ value, onChange, onSelect, placeholder }) {
     const v = (value || "").trim();
     if (!v) return;
     // 숫자(종목코드)면 바로 조회
-    if (/^\d{1,6}$/.test(v)) { onSelect(v); return; }
+    if (/^\d{1,6}$/.test(v)) {
+      // 드롭다운에 해당 코드가 있으면 이름 표시용으로 사용
+      const match = suggestions.find(s => s.code === v);
+      if (match) onChange(match.code);
+      onSelect(v);
+      return;
+    }
     // 드롭다운에 결과가 있으면 첫 번째 항목 사용
     if (suggestions.length > 0) {
       onChange(suggestions[0].code);
@@ -1872,15 +1879,28 @@ function StockSearchInput({ value, onChange, onSelect, placeholder }) {
       <input style={{ ...S.input, width: "100%" }} value={value} onChange={handleChange}
         onKeyDown={e => { if (e.key === "Enter") handleEnter(); }}
         placeholder={placeholder || "종목코드 또는 종목명"} />
-      {showSugg && suggestions.length > 0 && (
-        <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 100, background: "#1a2332", border: "1px solid rgba(100,140,200,0.2)", borderRadius: 6, maxHeight: 200, overflowY: "auto", marginTop: 2 }}>
+      {showSugg && (
+        <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 100, background: "#1a2332", border: "1px solid rgba(100,140,200,0.2)", borderRadius: 6, maxHeight: 240, overflowY: "auto", marginTop: 2 }}>
+          {searching && (
+            <div style={{ padding: "10px 12px", color: "#6688aa", fontSize: 12, textAlign: "center" }}>
+              검색 중...
+            </div>
+          )}
+          {!searching && suggestions.length === 0 && (
+            <div style={{ padding: "10px 12px", color: "#6688aa", fontSize: 12, textAlign: "center" }}>
+              검색 결과 없음
+            </div>
+          )}
           {suggestions.map((s, i) => (
             <div key={i} onClick={() => { onChange(s.code); onSelect(s.code); setShowSugg(false); }}
-              style={{ padding: "8px 12px", cursor: "pointer", borderBottom: "1px solid rgba(100,140,200,0.1)", fontSize: 12, display: "flex", justifyContent: "space-between" }}
+              style={{ padding: "8px 12px", cursor: "pointer", borderBottom: "1px solid rgba(100,140,200,0.1)", fontSize: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}
               onMouseEnter={e => e.currentTarget.style.background = "rgba(100,181,246,0.1)"}
               onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
               <span style={{ color: "#e0e6f0" }}>{s.name}</span>
-              <span style={{ color: "#6688aa", fontFamily: "monospace" }}>{s.code}</span>
+              <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                {s.market && <span style={{ color: s.market === "KOSPI" ? "#4fc3f7" : "#ffb74d", fontSize: 10, fontWeight: 600 }}>{s.market}</span>}
+                <span style={{ color: "#6688aa", fontFamily: "monospace" }}>{s.code}</span>
+              </span>
             </div>
           ))}
         </div>

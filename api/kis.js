@@ -124,22 +124,15 @@ export default async function handler(req, res) {
       return res.json({ url: req.url, routeName, pathSegments, method: req.method, hasAppKey: !!appKey, hasToken: !!token, qp });
     }
 
-    // ── search (GET): 종목명/코드 검색 (KRX 종목검색) ──
+    // ── search (GET): 종목명/코드 검색 (Railway 백엔드 KIS 마스터파일 기반) ──
     if (routeName === "search") {
       const keyword = (qp.keyword || "").trim();
       if (!keyword) return res.json({ results: [] });
       try {
-        const resp = await fetch("http://data.krx.co.kr/comm/bldAttendant/getJsonData.cmd", {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" },
-          body: `bld=dbms/comm/finder/finder_stkisu&name=${encodeURIComponent(keyword)}&mktsel=ALL`,
-        });
+        const BACKEND = "https://web-production-139e9.up.railway.app";
+        const resp = await fetch(`${BACKEND}/api/stock-search?keyword=${encodeURIComponent(keyword)}&limit=20`);
         const data = await resp.json();
-        const results = (data.block1 || []).slice(0, 20).map(item => ({
-          code: (item.short_code || "").replace(/^A/, ""),
-          name: item.codeName || "",
-        })).filter(r => r.code && r.name);
-        return res.json({ results });
+        return res.json({ results: data.results || [] });
       } catch (e) {
         return res.json({ results: [], error: e.message });
       }
