@@ -1188,6 +1188,10 @@ function OrderPanel() {
   // ★ 후보종목 리스트
   const [candidates, setCandidates] = useState([]);
   const [candLoading, setCandLoading] = useState(true);
+  // ★ 후보종목 차트
+  const [chartCode, setChartCode] = useState(null);   // { code, name }
+  const [chartCandles, setChartCandles] = useState(null);
+  const [chartLoading, setChartLoading] = useState(false);
 
   const loadCandidates = useCallback(async () => {
     setCandLoading(true);
@@ -1210,6 +1214,22 @@ function OrderPanel() {
       setQuoteData(r);
       if (!price) setPrice(String(r.price));
     }
+  };
+
+  // ★ 후보종목 차트 열기
+  const openCandChart = async (c) => {
+    const code = c.code;
+    const name = c.name;
+    // 같은 종목이면 차트 토글 (닫기)
+    if (chartCode?.code === code) { setChartCode(null); setChartCandles(null); return; }
+    setChartCode({ code, name });
+    setChartCandles(null);
+    setChartLoading(true);
+    try {
+      const r = await kisApi("chart", { code, period: "D" });
+      if (r?.success) setChartCandles(r.candles);
+    } catch (e) { console.error('차트 로드 실패:', e); }
+    setChartLoading(false);
   };
 
   // ★ 후보종목 클릭 → 종목코드 자동 입력 + 시세 조회
@@ -1300,9 +1320,11 @@ function OrderPanel() {
   };
 
   return (
-    <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {/* ★ 상단: 후보종목 + 주문폼 + 시세상세 */}
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
       {/* ★ 후보종목 리스트 (좌측) */}
-      <div style={{ ...S.panel, flex: "0 0 280px", minWidth: 260 }}>
+      <div style={{ ...S.panel, flex: "0 0 300px", minWidth: 280 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: '#e0e6f0' }}>
             🎯 후보종목 <span style={{ color: "#6688aa", fontSize: 11, fontWeight: 400 }}>({candidates.length})</span>
@@ -1321,24 +1343,33 @@ function OrderPanel() {
               const daysLeft = c.expires_at ? Math.max(0, Math.ceil((new Date(c.expires_at) - new Date()) / 86400000)) : 0;
               const scoreColor = c.composite_score >= 80 ? "#ff4444" : c.composite_score >= 60 ? "#f59e0b" : "#6688aa";
               const isSelected = stockCode === c.code;
+              const isCharting = chartCode?.code === c.code;
               return (
-                <div key={c.id} onClick={() => selectCandidate(c)} style={{
-                  padding: "8px 10px", cursor: "pointer",
+                <div key={c.id} style={{
+                  padding: "8px 10px",
                   borderBottom: i < candidates.length - 1 ? "1px solid rgba(100,140,200,0.08)" : "none",
-                  background: isSelected ? "rgba(100,181,246,0.15)" : daysLeft <= 1 ? "rgba(220,38,38,0.05)" : "transparent",
-                  borderLeft: isSelected ? "3px solid #64b5f6" : "3px solid transparent",
+                  background: isSelected ? "rgba(100,181,246,0.15)" : isCharting ? "rgba(79,195,247,0.08)" : daysLeft <= 1 ? "rgba(220,38,38,0.05)" : "transparent",
+                  borderLeft: isSelected ? "3px solid #64b5f6" : isCharting ? "3px solid #4fc3f7" : "3px solid transparent",
                   transition: "background 0.15s",
-                }}
-                onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = "rgba(100,181,246,0.08)"; }}
-                onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = daysLeft <= 1 ? "rgba(220,38,38,0.05)" : "transparent"; }}
-                >
+                }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+                    <div onClick={() => selectCandidate(c)} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, cursor: "pointer" }}>
                       <span style={{ fontWeight: 600, color: "#e0e6f0", fontSize: 12 }}>{c.name}</span>
                     </div>
-                    <span style={{ color: "#64b5f6", fontFamily: "monospace", fontSize: 11, fontWeight: 600, marginLeft: 6, flexShrink: 0 }}>{c.code}</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+                      <span style={{ color: "#64b5f6", fontFamily: "monospace", fontSize: 11, fontWeight: 600 }}>{c.code}</span>
+                      <button onClick={(e) => { e.stopPropagation(); openCandChart(c); }}
+                        title="차트 보기"
+                        style={{
+                          background: isCharting ? "rgba(79,195,247,0.25)" : "rgba(30,40,60,0.5)",
+                          border: isCharting ? "1px solid rgba(79,195,247,0.5)" : "1px solid rgba(100,140,200,0.15)",
+                          borderRadius: 4, padding: "2px 5px", cursor: "pointer", fontSize: 11, lineHeight: 1,
+                          color: isCharting ? "#4fc3f7" : "#6688aa",
+                        }}>📊</button>
+                    </div>
                   </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 3 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 3, cursor: "pointer" }}
+                    onClick={() => selectCandidate(c)}>
                     <span style={{ color: "#8899aa", fontSize: 10 }}>{c.current_price?.toLocaleString() || "-"}원</span>
                     <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                       <span style={{ color: scoreColor, fontSize: 10, fontWeight: 600 }}>종합 {c.composite_score || "-"}</span>
@@ -1481,6 +1512,42 @@ function OrderPanel() {
               </div>
             ))}
           </div>
+        </div>
+      )}
+      </div>{/* 상단 flex 닫기 */}
+
+      {/* ★ 하단: 후보종목 차트 */}
+      {chartCode && (
+        <div style={S.panel}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+            <div style={S.title}>
+              📊 {chartCode.name} <span style={{ color: "#64b5f6", fontFamily: "monospace", fontSize: 12, fontWeight: 400 }}>{chartCode.code}</span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              {/* 후보 종목 빠른 전환 버튼 */}
+              {candidates.length > 1 && candidates.slice(0, 8).map((c) => (
+                <button key={c.id} onClick={() => openCandChart(c)} style={{
+                  background: chartCode?.code === c.code ? "rgba(79,195,247,0.2)" : "transparent",
+                  color: chartCode?.code === c.code ? "#4fc3f7" : "#556677",
+                  border: `1px solid ${chartCode?.code === c.code ? "rgba(79,195,247,0.3)" : "rgba(100,140,200,0.15)"}`,
+                  borderRadius: 6, padding: "3px 8px", fontSize: 10, cursor: "pointer",
+                }}>{c.name}</button>
+              ))}
+              <button onClick={() => { setChartCode(null); setChartCandles(null); }}
+                style={{ background: "transparent", border: "1px solid rgba(255,76,76,0.3)", borderRadius: 6, padding: "3px 8px", fontSize: 10, cursor: "pointer", color: "#ff4c4c" }}>✕</button>
+            </div>
+          </div>
+          {chartLoading ? (
+            <div style={{ height: 300, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(8,15,30,0.6)", borderRadius: 8 }}>
+              <span style={{ color: "#6688aa", fontSize: 13 }}>📊 차트 로딩 중...</span>
+            </div>
+          ) : chartCandles && chartCandles.length > 0 ? (
+            <StockChart candles={chartCandles.slice(0, 100)} />
+          ) : (
+            <div style={{ height: 200, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(8,15,30,0.6)", borderRadius: 8 }}>
+              <span style={{ color: "#556677", fontSize: 12 }}>차트 데이터를 불러올 수 없습니다</span>
+            </div>
+          )}
         </div>
       )}
     </div>
