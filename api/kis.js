@@ -248,7 +248,17 @@ export default async function handler(req, res) {
           profit_loss: safeInt(h.evlu_pfls_amt),
           profit_rate: safeFloat(h.evlu_pfls_rt),
           buy_amount: safeInt(h.pchs_amt),
+          // 당일 변동 (전일대비)
+          prdy_vrss: safeInt(h.prdy_vrss),
+          prdy_ctrt: safeFloat(h.fltt_rt),
         }));
+
+      // 추정자산 = 예수금 + 유가증권평가
+      const deposit = safeInt(summary.dnca_tot_amt);
+      const stockEval = safeInt(summary.scts_evlu_amt) || safeInt(summary.tot_evlu_amt);
+      const totalAssets = deposit + stockEval;
+      const prevTotalAssets = safeInt(summary.bfdy_tot_asst_evlu_amt);
+      const dailyPnl = prevTotalAssets > 0 ? totalAssets - prevTotalAssets : safeInt(summary.asst_icdc_amt);
 
       return res.json({
         success: true,
@@ -256,9 +266,18 @@ export default async function handler(req, res) {
         summary: {
           total_eval: safeInt(summary.tot_evlu_amt),
           total_profit: safeInt(summary.evlu_pfls_smtl_amt),
-          deposit: safeInt(summary.dnca_tot_amt),
+          deposit,
           total_buy: safeInt(summary.pchs_amt_smtl_amt),
           profit_rate: safeFloat(summary.tot_evlu_pfls_rt),
+          // ★ 추가 필드
+          total_assets: totalAssets,
+          daily_pnl: dailyPnl,
+          prev_total_assets: prevTotalAssets,
+          net_assets: safeInt(summary.nass_amt),
+          today_buy_amt: safeInt(summary.thdt_buyamt),
+          today_sell_amt: safeInt(summary.thdt_sll_amt),
+          total_loan: safeInt(summary.tot_loan_amt),
+          stock_eval: stockEval,
         },
       });
     }

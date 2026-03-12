@@ -552,6 +552,7 @@ export default function KisTrading({ mode = "virtual" }) {
     { id: "autotrade", label: "자동매매", icon: "🤖" },
     { id: "order", label: "주문", icon: "📝" },
     { id: "orders", label: "주문내역", icon: "📋" },
+    { id: "tradeLog", label: "매매이력", icon: "📒" },
     { id: "quote", label: "시세조회", icon: "📈" },
     { id: "asking", label: "호가", icon: "📊" },
     { id: "finance", label: "재무정보", icon: "📑" },
@@ -605,6 +606,7 @@ export default function KisTrading({ mode = "virtual" }) {
       {tab === "autotrade" && <AutoTradePanel key={mode} mode={mode} />}
       {tab === "order" && <OrderPanel key={mode} />}
       {tab === "orders" && <OrderHistoryPanel key={mode} />}
+      {tab === "tradeLog" && <TradeLogPanel key={mode} mode={mode} />}
       {tab === "quote" && <QuotePanel key={mode} />}
       {tab === "asking" && <AskingPanel key={mode} />}
       {tab === "finance" && <FinancePanel key={mode} />}
@@ -727,11 +729,21 @@ function BalancePanel() {
   // ★ 보유종목 차트
   const [chartCandles, setChartCandles] = useState(null);
   const [chartLoading, setChartLoading] = useState(false);
+  // ★ 자동매매 규칙 (매수일 정보용)
+  const [tradeRulesMap, setTradeRulesMap] = useState({});
 
   const load = useCallback(async () => {
     setLoading(true);
-    const r = await kisApi("balance");
+    const activeMode = getKisActiveMode();
+    const [r, rulesResp] = await Promise.all([
+      kisApi("balance"),
+      fetch(`${BACKEND_API}/api/kis/auto-trade/rules?mode=${activeMode}`).then(r => r.json()).catch(() => ({ rules: [] })),
+    ]);
     setData(r);
+    // ★ 자동매매 규칙에서 매수일 매핑
+    const rMap = {};
+    (rulesResp?.rules || []).forEach(rule => { rMap[rule.stock_code] = rule; });
+    setTradeRulesMap(rMap);
     setLoading(false);
     // 보유종목 첫번째 종목 시세+차트 조회
     if (r?.success && r.positions?.length > 0) {
@@ -806,25 +818,95 @@ function BalancePanel() {
   const { positions, summary } = data;
   const GOAL = 10000000;
   const initCap = 3000000;
-  const tgtPct = summary.total_eval ? (summary.total_eval / GOAL * 100) : 0;
-  const remaining = Math.max(0, GOAL - (summary.total_eval || 0));
+  // 추정자산 = 예수금 + 주식평가 (서버에서 계산, 폴백 로컬)
+  const totalAssets = summary.total_assets || (summary.deposit + summary.total_eval);
+  const tgtPct = totalAssets ? (totalAssets / GOAL * 100) : 0;
+  const remaining = Math.max(0, GOAL - totalAssets);
+  const cashRatio = totalAssets > 0 ? (summary.deposit / totalAssets * 100) : 0;
+  const investRatio = 100 - cashRatio;
+  const dailyPnl = summary.daily_pnl || 0;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      {/* ★ 상단 4개 요약 카드 */}
-      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+      {/* ★ 상단 요약 카드 2행 */}
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        {/* 주요 4카드: 추정자산, 총손익, 수익률, 당일손익 */}
         {[
-          ["💰", "총 평가액", `${fmt(summary.total_eval)}원`, clr(summary.total_profit)],
-          ["📊", "총 손익", fmtWon(summary.total_profit), clr(summary.total_profit)],
-          ["💵", "예수금", `${fmt(summary.deposit)}원`, "#64b5f6"],
-          ["📈", "수익률", fmtPct(summary.profit_rate), clr(summary.profit_rate)],
+          ["💰", "추정자산", `${fmt(totalAssets)}원`, clr(summary.total_profit), null],
+          ["📊", "총 손익", fmtWon(summary.total_profit), clr(summary.total_profit), null],
+          ["📈", "수익률", fmtPct(summary.profit_rate), clr(summary.profit_rate), null],
+          ["📅", "당일 손익", fmtWon(dailyPnl), clr(dailyPnl), null],
         ].map(([icon, title, value, color]) => (
-          <div key={title} style={{ ...S.panel, flex: 1, minWidth: 180 }}>
-            <div style={{ color: "#6688aa", fontSize: 12, marginBottom: 4 }}>{icon} {title}</div>
-            <div style={{ color, fontSize: 20, fontWeight: 700, fontFamily: "'JetBrains Mono',monospace" }}>{value}</div>
+          <div key={title} style={{ ...S.panel, flex: 1, minWidth: 160 }}>
+            <div style={{ color: "#6688aa", fontSize: 11, marginBottom: 4 }}>{icon} {title}</div>
+            <div style={{ color, fontSize: 18, fontWeight: 700, fontFamily: "'JetBrains Mono',monospace" }}>{value}</div>
           </div>
         ))}
       </div>
+      {/* 보조 정보행: 예수금, 총매입, 총평가, 현금비율 */}
+      <div style={{ ...S.panel, display: "flex", gap: 16, flexWrap: "wrap", padding: "10px 16px", alignItems: "center" }}>
+        {[
+          ["예수금", `${fmt(summary.deposit)}원`, "#64b5f6"],
+          ["총매입", `${fmt(summary.total_buy)}원`, "#e0e6f0"],
+          ["총평가", `${fmt(summary.total_eval)}원`, clr(summary.total_profit)],
+          ["현금비율", `${cashRatio.toFixed(1)}%`, cashRatio > 50 ? "#64b5f6" : cashRatio > 20 ? "#f59e0b" : "#ff4444"],
+        ].map(([l, v, c]) => (
+          <div key={l} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ color: "#556677", fontSize: 11 }}>{l}</span>
+            <span style={{ color: c, fontSize: 13, fontWeight: 600, fontFamily: "'JetBrains Mono',monospace" }}>{v}</span>
+          </div>
+        ))}
+        {/* 현금/투자 비율 바 */}
+        <div style={{ flex: 1, minWidth: 120, display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ color: "#556677", fontSize: 10 }}>투자</span>
+          <div style={{ flex: 1, height: 8, borderRadius: 4, background: "rgba(100,181,246,0.15)", overflow: "hidden", display: "flex" }}>
+            <div style={{ width: `${investRatio}%`, height: "100%", background: "linear-gradient(90deg,#ff9800,#f44336)", borderRadius: "4px 0 0 4px" }} />
+            <div style={{ width: `${cashRatio}%`, height: "100%", background: "linear-gradient(90deg,#42a5f5,#64b5f6)", borderRadius: "0 4px 4px 0" }} />
+          </div>
+          <span style={{ color: "#556677", fontSize: 10 }}>현금</span>
+        </div>
+      </div>
+
+      {/* ★ 위험관리 알림 배너 */}
+      {positions.length > 0 && (() => {
+        const warnings = [];
+        positions.forEach(p => {
+          const rule = tradeRulesMap[p.stock_code];
+          const rate = p.profit_rate || 0;
+          // 손절 근접 경고 (손절선 3% 이내)
+          if (rule && rule.sl_pct && rate < 0 && Math.abs(rate) >= (rule.sl_pct - 3)) {
+            const dist = (rule.sl_pct - Math.abs(rate)).toFixed(1);
+            warnings.push({ type: "sl", icon: "🔴", msg: `${p.stock_name} 손절선 ${dist}% 남음 (현재 ${rate.toFixed(1)}%, 손절 -${rule.sl_pct}%)`, color: "#ff4444" });
+          }
+          // 보유일 초과 경고
+          if (rule && rule.buy_date && rule.max_hold_days > 0) {
+            const holdDays = Math.floor((Date.now() - new Date(rule.buy_date).getTime()) / 86400000);
+            if (holdDays >= rule.max_hold_days) {
+              warnings.push({ type: "hold", icon: "⏰", msg: `${p.stock_name} 최대보유일 초과 (${holdDays}일 / ${rule.max_hold_days}일)`, color: "#ff9800" });
+            } else if (holdDays >= rule.max_hold_days - 3) {
+              warnings.push({ type: "hold", icon: "⚠️", msg: `${p.stock_name} 만기매도 ${rule.max_hold_days - holdDays}일 남음 (${holdDays}일/${rule.max_hold_days}일)`, color: "#f59e0b" });
+            }
+          }
+          // 과집중 경고 (단일 종목 40% 초과)
+          const evalAmt = p.eval_amount || (p.current_price * p.qty);
+          const weight = summary.total_eval > 0 ? (evalAmt / summary.total_eval * 100) : 0;
+          if (weight > 40) {
+            warnings.push({ type: "conc", icon: "⚡", msg: `${p.stock_name} 과집중 (비중 ${weight.toFixed(1)}% > 40%)`, color: "#f59e0b" });
+          }
+        });
+        if (warnings.length === 0) return null;
+        return (
+          <div style={{ ...S.panel, padding: "8px 12px", background: "rgba(255,76,76,0.04)", border: "1px solid rgba(255,76,76,0.12)" }}>
+            <div style={{ color: "#ff4444", fontSize: 11, fontWeight: 600, marginBottom: 4 }}>⚠️ 위험관리 알림 ({warnings.length}건)</div>
+            {warnings.map((w, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 0", fontSize: 11 }}>
+                <span>{w.icon}</span>
+                <span style={{ color: w.color }}>{w.msg}</span>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
 
       {/* ★ 중간행: 예비 후보 종목 + 보유종목 */}
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
@@ -882,29 +964,122 @@ function BalancePanel() {
           {positions.length === 0 ? (
             <div style={{ textAlign: "center", padding: 30, color: "#6688aa" }}>보유 종목 없음</div>
           ) : (
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 700 }}>
               <thead>
-                <tr>{["종목", "수량", "평균가", "현재가", "매도가", "손익", "수익률", "보유금액"].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
+                <tr>{["종목", "수량", "매수금액", "평균가", "현재가", "당일", "손익", "수익률", "평가금액", "비중"].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
               </thead>
               <tbody>
-                {positions.map((p, i) => (
+                {positions.map((p, i) => {
+                  const evalAmt = p.eval_amount || (p.current_price * p.qty);
+                  const buyAmt = p.buy_amount || Math.round(p.avg_price * p.qty);
+                  const weight = summary.total_eval > 0 ? (evalAmt / summary.total_eval * 100) : 0;
+                  const dailyChg = p.prdy_ctrt || 0;
+                  const rule = tradeRulesMap[p.stock_code];
+                  const buyDate = rule?.buy_date;
+                  const holdDays = buyDate ? Math.floor((Date.now() - new Date(buyDate).getTime()) / 86400000) : null;
+                  return (
                   <tr key={i} style={{ borderBottom: "1px solid rgba(100,140,200,0.08)", cursor: "pointer", background: chartStock?.stock_code === p.stock_code ? "rgba(79,195,247,0.08)" : "transparent" }}
                     onClick={() => openChart(p)}>
-                    <td style={{ ...S.td, color: chartStock?.stock_code === p.stock_code ? "#4fc3f7" : "#e0e6f0", fontWeight: 600, textDecoration: "underline", textDecorationStyle: "dashed", textUnderlineOffset: 3 }}>{p.stock_name}({p.stock_code})</td>
+                    <td style={{ ...S.td, color: chartStock?.stock_code === p.stock_code ? "#4fc3f7" : "#e0e6f0", fontWeight: 600, textDecoration: "underline", textDecorationStyle: "dashed", textUnderlineOffset: 3 }}>
+                      {p.stock_name}
+                      <div style={{ fontSize: 9, color: "#556677", fontWeight: 400 }}>
+                        {p.stock_code}{holdDays !== null ? ` · ${holdDays}일` : ''}
+                      </div>
+                    </td>
                     <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace" }}>{fmt(p.qty)}</td>
+                    <td style={{ ...S.td, color: "#8899bb", fontFamily: "monospace", fontSize: 11 }}>{fmt(buyAmt)}</td>
                     <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace" }}>{fmt(Math.round(p.avg_price))}</td>
                     <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace" }}>{fmt(p.current_price)}</td>
-                    <td style={{ ...S.td, color: p.sell_price ? "#f59e0b" : "#556677", fontFamily: "monospace", fontWeight: p.sell_price ? 700 : 400 }}>{p.sell_price ? fmt(p.sell_price) : '-'}</td>
+                    <td style={{ ...S.td, color: clr(dailyChg), fontFamily: "monospace", fontSize: 11 }}>{dailyChg !== 0 ? `${dailyChg >= 0 ? '+' : ''}${dailyChg.toFixed(1)}%` : '-'}</td>
                     <td style={{ ...S.td, color: clr(p.profit_loss), fontFamily: "monospace", fontWeight: 600 }}>{fmtWon(p.profit_loss)}</td>
                     <td style={{ ...S.td, color: clr(p.profit_rate), fontFamily: "monospace", fontWeight: 600 }}>{fmtPct(p.profit_rate)}</td>
-                    <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace", fontWeight: 600 }}>{fmt(p.eval_amount || (p.current_price * p.qty))}원</td>
+                    <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace", fontWeight: 600 }}>{fmt(evalAmt)}원</td>
+                    <td style={{ ...S.td, fontFamily: "monospace", fontSize: 11 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                        <div style={{ width: 32, height: 5, borderRadius: 3, background: "rgba(100,140,200,0.15)", overflow: "hidden" }}>
+                          <div style={{ width: `${Math.min(weight, 100)}%`, height: "100%", background: weight > 30 ? "#f59e0b" : "#4fc3f7", borderRadius: 3 }} />
+                        </div>
+                        <span style={{ color: weight > 30 ? "#f59e0b" : "#8899bb" }}>{weight.toFixed(1)}%</span>
+                      </div>
+                    </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
+            </div>
           )}
         </div>
       </div>
+
+      {/* ★ 포트폴리오 구성 시각화 */}
+      {positions.length > 0 && (
+        <div style={{ ...S.panel }}>
+          <div style={S.title}>📊 포트폴리오 구성</div>
+          <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 8 }}>
+            {/* 종목별 비중 바차트 */}
+            <div style={{ flex: "1 1 350px" }}>
+              <div style={{ color: "#556677", fontSize: 10, marginBottom: 6 }}>종목별 비중</div>
+              {(() => {
+                const barColors = ["#4fc3f7", "#f59e0b", "#4cff8b", "#ff4444", "#ab47bc", "#ff7043", "#29b6f6", "#66bb6a"];
+                const total = summary.total_eval || 1;
+                return positions.map((p, i) => {
+                  const w = ((p.eval_amount || (p.current_price * p.qty)) / total * 100);
+                  return (
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                      <span style={{ color: "#8899bb", fontSize: 10, minWidth: 60, textAlign: "right", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.stock_name}</span>
+                      <div style={{ flex: 1, height: 14, borderRadius: 3, background: "rgba(10,18,40,0.8)", overflow: "hidden", position: "relative" }}>
+                        <div style={{
+                          width: `${Math.max(w, 1)}%`, height: "100%", borderRadius: 3,
+                          background: `linear-gradient(90deg, ${barColors[i % barColors.length]}88, ${barColors[i % barColors.length]})`,
+                        }} />
+                        <span style={{ position: "absolute", right: 4, top: 0, fontSize: 9, color: "#e0e6f0", lineHeight: "14px", fontFamily: "monospace" }}>
+                          {w.toFixed(1)}%
+                        </span>
+                      </div>
+                      <span style={{ color: clr(p.profit_rate), fontSize: 10, fontFamily: "monospace", minWidth: 45, textAlign: "right" }}>
+                        {p.profit_rate >= 0 ? '+' : ''}{p.profit_rate?.toFixed(1)}%
+                      </span>
+                    </div>
+                  );
+                });
+              })()}
+              {/* 현금 */}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}>
+                <span style={{ color: "#64b5f6", fontSize: 10, minWidth: 60, textAlign: "right" }}>현금(예수금)</span>
+                <div style={{ flex: 1, height: 14, borderRadius: 3, background: "rgba(10,18,40,0.8)", overflow: "hidden", position: "relative" }}>
+                  <div style={{ width: `${Math.max(cashRatio, 0.5)}%`, height: "100%", borderRadius: 3, background: "linear-gradient(90deg, #42a5f588, #64b5f6)" }} />
+                  <span style={{ position: "absolute", right: 4, top: 0, fontSize: 9, color: "#e0e6f0", lineHeight: "14px", fontFamily: "monospace" }}>{cashRatio.toFixed(1)}%</span>
+                </div>
+                <span style={{ color: "#64b5f6", fontSize: 10, fontFamily: "monospace", minWidth: 45, textAlign: "right" }}>{fmt(summary.deposit)}원</span>
+              </div>
+            </div>
+
+            {/* 손익 히트맵 */}
+            <div style={{ flex: "0 1 220px" }}>
+              <div style={{ color: "#556677", fontSize: 10, marginBottom: 6 }}>종목별 손익</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                {positions.map((p, i) => {
+                  const rate = p.profit_rate || 0;
+                  const bg = rate >= 5 ? "rgba(76,255,139,0.25)" : rate >= 0 ? "rgba(76,255,139,0.1)" : rate >= -5 ? "rgba(255,76,76,0.1)" : "rgba(255,76,76,0.25)";
+                  const border = rate >= 0 ? "rgba(76,255,139,0.3)" : "rgba(255,76,76,0.3)";
+                  return (
+                    <div key={i} style={{
+                      padding: "6px 8px", borderRadius: 6, background: bg, border: `1px solid ${border}`,
+                      textAlign: "center", minWidth: 65, cursor: "pointer",
+                    }} onClick={() => openChart(p)}>
+                      <div style={{ color: "#e0e6f0", fontSize: 10, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 60 }}>{p.stock_name}</div>
+                      <div style={{ color: clr(rate), fontSize: 12, fontWeight: 700, fontFamily: "monospace" }}>{rate >= 0 ? '+' : ''}{rate.toFixed(1)}%</div>
+                      <div style={{ color: clr(p.profit_loss), fontSize: 9, fontFamily: "monospace" }}>{fmtWon(p.profit_loss)}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ★ 하단행: 종목 차트 + 목표 여정 */}
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
@@ -972,7 +1147,7 @@ function BalancePanel() {
           <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, gap: 8 }}>
             {[
               ["시작금액", `${fmt(initCap)}원`, "#e0e6f0"],
-              ["현재자산", `${fmt(summary.total_eval)}원`, "#4cff8b"],
+              ["현재자산", `${fmt(totalAssets)}원`, "#4cff8b"],
               ["남은금액", `${fmt(remaining)}원`, "#ffd54f"],
             ].map(([l, v, c]) => (
               <div key={l} style={{ flex: 1 }}>
@@ -1237,23 +1412,44 @@ function OrderPanel() {
 }
 
 // ============================================================
-// Order History Panel
+// Order History Panel (기간별 체결내역 + 실현손익)
 // ============================================================
 function OrderHistoryPanel() {
   const [orders, setOrders] = useState([]);
   const [pending, setPending] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
+  // ★ 기간별 조회
+  const todayStr = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
+  const [startDate, setStartDate] = useState(todayStr);
+  const [endDate, setEndDate] = useState(todayStr);
+  const [datePreset, setDatePreset] = useState("today");
 
-  const loadAll = async () => {
+  const applyPreset = (preset) => {
+    setDatePreset(preset);
+    const now = new Date(Date.now() + 9 * 3600000);
+    const fmt2 = (d) => d.toISOString().slice(0, 10);
+    const sd = new Date(now);
+    if (preset === "today") { setStartDate(fmt2(now)); setEndDate(fmt2(now)); }
+    else if (preset === "1week") { sd.setDate(sd.getDate() - 7); setStartDate(fmt2(sd)); setEndDate(fmt2(now)); }
+    else if (preset === "1month") { sd.setMonth(sd.getMonth() - 1); setStartDate(fmt2(sd)); setEndDate(fmt2(now)); }
+    else if (preset === "3month") { sd.setMonth(sd.getMonth() - 3); setStartDate(fmt2(sd)); setEndDate(fmt2(now)); }
+  };
+
+  const loadAll = useCallback(async () => {
     setLoading(true);
-    const [ordR, penR] = await Promise.all([kisApi("orders"), kisApi("pending")]);
+    const sd = startDate.replace(/-/g, "");
+    const ed = endDate.replace(/-/g, "");
+    const [ordR, penR] = await Promise.all([
+      kisApi("orders", { start_date: sd, end_date: ed }),
+      kisApi("pending"),
+    ]);
     if (ordR?.success) setOrders(ordR.orders || []);
     if (penR?.success) setPending(penR.pending || []);
     setLoading(false);
-  };
+  }, [startDate, endDate]);
 
-  useEffect(() => { loadAll(); }, []);
+  useEffect(() => { loadAll(); }, [loadAll]);
 
   const cancelOrder = async (order) => {
     if (!confirm(`${order.stock_name} ${order.side} 주문을 취소하시겠습니까?`)) return;
@@ -1265,7 +1461,16 @@ function OrderHistoryPanel() {
     else alert("주문 취소 실패: " + (r?.message || ""));
   };
 
-  if (loading) return <div style={{ ...S.panel, textAlign: "center", padding: 40, color: "#6688aa" }}>주문내역 조회 중...</div>;
+  // ★ 실현손익 계산: 매도 체결된 주문들의 손익 집계
+  const sellOrders = orders.filter(o => o.side === "매도" && o.exec_qty > 0);
+  const buyOrders = orders.filter(o => o.side === "매수" && o.exec_qty > 0);
+  const totalSellAmt = sellOrders.reduce((s, o) => s + (o.exec_price * o.exec_qty), 0);
+  const totalBuyAmt = buyOrders.reduce((s, o) => s + (o.exec_price * o.exec_qty), 0);
+
+  const dateInputStyle = {
+    background: "rgba(10,18,40,0.8)", color: "#e0e6f0", border: "1px solid rgba(100,140,200,0.2)",
+    borderRadius: 6, padding: "5px 8px", fontSize: 11, fontFamily: "monospace",
+  };
 
   const filters = [
     { id: "all", label: `전체 (${orders.length + pending.length})` },
@@ -1275,9 +1480,43 @@ function OrderHistoryPanel() {
 
   return (
     <div style={S.panel}>
+      {/* ★ 기간 선택 바 */}
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginBottom: 12, padding: "8px 10px", background: "rgba(10,18,40,0.5)", borderRadius: 8 }}>
+        <span style={{ color: "#6688aa", fontSize: 11, fontWeight: 600 }}>📅 조회기간</span>
+        {[["today","오늘"],["1week","1주"],["1month","1개월"],["3month","3개월"]].map(([k,l]) => (
+          <button key={k} onClick={() => applyPreset(k)} style={{
+            padding: "4px 10px", fontSize: 10, borderRadius: 5, cursor: "pointer",
+            background: datePreset === k ? "rgba(100,180,246,0.2)" : "transparent",
+            color: datePreset === k ? "#64b5f6" : "#6688aa",
+            border: datePreset === k ? "1px solid rgba(100,180,246,0.3)" : "1px solid rgba(100,140,200,0.1)",
+          }}>{l}</button>
+        ))}
+        <input type="date" value={startDate} onChange={e => { setStartDate(e.target.value); setDatePreset("custom"); }} style={dateInputStyle} />
+        <span style={{ color: "#556677", fontSize: 11 }}>~</span>
+        <input type="date" value={endDate} onChange={e => { setEndDate(e.target.value); setDatePreset("custom"); }} style={dateInputStyle} />
+        <button onClick={loadAll} style={{ ...S.btn(), padding: "5px 12px", fontSize: 10 }}>조회</button>
+      </div>
+
+      {/* ★ 기간 체결 요약 */}
+      {(sellOrders.length > 0 || buyOrders.length > 0) && (
+        <div style={{ display: "flex", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
+          {[
+            ["매수", `${buyOrders.length}건`, `${fmt(totalBuyAmt)}원`, "#ff4444"],
+            ["매도", `${sellOrders.length}건`, `${fmt(totalSellAmt)}원`, "#4488ff"],
+            ["순매수", `${fmt(totalBuyAmt - totalSellAmt)}원`, "", clr(totalBuyAmt - totalSellAmt)],
+          ].map(([l, v1, v2, c]) => (
+            <div key={l} style={{ flex: 1, minWidth: 120, padding: "8px 12px", background: "rgba(10,18,40,0.5)", borderRadius: 8 }}>
+              <div style={{ color: "#556677", fontSize: 10 }}>{l}</div>
+              <div style={{ color: c, fontSize: 14, fontWeight: 700, fontFamily: "monospace" }}>{v1}</div>
+              {v2 && <div style={{ color: "#8899bb", fontSize: 10, fontFamily: "monospace" }}>{v2}</div>}
+            </div>
+          ))}
+        </div>
+      )}
+
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={S.title}>오늘의 주문내역</div>
+          <div style={S.title}>주문내역</div>
           <div style={{ display: "flex", gap: 4 }}>
             {filters.map(f => (
               <button key={f.id} onClick={() => setFilter(f.id)} style={{
@@ -1289,7 +1528,7 @@ function OrderHistoryPanel() {
             ))}
           </div>
         </div>
-        <button onClick={loadAll} style={{ ...S.btn(), padding: "6px 14px", fontSize: 11 }}>새로고침</button>
+        {loading && <span style={{ color: "#6688aa", fontSize: 11 }}>조회 중...</span>}
       </div>
 
       {/* 미체결 배너 */}
@@ -1329,18 +1568,21 @@ function OrderHistoryPanel() {
       {/* 체결 테이블 */}
       {filter !== "pending" && (
         <>
-          {filter === "all" && orders.length > 0 && <div style={{ color: "#4cff8b", fontSize: 11, fontWeight: 600, marginBottom: 6 }}>체결 주문</div>}
+          {filter === "all" && orders.length > 0 && <div style={{ color: "#4cff8b", fontSize: 11, fontWeight: 600, marginBottom: 6 }}>✅ 체결 주문</div>}
           {orders.length === 0 ? (
-            filter === "executed" && <div style={{ textAlign: "center", padding: 30, color: "#6688aa" }}>체결내역 없음</div>
+            !loading && <div style={{ textAlign: "center", padding: 30, color: "#6688aa" }}>해당 기간 체결내역 없음</div>
           ) : (
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
-                <tr>{["주문번호", "시간", "구분", "종목", "주문가", "주문수량", "체결가", "체결수량", "상태"].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
+                <tr>{["날짜", "시간", "구분", "종목", "주문가", "수량", "체결가", "체결수량", "체결금액", "상태"].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
               </thead>
               <tbody>
-                {orders.map((o, i) => (
+                {orders.map((o, i) => {
+                  const execAmt = (o.exec_price || 0) * (o.exec_qty || 0);
+                  const dateStr = o.order_date ? `${o.order_date.slice(4,6)}/${o.order_date.slice(6,8)}` : '';
+                  return (
                   <tr key={i} style={{ background: i % 2 === 0 ? "rgba(10,18,40,0.3)" : "transparent" }}>
-                    <td style={{ ...S.td, color: "#6688aa", fontFamily: "monospace" }}>{o.order_no}</td>
+                    <td style={{ ...S.td, color: "#8899bb", fontFamily: "monospace", fontSize: 11 }}>{dateStr}</td>
                     <td style={{ ...S.td, color: "#6688aa", fontFamily: "monospace" }}>{o.order_time?.slice(0, 4) ? `${o.order_time.slice(0, 2)}:${o.order_time.slice(2, 4)}` : o.order_time}</td>
                     <td style={{ ...S.td, color: o.side === "매수" ? "#ff4444" : "#4488ff", fontWeight: 600 }}>{o.side}</td>
                     <td style={{ ...S.td, color: "#e0e6f0", fontWeight: 600 }}>{o.stock_name}</td>
@@ -1348,18 +1590,213 @@ function OrderHistoryPanel() {
                     <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace" }}>{fmt(o.order_qty)}</td>
                     <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace" }}>{fmt(o.exec_price)}</td>
                     <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace" }}>{fmt(o.exec_qty)}</td>
+                    <td style={{ ...S.td, color: o.side === "매도" ? "#4488ff" : "#ff4444", fontFamily: "monospace", fontWeight: 600 }}>{execAmt > 0 ? `${fmt(execAmt)}원` : '-'}</td>
                     <td style={{ ...S.td, color: o.exec_qty > 0 ? "#4cff8b" : "#ff9800" }}>{o.exec_qty > 0 ? "체결" : "미체결"}</td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           )}
         </>
       )}
 
-      {(orders.length === 0 && pending.length === 0) && (
+      {(orders.length === 0 && pending.length === 0 && !loading) && (
         <div style={{ textAlign: "center", padding: 30, color: "#6688aa" }}>주문내역 없음</div>
       )}
+    </div>
+  );
+}
+
+// ============================================================
+// Trade Log Panel (실현손익 + 자동매매 이력)
+// ============================================================
+function TradeLogPanel({ mode }) {
+  const [logs, setLogs] = useState([]);
+  const [rules, setRules] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [subTab, setSubTab] = useState("autolog"); // "autolog" | "rules" | "stats"
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      const [logsR, rulesR] = await Promise.all([
+        fetch(`${BACKEND_API}/api/kis/auto-trade/status`).then(r => r.json()).catch(() => ({})),
+        fetch(`${BACKEND_API}/api/kis/auto-trade/rules?mode=${mode}`).then(r => r.json()).catch(() => ({ rules: [] })),
+      ]);
+      setLogs(logsR?.recent_logs || []);
+      setRules(rulesR?.rules || []);
+      setLoading(false);
+    })();
+  }, [mode]);
+
+  // ★ 매도 완료 규칙들 (실현손익 내역)
+  const soldRules = rules.filter(r => !r.enabled && r.buy_price > 0);
+  // ★ 자동매매 로그에서 매도 기록 추출
+  const sellLogs = logs.filter(l => l.status === "sell" || l.status === "sell_fail");
+  const monitorLogs = logs.filter(l => l.status === "monitor");
+
+  // ★ 규칙별 성과 통계
+  const activeRules = rules.filter(r => r.enabled);
+  const totalRules = rules.length;
+  const sellSuccessLogs = logs.filter(l => l.status === "sell");
+  const sellFailLogs = logs.filter(l => l.status === "sell_fail");
+
+  if (loading) return <div style={{ ...S.panel, textAlign: "center", padding: 40, color: "#6688aa" }}>이력 조회 중...</div>;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {/* 상단 통계 카드 */}
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        {[
+          ["📊", "전체 규칙", `${totalRules}건`, "#e0e6f0"],
+          ["✅", "활성 규칙", `${activeRules.length}건`, "#4cff8b"],
+          ["🏷️", "매도 완료", `${soldRules.length}건`, "#f59e0b"],
+          ["📈", "매도 성공", `${sellSuccessLogs.length}건`, "#4488ff"],
+          ["❌", "매도 실패", `${sellFailLogs.length}건`, "#ff4444"],
+        ].map(([icon, label, val, c]) => (
+          <div key={label} style={{ ...S.panel, flex: 1, minWidth: 120 }}>
+            <div style={{ color: "#6688aa", fontSize: 10 }}>{icon} {label}</div>
+            <div style={{ color: c, fontSize: 16, fontWeight: 700, fontFamily: "monospace" }}>{val}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* 서브탭 */}
+      <div style={S.panel}>
+        <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+          {[
+            ["autolog", "🤖 자동매매 로그"],
+            ["rules", "📒 매도 완료 내역"],
+            ["stats", "📊 규칙별 현황"],
+          ].map(([id, label]) => (
+            <button key={id} onClick={() => setSubTab(id)} style={{
+              padding: "6px 14px", fontSize: 11, borderRadius: 6, cursor: "pointer",
+              background: subTab === id ? "rgba(100,180,246,0.15)" : "transparent",
+              color: subTab === id ? "#64b5f6" : "#6688aa",
+              border: subTab === id ? "1px solid rgba(100,180,246,0.3)" : "1px solid rgba(100,140,200,0.1)",
+            }}>{label}</button>
+          ))}
+        </div>
+
+        {/* 자동매매 실행 로그 */}
+        {subTab === "autolog" && (
+          <>
+            <div style={S.title}>🤖 최근 자동매매 실행 로그</div>
+            {logs.length === 0 ? (
+              <div style={{ textAlign: "center", padding: 30, color: "#6688aa" }}>실행 이력 없음</div>
+            ) : (
+              <div style={{ maxHeight: 400, overflowY: "auto" }}>
+                {logs.map((log, i) => {
+                  const isSell = log.status === "sell";
+                  const isFail = log.status === "sell_fail";
+                  const isError = log.status === "error";
+                  const bgColor = isSell ? "rgba(76,255,139,0.05)" : isFail ? "rgba(255,76,76,0.05)" : isError ? "rgba(255,76,76,0.08)" : "transparent";
+                  const borderColor = isSell ? "rgba(76,255,139,0.15)" : isFail ? "rgba(255,76,76,0.15)" : "rgba(100,140,200,0.08)";
+                  const statusLabel = isSell ? "✅ 매도성공" : isFail ? "❌ 매도실패" : isError ? "⚠️ 오류" : log.status === "monitor" ? "👁️ 모니터링" : log.status === "skip" ? "⏭️ 스킵" : log.status;
+                  const statusColor = isSell ? "#4cff8b" : isFail || isError ? "#ff4444" : "#6688aa";
+                  const timeStr = log.executed_at ? new Date(log.executed_at).toLocaleString("ko-KR", { timeZone: "Asia/Seoul", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : "";
+                  return (
+                    <div key={i} style={{ padding: "8px 10px", background: bgColor, borderBottom: `1px solid ${borderColor}`, borderRadius: i === 0 ? "6px 6px 0 0" : i === logs.length - 1 ? "0 0 6px 6px" : 0 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 }}>
+                        <span style={{ color: statusColor, fontSize: 11, fontWeight: 600 }}>{statusLabel}</span>
+                        <span style={{ color: "#556677", fontSize: 10, fontFamily: "monospace" }}>{timeStr}</span>
+                      </div>
+                      {log.error_detail && (
+                        <div style={{ color: "#8899bb", fontSize: 10, lineHeight: 1.4, wordBreak: "break-all" }}>
+                          {log.error_detail.length > 200 ? log.error_detail.slice(0, 200) + '...' : log.error_detail}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* 매도 완료 내역 (실현손익) */}
+        {subTab === "rules" && (
+          <>
+            <div style={S.title}>📒 매도 완료 내역 (비활성화된 규칙)</div>
+            {soldRules.length === 0 ? (
+              <div style={{ textAlign: "center", padding: 30, color: "#6688aa" }}>매도 완료 내역 없음</div>
+            ) : (
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr>{["종목", "전략", "매수가", "수량", "매수일", "익절%", "손절%", "상태"].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
+                </thead>
+                <tbody>
+                  {soldRules.map((r, i) => {
+                    const stratLabel = r.strategy === "smart" ? "스마트" : "고정";
+                    const dateStr = r.buy_date ? `${r.buy_date.slice(5, 7)}/${r.buy_date.slice(8, 10)}` : '-';
+                    return (
+                      <tr key={i} style={{ borderBottom: "1px solid rgba(100,140,200,0.08)" }}>
+                        <td style={{ ...S.td, color: "#e0e6f0", fontWeight: 600 }}>{r.stock_name || r.stock_code}</td>
+                        <td style={{ ...S.td, color: r.strategy === "smart" ? "#f59e0b" : "#64b5f6", fontSize: 11 }}>{stratLabel}</td>
+                        <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace" }}>{fmt(Math.round(r.buy_price))}</td>
+                        <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace" }}>{fmt(r.quantity)}</td>
+                        <td style={{ ...S.td, color: "#8899bb", fontFamily: "monospace", fontSize: 11 }}>{dateStr}</td>
+                        <td style={{ ...S.td, color: "#4cff8b", fontFamily: "monospace" }}>{r.tp_pct}%</td>
+                        <td style={{ ...S.td, color: "#ff4444", fontFamily: "monospace" }}>-{r.sl_pct}%</td>
+                        <td style={{ ...S.td, color: "#f59e0b", fontSize: 11 }}>매도완료</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </>
+        )}
+
+        {/* 규칙별 현황 */}
+        {subTab === "stats" && (
+          <>
+            <div style={S.title}>📊 자동매매 규칙별 현황</div>
+            {rules.length === 0 ? (
+              <div style={{ textAlign: "center", padding: 30, color: "#6688aa" }}>등록된 규칙 없음</div>
+            ) : (
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr>{["종목", "전략", "매수가", "수량", "매수일", "보유일", "익절", "손절", "최고가", "상태"].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
+                </thead>
+                <tbody>
+                  {rules.map((r, i) => {
+                    const stratLabel = r.strategy === "smart" ? "🎯 스마트" : "📌 고정";
+                    const holdDays = r.buy_date ? Math.floor((Date.now() - new Date(r.buy_date).getTime()) / 86400000) : 0;
+                    const peakProfit = r.peak_price && r.buy_price ? ((r.peak_price - r.buy_price) / r.buy_price * 100) : 0;
+                    const dateStr = r.buy_date ? `${r.buy_date.slice(5, 7)}/${r.buy_date.slice(8, 10)}` : '-';
+                    return (
+                      <tr key={i} style={{ borderBottom: "1px solid rgba(100,140,200,0.08)", opacity: r.enabled ? 1 : 0.5 }}>
+                        <td style={{ ...S.td, color: "#e0e6f0", fontWeight: 600 }}>{r.stock_name || r.stock_code}</td>
+                        <td style={{ ...S.td, color: r.strategy === "smart" ? "#f59e0b" : "#64b5f6", fontSize: 11 }}>{stratLabel}</td>
+                        <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace" }}>{fmt(Math.round(r.buy_price))}</td>
+                        <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace" }}>{fmt(r.quantity)}</td>
+                        <td style={{ ...S.td, color: "#8899bb", fontFamily: "monospace", fontSize: 11 }}>{dateStr}</td>
+                        <td style={{ ...S.td, color: holdDays > (r.max_hold_days || 30) ? "#ff4444" : "#e0e6f0", fontFamily: "monospace" }}>{holdDays}일</td>
+                        <td style={{ ...S.td, color: "#4cff8b", fontFamily: "monospace", fontSize: 11 }}>{r.tp_pct}%</td>
+                        <td style={{ ...S.td, color: "#ff4444", fontFamily: "monospace", fontSize: 11 }}>-{r.sl_pct}%</td>
+                        <td style={{ ...S.td, fontFamily: "monospace", fontSize: 11 }}>
+                          {r.peak_price > 0 ? (
+                            <span style={{ color: peakProfit > 0 ? "#4cff8b" : "#ff4444" }}>{fmt(Math.round(r.peak_price))} ({peakProfit >= 0 ? '+' : ''}{peakProfit.toFixed(1)}%)</span>
+                          ) : '-'}
+                        </td>
+                        <td style={{ ...S.td }}>
+                          <span style={{
+                            padding: "2px 8px", borderRadius: 4, fontSize: 10, fontWeight: 600,
+                            background: r.enabled ? "rgba(76,255,139,0.1)" : "rgba(100,140,200,0.1)",
+                            color: r.enabled ? "#4cff8b" : "#6688aa",
+                          }}>{r.enabled ? "활성" : "비활성"}</span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 }
