@@ -92,6 +92,7 @@ export default function PatternDetector() {
   const [scanDate, setScanDate] = useState('');
   const [scanSource, setScanSource] = useState('');
   const [loadingPrev, setLoadingPrev] = useState(false);
+  const [scanToast, setScanToast] = useState(null);  // { message, type:'success'|'error' }
 
   // ━━━ 스캔 종목 차트 상태 ━━━
   const [scanChartCode, setScanChartCode] = useState(null);
@@ -1124,9 +1125,15 @@ export default function PatternDetector() {
       setScanDate(detail.scan_date || '');
       setScanSource('db');
       setShowScanHistory(false);
+      // ★ 성공 토스트
+      const dateStr = detail.scan_date || '';
+      const marketStr = session.market === 'ALL' ? '전체' : session.market;
+      setScanToast({ message: `${dateStr} ${marketStr} 스캔 기록 불러오기 완료 (${stocks.length}종목)`, type: 'success' });
+      setTimeout(() => setScanToast(null), 3000);
     } catch (e) {
       console.error('[scan-history] 상세 로드 실패:', e);
-      alert('스캔 기록 로드 실패: ' + e.message);
+      setScanToast({ message: '스캔 기록 로드 실패: ' + e.message, type: 'error' });
+      setTimeout(() => setScanToast(null), 4000);
       setScanSource('');
     }
   }, [setScanResultWithCache]);
@@ -1548,7 +1555,24 @@ export default function PatternDetector() {
   // ━━━ 렌더링 ━━━
   return (
     <div style={{ minHeight:'100vh', background:COLORS.bg, color:COLORS.text,
-      fontFamily:"'Pretendard',-apple-system,sans-serif", padding:'20px', maxWidth:1200, margin:'0 auto' }}>
+      fontFamily:"'Pretendard',-apple-system,sans-serif", padding:'20px', maxWidth:1200, margin:'0 auto', position:'relative' }}>
+
+      {/* ★ 토스트 알림 */}
+      {scanToast && (<>
+        <style>{`@keyframes pdToastIn{from{opacity:0;transform:translateX(-50%) translateY(-12px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}`}</style>
+        <div style={{
+          position:'fixed', top:24, left:'50%', transform:'translateX(-50%)', zIndex:9999,
+          background: scanToast.type === 'success' ? '#065f46' : '#991b1b',
+          border: `1px solid ${scanToast.type === 'success' ? '#10b981' : '#ef4444'}`,
+          color:'#fff', padding:'12px 24px', borderRadius:10,
+          fontSize:14, fontWeight:600, boxShadow:'0 4px 20px rgba(0,0,0,0.4)',
+          display:'flex', alignItems:'center', gap:8,
+          animation:'pdToastIn 0.3s ease-out',
+        }}>
+          <span>{scanToast.type === 'success' ? '\u2705' : '\u274c'}</span>
+          {scanToast.message}
+        </div>
+      </>)}
 
       {/* 헤더 */}
       <div style={{ marginBottom:20 }}>
