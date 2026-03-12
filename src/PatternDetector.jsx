@@ -263,7 +263,7 @@ export default function PatternDetector() {
       standard:     { tp:7,  sl:3, days:10, trailing:0, grace:0, activation:0 },
       conservative: { tp:5,  sl:2, days:15, trailing:0, grace:0, activation:0 },
       longterm:     { tp:15, sl:5, days:30, trailing:0, grace:0, activation:0 },
-      smart:        { tp:15, sl:12, days:30, trailing:5, grace:7, activation:15 },
+      smart:        { tp:15, sl:12, days:30, trailing:5, grace:0, activation:15 },  // ★ 유예기간 보류
     };
     const p = presetDefs[regPreset] || presetDefs.smart;
     localStorage.setItem('kis_auto_trade_preset', regPreset);
@@ -670,7 +670,7 @@ export default function PatternDetector() {
         standard:     { tp:7,  sl:3, days:10, trailing:0, grace:0, activation:0 },
         conservative: { tp:5,  sl:2, days:15, trailing:0, grace:0, activation:0 },
         longterm:     { tp:15, sl:5, days:30, trailing:0, grace:0, activation:0 },
-        smart:        { tp:15, sl:12, days:30, trailing:5, grace:7, activation:15 },
+        smart:        { tp:15, sl:12, days:30, trailing:5, grace:0, activation:15 },  // ★ 유예기간 보류
       };
       const p = presetDefs[regPreset] || presetDefs.smart;
       const filtersPayload = regActiveFilters.map(f => ({ label: f.label, color: f.color }));
@@ -815,7 +815,7 @@ export default function PatternDetector() {
         standard:     { tp:7,  sl:3, days:10, trailing:0, grace:0, activation:0 },
         conservative: { tp:5,  sl:2, days:15, trailing:0, grace:0, activation:0 },
         longterm:     { tp:15, sl:5, days:30, trailing:0, grace:0, activation:0 },
-        smart:        { tp:15, sl:12, days:30, trailing:5, grace:7, activation:15 },
+        smart:        { tp:15, sl:12, days:30, trailing:5, grace:0, activation:15 },  // ★ 유예기간 보류
       };
       const p = presetDefs[regPreset] || presetDefs.smart;
       localStorage.setItem(`kis_auto_trade_sync_${kisOrderMode}`, JSON.stringify({
@@ -889,7 +889,7 @@ export default function PatternDetector() {
         capital: price > 0 ? price * 10 : 1000000,
         preset: 'smart',
         take_profit_pct: 15, stop_loss_pct: 12, max_hold_days: 30,
-        trailing_stop_pct: 5, grace_days: 7, profit_activation_pct: 15,
+        trailing_stop_pct: 5, grace_days: 0, profit_activation_pct: 15,  // ★ 유예기간 보류
       };
       const res = await fetch(`${API_BASE}/api/virtual-invest/realtime/start`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -949,7 +949,7 @@ export default function PatternDetector() {
       alert(r.success ? `${stock.name} 매수 완료! (${qty}주)` : `매수 실패: ${r.message}`);
       if (r.success) {
         setupAutoTradeAfterBuy(mode, [{ code: stock.code, name: stock.name, qty, price }],
-          { tp: 15, sl: 12, days: 30, trailing: 5, grace: 7, activation: 15 });
+          { tp: 15, sl: 12, days: 30, trailing: 5, grace: 0, activation: 15 });  // ★ 유예기간 보류
       }
     } catch (e) { alert('매수 실패: ' + e.message); }
   };

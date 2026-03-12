@@ -84,13 +84,13 @@ const STRATEGY_PARAMS = {
     label: '🧠 스마트형',
     desc: '수익 활성화 후 추적손절 — 급등주 대응 전략',
     params: [
-      { key: 'grace_days', label: '유예기간', value: 7, unit: '일', desc: '매수 후 청산 유예' },
+      // { key: 'grace_days', label: '유예기간', value: 0, unit: '일', desc: '매수 후 청산 유예 (보류)' },  // ★ 유예기간 보류
       { key: 'stop_loss_pct', label: '손절선', value: 12.0, unit: '%', desc: '최대 허용 손실' },
       { key: 'profit_activation_pct', label: '수익 활성화', value: 15.0, unit: '%', desc: '추적손절 시작 조건' },
       { key: 'trailing_stop_pct', label: '추적손절', value: 5.0, unit: '%', desc: '고점 대비 하락 시 매도' },
       { key: 'max_hold_days', label: '최대보유', value: 30, unit: '일', desc: '자동 만기 청산' },
     ],
-    flow: '매수 → 7일 유예 → 15% 수익 활성화 → 고점 대비 -5% 시 매도 / -12% 손절 / 30일 만기',
+    flow: '매수 → 15% 수익 활성화 → 고점 대비 -5% 시 매도 / -12% 손절 / 30일 만기',  // ★ 유예기간 보류
   },
   aggressive: {
     label: '🔥 공격형',

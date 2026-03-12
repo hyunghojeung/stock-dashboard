@@ -363,7 +363,7 @@ export function startKisAutoTrade(mode = 'virtual', intervalSec = 30) {
 
       if (stratType === 'smart') {
         // ━━━ 스마트형: 트레일링 스탑 (클라이언트사이드 보조) ━━━
-        const grace = rule.grace_days ?? 7;
+        // const grace = rule.grace_days ?? 7;  // ★ 유예기간 보류
         const sl = rule.stop_loss_pct ?? 12;
         const trailing = rule.trailing_stop_pct ?? 5;
         const activation = rule.profit_activation_pct ?? 15;
@@ -374,7 +374,7 @@ export function startKisAutoTrade(mode = 'virtual', intervalSec = 30) {
           rule.peak_price = peak;
           try { localStorage.setItem(`${AUTO_TRADE_RULES_KEY}_${mode}`, JSON.stringify(rules)); } catch {}
         }
-        if (holdDays > grace) {
+        if (holdDays > 0) {  // ★ 유예기간 보류 (기존: holdDays > grace)
           const peakProfit = peak > 0 && rule.buy_price > 0 ? ((peak - rule.buy_price) / rule.buy_price * 100) : 0;
           if (peakProfit >= activation && peak > 0) {
             const dropFromPeak = ((pos.current_price - peak) / peak * 100);
@@ -2117,7 +2117,7 @@ function AutoTradePanel({ mode = "virtual" }) {
 
       if (stratType === 'smart') {
         // ━━━ 스마트형: 트레일링 스탑 ━━━
-        const graceD = rule.grace_days ?? 7;
+        // const graceD = rule.grace_days ?? 7;  // ★ 유예기간 보류
         const slPct = rule.stop_loss_pct ?? 12;
         const trailingPct = rule.trailing_stop_pct ?? 5;
         const activationPct = rule.profit_activation_pct ?? 15;
@@ -2127,7 +2127,7 @@ function AutoTradePanel({ mode = "virtual" }) {
           peak = pos.current_price;
           saveRules(rules.map(r => r.stock_code === rule.stock_code ? { ...r, peak_price: peak } : r));
         }
-        if (holdDays > graceD) {
+        if (holdDays > 0) {  // ★ 유예기간 보류 (기존: holdDays > graceD)
           const peakProfit = peak > 0 && rule.buy_price > 0 ? ((peak - rule.buy_price) / rule.buy_price * 100) : 0;
           if (peakProfit >= activationPct && peak > 0) {
             const dropFromPeak = ((pos.current_price - peak) / peak * 100);
