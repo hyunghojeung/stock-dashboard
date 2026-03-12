@@ -1608,26 +1608,17 @@ export default function PatternDetector() {
           <div style={{ fontSize:15, fontWeight:700, marginBottom:16, color:COLORS.red }}>
             🚀 전종목 급상승 스캐너
           </div>
-          <div style={{ display:'flex', flexDirection:'column', gap:10, marginBottom:16 }}>
-            {/* Row 1: 시장 + 조회기간 */}
-            <div style={{ display:'flex', gap:12, flexWrap:'wrap' }}>
-              <FilterRow label="시장" options={[{v:'ALL',l:'전체'},{v:'KOSPI',l:'KOSPI'},{v:'KOSDAQ',l:'KOSDAQ'}]}
-                value={scanMarket} setter={setScanMarket} color={COLORS.red} disabled={scanning} />
-              <FilterRow label="조회 기간" options={[{v:3,l:'3일'},{v:5,l:'5일'},{v:10,l:'10일'},{v:15,l:'15일'},{v:30,l:'30일'},{v:180,l:'6개월'},{v:365,l:'1년'},{v:600,l:'2년'}]}
-                value={scanPeriod} setter={setScanPeriod} color={COLORS.red} disabled={scanning} />
-            </div>
-            {/* Row 2: 급상승 기준 + 상승 기간 */}
-            <div style={{ display:'flex', gap:12, flexWrap:'wrap' }}>
-              <FilterRow label="급상승" options={[{v:5,l:'+5%'},{v:10,l:'+10%'},{v:15,l:'+15%'},{v:20,l:'+20%'},{v:30,l:'+30%'},{v:50,l:'+50%'},{v:100,l:'+100%'}]}
-                value={scanRisePct} setter={setScanRisePct} color={COLORS.red} disabled={scanning} />
-              <FilterRow label="상승 기간" options={[{v:3,l:'3일'},{v:5,l:'5일'},{v:10,l:'10일'}]}
-                value={scanRiseWindow} setter={setScanRiseWindow} color={COLORS.red} disabled={scanning} />
-            </div>
-            {/* Row 3: 거래량 배율 */}
-            <div style={{ display:'flex', gap:12, flexWrap:'wrap' }}>
-              <FilterRow label="거래량" options={[{v:1.5,l:'1.5배'},{v:2.0,l:'2배'},{v:3.0,l:'3배'},{v:5.0,l:'5배'}]}
-                value={scanVolRatio} setter={setScanVolRatio} color={COLORS.red} disabled={scanning} />
-            </div>
+          <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:16 }}>
+            <FilterRow label="시장 선택" options={[{v:'ALL',l:'전체'},{v:'KOSPI',l:'KOSPI'},{v:'KOSDAQ',l:'KOSDAQ'}]}
+              value={scanMarket} setter={setScanMarket} color={COLORS.red} disabled={scanning} />
+            <FilterRow label="조회 기간" options={[{v:3,l:'3일'},{v:5,l:'5일'},{v:10,l:'10일'},{v:15,l:'15일'},{v:30,l:'30일'},{v:180,l:'6개월'},{v:365,l:'1년'},{v:600,l:'2년'}]}
+              value={scanPeriod} setter={setScanPeriod} color={COLORS.red} disabled={scanning} />
+            <FilterRow label="급상승 기준" options={[{v:5,l:'+5%'},{v:10,l:'+10%'},{v:15,l:'+15%'},{v:20,l:'+20%'},{v:30,l:'+30%'},{v:50,l:'+50%'},{v:100,l:'+100%'}]}
+              value={scanRisePct} setter={setScanRisePct} color={COLORS.red} disabled={scanning} />
+            <FilterRow label="상승 기간" options={[{v:3,l:'3일'},{v:5,l:'5일'},{v:10,l:'10일'}]}
+              value={scanRiseWindow} setter={setScanRiseWindow} color={COLORS.red} disabled={scanning} />
+            <FilterRow label="거래량 배율" options={[{v:1.5,l:'1.5배'},{v:2.0,l:'2배'},{v:3.0,l:'3배'},{v:5.0,l:'5배'}]}
+              value={scanVolRatio} setter={setScanVolRatio} color={COLORS.red} disabled={scanning} />
           </div>
           <div style={{ display:'flex', gap:10 }}>
             {!scanning ? (
@@ -2925,7 +2916,7 @@ function tagStyle(c) { return { fontSize:10, padding:'2px 8px', borderRadius:10,
 // ━━━ 공통 컴포넌트 ━━━
 function FilterRow({ label, options, value, setter, color, disabled }) {
   return (<div style={{ display:'flex', alignItems:'center', gap:8 }}>
-    <span style={{ fontSize:12, color:COLORS.textDim, fontWeight:600, whiteSpace:'nowrap', minWidth:52 }}>{label}</span>
+    <span style={{ fontSize:12, color:COLORS.textDim, fontWeight:600, whiteSpace:'nowrap', minWidth:68, textAlign:'right' }}>{label}</span>
     <div style={{ display:'flex', gap:3, flexWrap:'wrap' }}>
       {options.map(opt => {
         const active = String(value) === String(opt.v);
