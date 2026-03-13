@@ -761,6 +761,34 @@ function BalancePanel() {
     });
     setTradeRulesMap(rMap);
     setLoading(false);
+    // ★ 미등록 종목 자동 등록: 보유 중인데 전략 관리에 없는 종목이 있으면 전략 체크 실행
+    if (r?.success && r.positions?.length > 0) {
+      const unmanaged = r.positions.filter(p => !rMap[p.stock_code]);
+      if (unmanaged.length > 0) {
+        console.log(`[KIS] 미등록 종목 ${unmanaged.length}건 자동 등록 시작:`, unmanaged.map(p => p.stock_name));
+        fetch(`${BACKEND_API}/api/kis/strategy/check?account_type=${accountType}&auto_sell=false`, { method: "POST" })
+          .then(r => r.json())
+          .then(data => {
+            console.log("[KIS] 미등록 종목 자동 등록 완료:", data);
+            // 등록 후 전략 포지션 다시 로드
+            fetch(`${BACKEND_API}/api/kis/strategy/positions?account_type=${accountType}&status=holding`)
+              .then(r => r.json())
+              .then(resp => {
+                const newMap = {};
+                (resp?.positions || []).forEach(pos => {
+                  newMap[pos.stock_code] = {
+                    stock_code: pos.stock_code, buy_date: pos.buy_date,
+                    sl_pct: pos.stop_loss_pct || 12, max_hold_days: pos.max_hold_days || 30,
+                    hold_days: pos.hold_days || 0, strategy: pos.strategy || "smart",
+                    trailing_stop_pct: pos.trailing_stop_pct || 5, profit_activation_pct: pos.profit_activation_pct || 15,
+                    trailing_activated: pos.trailing_activated || false, peak_price: pos.peak_price || 0,
+                  };
+                });
+                setTradeRulesMap(newMap);
+              }).catch(() => {});
+          }).catch(e => console.error("[KIS] 미등록 종목 자동 등록 실패:", e));
+      }
+    }
     // 보유종목 첫번째 종목 시세+차트 조회
     if (r?.success && r.positions?.length > 0) {
       const first = r.positions[0];
@@ -915,9 +943,38 @@ function BalancePanel() {
   const remaining = Math.max(0, GOAL - totalAssets);
   const cashRatio = totalAssets > 0 ? (summary.deposit / totalAssets * 100) : 0;
   const investRatio = 100 - cashRatio;
-  // 당일 손익: KIS API의 daily_pnl = 오늘자산 - 전일자산 (실현+미실현 포함)
-  const dailyPnl = summary.daily_pnl || 0;
-  const prevAssets = summary.prev_total_assets || 0;
+  // 당일 손익: localStorage에 전일 자산 저장하여 계산
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const PREV_ASSETS_KEY = "kis_prev_total_assets";
+  let prevAssets = 0;
+  let dailyPnl = summary.daily_pnl || 0;
+  try {
+    const saved = JSON.parse(localStorage.getItem(PREV_ASSETS_KEY) || "{}");
+    // 저장된 날짜가 오늘이 아니면 = 전일 데이터 → prevAssets로 사용
+    if (saved.date && saved.date !== todayStr && saved.assets > 0) {
+      prevAssets = saved.assets;
+      dailyPnl = totalAssets - prevAssets;
+    }
+    // 오늘 날짜로 현재 자산 저장 (마지막 조회 시점의 자산)
+    // 날짜가 바뀌면 이전 값이 prevAssets가 됨
+    if (!saved.date || saved.date !== todayStr) {
+      // 날짜가 바뀌었으면 이전 데이터를 prev로 보관하고 오늘 시작
+      localStorage.setItem(PREV_ASSETS_KEY, JSON.stringify({ date: todayStr, assets: totalAssets, prev_date: saved.date, prev_assets: saved.assets }));
+    } else {
+      // 같은 날이면 자산만 업데이트 (장중 갱신)
+      localStorage.setItem(PREV_ASSETS_KEY, JSON.stringify({ ...saved, assets: totalAssets }));
+      // 같은 날이지만 prev_assets가 있으면 그걸로 계산
+      if (saved.prev_assets > 0) {
+        prevAssets = saved.prev_assets;
+        dailyPnl = totalAssets - prevAssets;
+      }
+    }
+  } catch {}
+  // KIS API 값이 있으면 우선 사용
+  if (summary.prev_total_assets > 0) {
+    prevAssets = summary.prev_total_assets;
+    dailyPnl = totalAssets - prevAssets;
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -988,9 +1045,9 @@ function BalancePanel() {
               warnings.push({ type: "trail", icon: "📉", msg: `${p.stock_name} 추적손절 임박 (고점 대비 ${dropFromPeak.toFixed(1)}%, 한도 -${rule.trailing_stop_pct}%)`, color: "#ff6b35" });
             }
           }
-          // 스마트 매매 미등록 경고 — 보유 중이지만 전략 관리에 없는 종목
+          // 스마트 매매 미등록 경고 — 보유 중이지만 전략 관리에 없는 종목 (자동 등록 진행 중)
           if (!rule) {
-            warnings.push({ type: "unmanaged", icon: "🔔", msg: `${p.stock_name} 스마트 매매 미등록 — 전략 체크를 실행하면 자동 등록됩니다`, color: "#90a4ae" });
+            warnings.push({ type: "unmanaged", icon: "🔄", msg: `${p.stock_name} 스마트 매매 자동 등록 중...`, color: "#90a4ae" });
           }
           // 과집중 경고 (단일 종목 40% 초과)
           const evalAmt = p.eval_amount || (p.current_price * p.qty);
