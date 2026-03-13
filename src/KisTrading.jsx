@@ -1064,6 +1064,43 @@ function BalancePanel() {
               })}
             </div>
           )}
+          {/* ★ 예비후보 차트 표시 영역 */}
+          {candChartStock && (
+            <div style={{ marginTop: 10, borderTop: "1px solid rgba(100,140,200,0.15)", paddingTop: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                <span style={{ color: "#4fc3f7", fontSize: 12, fontWeight: 600 }}>📊 {candChartStock.name} ({candChartStock.code})</span>
+                <button onClick={() => { setCandChartStock(null); setCandChartCandles(null); setCandQuoteData(null); }}
+                  style={{ background: "transparent", color: "#556677", border: "none", cursor: "pointer", fontSize: 14 }}>✕</button>
+              </div>
+              {candChartLoading ? (
+                <div style={{ height: 200, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(8,15,30,0.6)", borderRadius: 8 }}>
+                  <span style={{ color: "#6688aa", fontSize: 12 }}>📊 차트 로딩 중...</span>
+                </div>
+              ) : candChartCandles && candChartCandles.length > 0 ? (
+                <>
+                  <StockChart candles={candChartCandles.slice(0, 100)} />
+                  {candQuoteData && (
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6, marginTop: 6, background: "rgba(8,15,30,0.6)", borderRadius: 6, padding: 8 }}>
+                      {[
+                        ["현재가", fmt(candQuoteData.price), clr(candQuoteData.change)],
+                        ["등락률", `${candQuoteData.change_rate >= 0 ? "+" : ""}${candQuoteData.change_rate}%`, clr(candQuoteData.change_rate)],
+                        ["거래량", fmt(candQuoteData.volume), "#8899bb"],
+                      ].map(([label, val, color]) => (
+                        <div key={label} style={{ textAlign: "center" }}>
+                          <div style={{ color: "#556677", fontSize: 9 }}>{label}</div>
+                          <div style={{ color, fontSize: 11, fontWeight: 600, fontFamily: "monospace" }}>{val}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div style={{ height: 120, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(8,15,30,0.6)", borderRadius: 8 }}>
+                  <span style={{ color: "#556677", fontSize: 11 }}>차트 데이터를 불러올 수 없습니다</span>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* ★ 예비후보 차트 (오른쪽 패널) */}
