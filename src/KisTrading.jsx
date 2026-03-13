@@ -771,14 +771,30 @@ function BalancePanel() {
     setPendingLoading(false);
   }, []);
 
-  // ★ 예비 후보 종목 로드
+  // ★ 예비 후보 종목 로드 + 실시간 가격 조회
   const loadCandidates = useCallback(async () => {
     setCandLoading(true);
     try {
       const { data: cands } = await supabase.from('buy_candidates')
         .select('*').eq('status', 'active')
         .order('composite_score', { ascending: false }).limit(20);
-      setCandidates(cands || []);
+      if (cands && cands.length > 0) {
+        setCandidates(cands); // DB 데이터 먼저 표시
+        // 실시간 가격 병렬 조회
+        const prices = await Promise.all(
+          cands.map(c => kisApi("quote", { code: c.code }).catch(() => null))
+        );
+        const updated = cands.map((c, i) => {
+          const q = prices[i];
+          if (q?.success && q.price) {
+            return { ...c, current_price: q.price, change_rate: q.change_rate, change: q.change };
+          }
+          return c;
+        });
+        setCandidates(updated);
+      } else {
+        setCandidates([]);
+      }
     } catch (e) { console.error('후보 로드 실패:', e); }
     setCandLoading(false);
   }, []);
@@ -924,15 +940,16 @@ function BalancePanel() {
           ) : (
             <div style={{ maxHeight: 280, overflowY: "auto" }}>
               {/* 헤더 */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 70px 50px 50px 42px", padding: "6px 8px", fontSize: 10, color: "#6688aa", fontWeight: 600, borderBottom: "1px solid rgba(100,140,200,0.2)" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 90px 50px 50px 42px", padding: "6px 8px", fontSize: 10, color: "#6688aa", fontWeight: 600, borderBottom: "1px solid rgba(100,140,200,0.2)" }}>
                 <span>종목</span><span style={{ textAlign: "right" }}>현재가</span><span style={{ textAlign: "center" }}>종합</span><span style={{ textAlign: "center" }}>진입</span><span style={{ textAlign: "center" }}>잔여</span>
               </div>
               {candidates.map((c, i) => {
                 const daysLeft = c.expires_at ? Math.max(0, Math.ceil((new Date(c.expires_at) - new Date()) / 86400000)) : 0;
                 const scoreColor = c.composite_score >= 80 ? "#ff4444" : c.composite_score >= 60 ? "#f59e0b" : "#6688aa";
+                const chgClr = c.change_rate > 0 ? "#ff4444" : c.change_rate < 0 ? "#4488ff" : "#e0e6f0";
                 return (
                   <div key={c.id} style={{
-                    display: "grid", gridTemplateColumns: "1fr 70px 50px 50px 42px",
+                    display: "grid", gridTemplateColumns: "1fr 90px 50px 50px 42px",
                     padding: "7px 8px", fontSize: 12, alignItems: "center",
                     borderBottom: i < candidates.length - 1 ? "1px solid rgba(100,140,200,0.08)" : "none",
                     background: daysLeft <= 1 ? "rgba(220,38,38,0.05)" : "transparent",
@@ -941,7 +958,10 @@ function BalancePanel() {
                       <span style={{ fontWeight: 600, color: "#e0e6f0" }}>{c.name}</span>
                       <span style={{ color: "#556677", marginLeft: 4, fontSize: 10 }}>{c.code}</span>
                     </div>
-                    <div style={{ textAlign: "right", color: "#e0e6f0", fontFamily: "monospace", fontSize: 11 }}>{c.current_price?.toLocaleString() || "-"}</div>
+                    <div style={{ textAlign: "right", fontFamily: "monospace", fontSize: 11 }}>
+                      <span style={{ color: chgClr }}>{c.current_price?.toLocaleString() || "-"}</span>
+                      {c.change_rate != null && <div style={{ fontSize: 9, color: chgClr }}>{c.change_rate > 0 ? "+" : ""}{c.change_rate}%</div>}
+                    </div>
                     <div style={{ textAlign: "center", color: scoreColor, fontWeight: 600 }}>{c.composite_score || "-"}</div>
                     <div style={{ textAlign: "center", color: "#6688aa" }}>{c.entry_score || "-"}</div>
                     <div style={{ textAlign: "center", color: daysLeft <= 1 ? "#ff4444" : "#6688aa", fontSize: 11 }}>D-{daysLeft}</div>
@@ -1199,7 +1219,19 @@ function OrderPanel() {
       const { data: cands } = await supabase.from('buy_candidates')
         .select('*').eq('status', 'active')
         .order('composite_score', { ascending: false }).limit(30);
-      setCandidates(cands || []);
+      if (cands && cands.length > 0) {
+        setCandidates(cands);
+        // 실시간 가격 병렬 조회
+        const prices = await Promise.all(
+          cands.map(c => kisApi("quote", { code: c.code }).catch(() => null))
+        );
+        setCandidates(cands.map((c, i) => {
+          const q = prices[i];
+          return q?.success && q.price ? { ...c, current_price: q.price, change_rate: q.change_rate, change: q.change } : c;
+        }));
+      } else {
+        setCandidates([]);
+      }
     } catch (e) { console.error('후보 로드 실패:', e); }
     setCandLoading(false);
   }, []);
@@ -1370,7 +1402,9 @@ function OrderPanel() {
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 3, cursor: "pointer" }}
                     onClick={() => selectCandidate(c)}>
-                    <span style={{ color: "#8899aa", fontSize: 10 }}>{c.current_price?.toLocaleString() || "-"}원</span>
+                    <span style={{ color: c.change_rate > 0 ? "#ff4444" : c.change_rate < 0 ? "#4488ff" : "#8899aa", fontSize: 10 }}>
+                      {c.current_price?.toLocaleString() || "-"}원{c.change_rate != null && ` (${c.change_rate > 0 ? "+" : ""}${c.change_rate}%)`}
+                    </span>
                     <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                       <span style={{ color: scoreColor, fontSize: 10, fontWeight: 600 }}>종합 {c.composite_score || "-"}</span>
                       <span style={{ color: "#6688aa", fontSize: 10 }}>진입 {c.entry_score || "-"}</span>

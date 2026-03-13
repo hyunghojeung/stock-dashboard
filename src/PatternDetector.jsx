@@ -337,8 +337,8 @@ export default function PatternDetector() {
           entry_score: s.entry_signals?.entry_score || s.entry_score || 0,
           pattern_match_pct: s.pattern_match_pct || s.similarity || null,
           entry_grade: s.entry_signals?.entry_grade || s.entry_grade || null,
-          current_price: s.current_price || null,
-          recommended_buy_price: s.current_price || null,
+          current_price: s.current_price != null ? s.current_price : null,
+          recommended_buy_price: s.current_price != null ? s.current_price : null,
           source,
           reason: [
             s.top_manip_score >= 80 ? `세력${s.top_manip_score}` : '',
@@ -908,7 +908,18 @@ export default function PatternDetector() {
   };
 
   const addStockRegisterCandidate = async (stock) => {
-    const priceInfo = addStockPrices[stock.code];
+    let priceInfo = addStockPrices[stock.code];
+    // 가격 미조회 시 먼저 시세 조회
+    if (!priceInfo?.price) {
+      try {
+        const resp = await fetch(`${API_BASE}/api/stocks/quote/${stock.code}`);
+        const d = await resp.json();
+        if (d.success && d.price) {
+          priceInfo = { price: d.price };
+          setAddStockPrices(prev => ({ ...prev, [stock.code]: { price: d.price, change: d.change || 0, change_pct: d.change_pct || 0 } }));
+        }
+      } catch (e) { /* ignore */ }
+    }
     await registerCandidates([{
       code: stock.code,
       name: stock.name,
