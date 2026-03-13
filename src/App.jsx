@@ -167,7 +167,7 @@ function DashboardPage() {
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
       <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
         <Card icon="💰" title="총 자산" value={totalAsset?`${fmt(totalAsset)}원`:"—"} sub={totalAsset?fmtPct(cumRet):"로딩..."} color={totalAsset?"#4cff8b":"#e0e6f0"}/>
-        <Card icon="📈" title="오늘 순수익" value={!mkt.isOpen?"—":fmtWon(todayProfit+totalUnrealized)} sub={!mkt.isOpen?mkt.status:`실현 ${fmtWon(todayProfit)} + 미실현 ${fmtWon(totalUnrealized)}`} color={!mkt.isOpen?"#ff9800":clr(todayProfit+totalUnrealized)}/>
+        <Card icon="📈" title="오늘 순수익" value={!mkt.isOpen?"—":fmtWon(todayProfit)} sub={!mkt.isOpen?mkt.status:`매도 ${sells.length}건 / 미실현 ${fmtWon(totalUnrealized)}`} color={!mkt.isOpen?"#ff9800":clr(todayProfit)}/>
         <Card icon="💼" title="보유 종목" value={`${hList.length} 종목`} sub={`미실현 ${fmtWon(totalUnrealized)}`} color="#64b5f6"/>
         <Card icon="🔄" title="오늘 매매" value={!mkt.isOpen?"0회 (휴장)":`${sells.length}회 (${wins}승 ${losses}패)`} sub={!mkt.isOpen?mkt.status:`승률 ${sells.length?Math.round(wins/sells.length*100):0}%`} color={!mkt.isOpen?"#ff9800":"#ffd54f"}/>
       </div>
@@ -217,9 +217,8 @@ function DashboardPage() {
           </table>
           <div style={{borderTop:"1px solid rgba(100,140,200,0.15)",marginTop:8,paddingTop:8,display:"flex",gap:20}}>
             <span style={{color:"#6688aa",fontSize:12}}>매매 {sells.length}회 | {wins}승 {losses}패 | 승률 {sells.length?Math.round(wins/sells.length*100):0}%</span>
-            <span style={{color:clr(todayProfit),fontSize:13,fontWeight:600,fontFamily:"monospace"}}>실현: {fmtWon(todayProfit)}</span>
-            <span style={{color:clr(totalUnrealized),fontSize:13,fontWeight:600,fontFamily:"monospace"}}>미실현: {fmtWon(totalUnrealized)}</span>
-            <span style={{color:clr(todayProfit+totalUnrealized),fontSize:14,fontWeight:700,fontFamily:"monospace"}}>합산: {fmtWon(todayProfit+totalUnrealized)}</span>
+            <span style={{color:clr(todayProfit),fontSize:13,fontWeight:600,fontFamily:"monospace"}}>오늘 실현: {fmtWon(todayProfit)}</span>
+            <span style={{color:clr(totalUnrealized),fontSize:12,fontFamily:"monospace"}}>보유 미실현: {fmtWon(totalUnrealized)}</span>
           </div></>}
         </div>
         <div style={{flex:"1 1 400px",background:"linear-gradient(135deg,rgba(25,35,65,0.9),rgba(15,22,48,0.95))",border:"1px solid rgba(100,140,200,0.15)",borderRadius:12,padding:16}}>
