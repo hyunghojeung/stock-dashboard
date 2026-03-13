@@ -731,20 +731,33 @@ function BalancePanel() {
   const [candChartCandles, setCandChartCandles] = useState(null);
   const [candChartLoading, setCandChartLoading] = useState(false);
   const [candQuoteData, setCandQuoteData] = useState(null);
-  // ★ 자동매매 규칙 (매수일 정보용)
+  // ★ 스마트 매매 관리 포지션 (위험관리 알림용)
   const [tradeRulesMap, setTradeRulesMap] = useState({});
 
   const load = useCallback(async () => {
     setLoading(true);
-    const activeMode = getKisActiveMode();
-    const [r, rulesResp] = await Promise.all([
+    const accountType = mode === "virtual" ? "virtual" : "real";
+    const [r, stratResp] = await Promise.all([
       kisApi("balance"),
-      fetch(`${BACKEND_API}/api/kis/auto-trade/rules?mode=${activeMode}`).then(r => r.json()).catch(() => ({ rules: [] })),
+      fetch(`${BACKEND_API}/api/kis/strategy/positions?account_type=${accountType}&status=holding`).then(r => r.json()).catch(() => ({ positions: [] })),
     ]);
     setData(r);
-    // ★ 자동매매 규칙에서 매수일 매핑
+    // ★ 전략 관리 포지션에서 매수일/손절선/보유일 매핑
     const rMap = {};
-    (rulesResp?.rules || []).forEach(rule => { rMap[rule.stock_code] = rule; });
+    (stratResp?.positions || []).forEach(pos => {
+      rMap[pos.stock_code] = {
+        stock_code: pos.stock_code,
+        buy_date: pos.buy_date,
+        sl_pct: pos.stop_loss_pct || 12,
+        max_hold_days: pos.max_hold_days || 30,
+        hold_days: pos.hold_days || 0,
+        strategy: pos.strategy || "smart",
+        trailing_stop_pct: pos.trailing_stop_pct || 5,
+        profit_activation_pct: pos.profit_activation_pct || 15,
+        trailing_activated: pos.trailing_activated || false,
+        peak_price: pos.peak_price || 0,
+      };
+    });
     setTradeRulesMap(rMap);
     setLoading(false);
     // 보유종목 첫번째 종목 시세+차트 조회
@@ -760,7 +773,7 @@ function BalancePanel() {
       if (c?.success) setChartCandles(c.candles);
       setChartLoading(false);
     }
-  }, []);
+  }, [mode]);
 
   const loadOrders = useCallback(async () => {
     setOrdersLoading(true);
@@ -953,19 +966,30 @@ function BalancePanel() {
         positions.forEach(p => {
           const rule = tradeRulesMap[p.stock_code];
           const rate = p.profit_rate || 0;
-          // 손절 근접 경고 (손절선 3% 이내)
+          // 손절 근접 경고 (손절선 3% 이내) — 스마트 매매 등록 종목
           if (rule && rule.sl_pct && rate < 0 && Math.abs(rate) >= (rule.sl_pct - 3)) {
             const dist = (rule.sl_pct - Math.abs(rate)).toFixed(1);
-            warnings.push({ type: "sl", icon: "🔴", msg: `${p.stock_name} 손절선 ${dist}% 남음 (현재 ${rate.toFixed(1)}%, 손절 -${rule.sl_pct}%)`, color: "#ff4444" });
+            warnings.push({ type: "sl", icon: "🔴", msg: `${p.stock_name} 손절선 ${dist}% 남음 (현재 ${rate >= 0 ? '+' : ''}${rate.toFixed(1)}%, 손절 -${rule.sl_pct}%)`, color: "#ff4444" });
           }
-          // 보유일 초과 경고
+          // 보유일 초과 경고 — 스마트 매매 등록 종목
           if (rule && rule.buy_date && rule.max_hold_days > 0) {
-            const holdDays = Math.floor((Date.now() - new Date(rule.buy_date).getTime()) / 86400000);
+            const holdDays = rule.hold_days || Math.floor((Date.now() - new Date(rule.buy_date).getTime()) / 86400000);
             if (holdDays >= rule.max_hold_days) {
-              warnings.push({ type: "hold", icon: "⏰", msg: `${p.stock_name} 최대보유일 초과 (${holdDays}일 / ${rule.max_hold_days}일)`, color: "#ff9800" });
+              warnings.push({ type: "hold", icon: "⏰", msg: `${p.stock_name} 최대보유일 초과 (${holdDays}일 / ${rule.max_hold_days}일) — 만기매도 대상`, color: "#ff9800" });
             } else if (holdDays >= rule.max_hold_days - 3) {
               warnings.push({ type: "hold", icon: "⚠️", msg: `${p.stock_name} 만기매도 ${rule.max_hold_days - holdDays}일 남음 (${holdDays}일/${rule.max_hold_days}일)`, color: "#f59e0b" });
             }
+          }
+          // 추적손절 활성화 경고 — 수익 활성화 후 하락 중
+          if (rule && rule.trailing_activated && rate > 0 && rule.peak_price > 0) {
+            const dropFromPeak = ((p.current_price - rule.peak_price) / rule.peak_price * 100);
+            if (dropFromPeak < -(rule.trailing_stop_pct - 2) && dropFromPeak > -rule.trailing_stop_pct) {
+              warnings.push({ type: "trail", icon: "📉", msg: `${p.stock_name} 추적손절 임박 (고점 대비 ${dropFromPeak.toFixed(1)}%, 한도 -${rule.trailing_stop_pct}%)`, color: "#ff6b35" });
+            }
+          }
+          // 스마트 매매 미등록 경고 — 보유 중이지만 전략 관리에 없는 종목
+          if (!rule) {
+            warnings.push({ type: "unmanaged", icon: "🔔", msg: `${p.stock_name} 스마트 매매 미등록 — 전략 체크를 실행하면 자동 등록됩니다`, color: "#90a4ae" });
           }
           // 과집중 경고 (단일 종목 40% 초과)
           const evalAmt = p.eval_amount || (p.current_price * p.qty);
