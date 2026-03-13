@@ -1069,16 +1069,144 @@ async def update_realtime(session_id: str, supabase=None) -> Dict:
             supabase.table("virtual_positions").update(update_data).eq("id", pos["id"]).execute()
             updated += 1
 
+        # ★ 매도 발생 시 예비후보에서 자동 재투자
+        auto_buys = []
+        if signals:
+            try:
+                auto_buys = await _auto_reinvest_from_candidates(
+                    supabase, session_id, sess_data, signals
+                )
+            except Exception as reinvest_err:
+                logger.error(f"[실시간모의] 자동재투자 오류: {reinvest_err}")
+
         return {
             "session_id": session_id,
             "updated": updated,
             "positions": len(positions),
             "signals": signals,
+            "auto_buys": auto_buys,
         }
 
     except Exception as e:
         logger.error(f"[실시간모의] 업데이트 오류: {e}")
         return {"error": str(e)}
+
+
+async def _auto_reinvest_from_candidates(
+    supabase, session_id: str, sess_data: Dict, sell_signals: List[Dict]
+) -> List[Dict]:
+    """
+    매도 후 예비후보에서 자동 재투자 (가상투자용)
+    종합 판단: composite_score + entry_score + 변동률
+    """
+    auto_buys = []
+
+    try:
+        # 예비후보 종목 로드
+        cands_res = supabase.table("buy_candidates").select("*").eq(
+            "status", "active"
+        ).order("composite_score", desc=True).limit(20).execute()
+        candidates = cands_res.data or []
+
+        if not candidates:
+            return auto_buys
+
+        # 이미 보유 중인 종목 제외
+        holding_res = supabase.table("virtual_positions").select("code").eq(
+            "portfolio_id", int(session_id) if session_id.isdigit() else 0
+        ).eq("status", "holding").execute()
+        holding_codes = set(p["code"] for p in (holding_res.data or []))
+
+        # 종합 점수 계산
+        scored = []
+        for c in candidates:
+            if c["code"] in holding_codes:
+                continue
+            comp = float(c.get("composite_score", 0) or 0)
+            entry = float(c.get("entry_score", 0) or 0)
+            chg = float(c.get("change_rate", 0) or 0)
+            chg_bonus = min(max(chg, -10), 10) * 2
+            total = comp * 0.4 + entry * 0.4 + chg_bonus * 0.2
+            scored.append({"candidate": c, "total_score": total})
+
+        if not scored:
+            return auto_buys
+
+        scored.sort(key=lambda x: x["total_score"], reverse=True)
+
+        # 매도된 금액만큼 재투자
+        capital = float(sess_data.get("capital", DEFAULT_CAPITAL))
+        invest_per = capital / MAX_POSITIONS
+
+        for sig in sell_signals:
+            if not scored:
+                break
+            best = scored.pop(0)["candidate"]
+            code = best["code"]
+            name = best["name"]
+
+            # 현재가 조회
+            try:
+                candles = fetch_daily_candles(code, days=3)
+                if candles:
+                    cur_price = candles[-1]["close"]
+                else:
+                    cur_price = float(best.get("current_price", 0) or 0)
+            except Exception:
+                cur_price = float(best.get("current_price", 0) or 0)
+
+            if cur_price <= 0:
+                continue
+
+            quantity = int(invest_per / cur_price)
+            if quantity <= 0:
+                continue
+
+            # 포지션 생성 (스마트형 전략으로)
+            pos_data = {
+                "portfolio_id": int(session_id) if session_id.isdigit() else 0,
+                "session_id": session_id,
+                "code": code,
+                "stock_code": code,
+                "name": name,
+                "stock_name": name,
+                "buy_price": cur_price,
+                "current_price": cur_price,
+                "peak_price": cur_price,
+                "quantity": quantity,
+                "invest_amount": round(cur_price * quantity),
+                "buy_date": datetime.now().strftime("%Y-%m-%d"),
+                "hold_days": 0,
+                "status": "holding",
+                "strategy_type": "smart",
+                "stop_loss_pct": 12.0,
+                "profit_activation_pct": 15.0,
+                "trailing_stop_pct": 5.0,
+                "max_hold_days": 30,
+                "grace_days": 7,
+                "trailing_activated": False,
+                "profit_pct": 0,
+                "profit_won": 0,
+            }
+
+            try:
+                supabase.table("virtual_positions").insert(pos_data).execute()
+                auto_buys.append({
+                    "stock_code": code,
+                    "stock_name": name,
+                    "price": cur_price,
+                    "quantity": quantity,
+                    "amount": round(cur_price * quantity),
+                    "reason": f"예비후보 자동매수 (매도: {sig.get('stock', '')} → 재투자: {name})",
+                })
+                logger.info(f"[자동재투자] {name}({code}) {quantity}주 × {cur_price:,}원")
+            except Exception as ins_err:
+                logger.error(f"[자동재투자] 포지션 생성 실패: {code} — {ins_err}")
+
+    except Exception as e:
+        logger.error(f"[자동재투자] 오류: {e}")
+
+    return auto_buys
 
 
 async def get_realtime_status(session_id: str, supabase=None) -> Dict:

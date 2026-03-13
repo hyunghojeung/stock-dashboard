@@ -264,11 +264,23 @@ async def check_and_execute_kis_positions(
                     "error": str(pos_err),
                 })
 
+        # ★ 매도가 발생했으면 자동으로 예비후보 매수 실행
+        auto_buy_result = None
+        sold_count = sum(1 for r in results if r.get("order_success") is True)
+        if sold_count > 0 and auto_sell:
+            try:
+                auto_buy_result = await auto_invest_from_candidates(supabase, account_type)
+                logger.info(f"[자동투자] 매도 {sold_count}건 → 자동매수 결과: {auto_buy_result.get('action', 'unknown')}")
+            except Exception as auto_err:
+                logger.error(f"[자동투자] 자동매수 오류: {auto_err}")
+                auto_buy_result = {"error": str(auto_err)}
+
         return {
             "account_type": account_type,
             "checked": len(positions),
             "signals_count": len(results),
             "results": results,
+            "auto_buy": auto_buy_result,
         }
 
     except Exception as e:
@@ -318,6 +330,151 @@ async def remove_kis_managed_position(supabase, position_id: int) -> Dict:
         return {"success": True, "removed_id": position_id}
     except Exception as e:
         logger.error(f"[KIS전략] 제거 오류: {e}")
+        return {"error": str(e)}
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 자동 투자: 매도 후 예비후보 자동 매수
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+async def auto_invest_from_candidates(
+    supabase,
+    account_type: str = "virtual",
+) -> Dict:
+    """
+    매도 후 예수금이 있으면 예비후보 종목에서 종합 판단하여 자동 매수
+
+    종목 선정 기준 (종합 판단):
+    - composite_score (종합점수) 높은 순
+    - entry_score (진입점수) 높은 순
+    - change_rate (당일 변동률) 고려
+    - 예수금 전액 투자
+    - 보유 제한 없음
+    """
+    client = get_kis_client()
+    if not client.is_configured:
+        return {"error": "KIS API 미설정"}
+
+    try:
+        # 1) 예수금 조회
+        balance = await client.get_balance()
+        deposit = 0
+        if balance.get("output2"):
+            for out in balance["output2"]:
+                d = int(out.get("dnca_tot_amt", "0") or "0")
+                if d > 0:
+                    deposit = d
+                    break
+        if deposit <= 0:
+            return {"account_type": account_type, "action": "skip", "reason": "예수금 없음", "deposit": 0}
+
+        # 2) 예비후보 종목 로드 (종합점수 내림차순)
+        cands_result = supabase.table("buy_candidates").select("*").eq(
+            "status", "active"
+        ).order("composite_score", desc=True).limit(20).execute()
+        candidates = cands_result.data or []
+
+        if not candidates:
+            return {"account_type": account_type, "action": "skip", "reason": "예비후보 없음", "deposit": deposit}
+
+        # 3) 이미 보유 중인 종목 제외
+        managed = supabase.table("kis_managed_positions").select("stock_code").eq(
+            "account_type", account_type
+        ).eq("status", "holding").execute()
+        holding_codes = set(p["stock_code"] for p in (managed.data or []))
+
+        # 4) 종합 판단 점수 계산 후 최적 종목 선정
+        scored = []
+        for c in candidates:
+            if c["code"] in holding_codes:
+                continue
+            # 종합 점수: composite_score(40%) + entry_score(40%) + 상승률 보너스(20%)
+            comp = float(c.get("composite_score", 0) or 0)
+            entry = float(c.get("entry_score", 0) or 0)
+            chg = float(c.get("change_rate", 0) or 0)
+            # 상승 중인 종목 가산 (하락 중이면 감산)
+            chg_bonus = min(max(chg, -10), 10) * 2  # -20 ~ +20 범위
+            total = comp * 0.4 + entry * 0.4 + chg_bonus * 0.2
+            scored.append({"candidate": c, "total_score": total})
+
+        if not scored:
+            return {"account_type": account_type, "action": "skip", "reason": "매수 가능한 후보 없음", "deposit": deposit}
+
+        scored.sort(key=lambda x: x["total_score"], reverse=True)
+        best = scored[0]["candidate"]
+
+        # 5) 현재가 조회
+        try:
+            quote = await client.get_current_price(best["code"])
+            q = quote.get("output", {})
+            current_price = int(q.get("stck_prpr", "0"))
+        except Exception:
+            current_price = int(best.get("current_price", 0) or 0)
+
+        if current_price <= 0:
+            return {"account_type": account_type, "action": "skip", "reason": "현재가 조회 실패", "deposit": deposit}
+
+        # 6) 예수금 전액으로 매수 가능 수량 계산
+        qty = deposit // current_price
+        if qty <= 0:
+            return {
+                "account_type": account_type, "action": "skip",
+                "reason": f"예수금 부족 (예수금: {deposit:,}원, {best['name']} 현재가: {current_price:,}원)",
+                "deposit": deposit,
+            }
+
+        # 7) 시장가 매수 주문
+        try:
+            order_result = await client.order_buy(best["code"], qty, price=0, order_type="01")
+            success = order_result.get("rt_cd") == "0"
+            order_no = order_result.get("output", {}).get("ODNO", "")
+
+            if success:
+                # 8) 전략 자동 등록 (스마트형)
+                await register_kis_position(
+                    supabase=supabase,
+                    stock_code=best["code"],
+                    stock_name=best["name"],
+                    buy_price=current_price,
+                    buy_date=datetime.now().strftime("%Y-%m-%d"),
+                    qty=qty,
+                    strategy="smart",
+                    account_type=account_type,
+                )
+
+                logger.info(
+                    f"[자동투자] 매수 실행: {best['name']}({best['code']}) "
+                    f"{qty}주 × {current_price:,}원 = {qty * current_price:,}원 "
+                    f"(예수금: {deposit:,}원, 종합점수: {scored[0]['total_score']:.1f})"
+                )
+
+                return {
+                    "account_type": account_type,
+                    "action": "buy",
+                    "stock_code": best["code"],
+                    "stock_name": best["name"],
+                    "qty": qty,
+                    "price": current_price,
+                    "total_amount": qty * current_price,
+                    "deposit_before": deposit,
+                    "deposit_after": deposit - (qty * current_price),
+                    "order_no": order_no,
+                    "strategy": "smart",
+                    "total_score": scored[0]["total_score"],
+                }
+            else:
+                logger.warning(f"[자동투자] 매수 주문 실패: {best['name']} — {order_result.get('msg1', '')}")
+                return {
+                    "account_type": account_type, "action": "failed",
+                    "reason": order_result.get("msg1", "주문 실패"),
+                    "stock_name": best["name"],
+                }
+        except Exception as buy_err:
+            logger.error(f"[자동투자] 매수 오류: {best['name']} — {buy_err}")
+            return {"account_type": account_type, "action": "error", "reason": str(buy_err)}
+
+    except Exception as e:
+        logger.error(f"[자동투자] 전체 오류: {e}")
         return {"error": str(e)}
 
 

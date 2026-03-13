@@ -726,6 +726,11 @@ function BalancePanel() {
   // ★ 보유종목 차트
   const [chartCandles, setChartCandles] = useState(null);
   const [chartLoading, setChartLoading] = useState(false);
+  // ★ 예비후보 차트
+  const [candChartStock, setCandChartStock] = useState(null);
+  const [candChartCandles, setCandChartCandles] = useState(null);
+  const [candChartLoading, setCandChartLoading] = useState(false);
+  const [candQuoteData, setCandQuoteData] = useState(null);
   // ★ 자동매매 규칙 (매수일 정보용)
   const [tradeRulesMap, setTradeRulesMap] = useState({});
 
@@ -799,6 +804,26 @@ function BalancePanel() {
     setCandLoading(false);
   }, []);
 
+  // ★ 예비후보 차트 열기
+  const openCandidateChart = async (c) => {
+    if (candChartStock?.code === c.code) {
+      setCandChartStock(null); setCandChartCandles(null); setCandQuoteData(null);
+      return;
+    }
+    setCandChartStock(c);
+    setCandChartCandles(null);
+    setCandChartLoading(true);
+    try {
+      const [chartRes, quoteRes] = await Promise.all([
+        kisApi("chart", { code: c.code, period: "D" }),
+        kisApi("quote", { code: c.code }),
+      ]);
+      if (chartRes?.success) setCandChartCandles(chartRes.candles);
+      if (quoteRes?.success) setCandQuoteData(quoteRes);
+    } catch (e) { console.error('후보 차트 로드 실패:', e); }
+    setCandChartLoading(false);
+  };
+
   // ★ 보유종목 차트 열기
   const openChart = async (p) => {
     setChartStock(p);
@@ -823,6 +848,45 @@ function BalancePanel() {
     else alert("주문 취소 실패: " + (r?.message || ""));
   };
 
+  // ★ 전략 체크 실행 (트레일링 포함)
+  const [stratChecking, setStratChecking] = useState(false);
+  const [stratResult, setStratResult] = useState(null);
+  const runStrategyCheck = async () => {
+    setStratChecking(true);
+    setStratResult(null);
+    try {
+      const activeMode = getKisActiveMode();
+      const accountType = activeMode === "real" ? "real" : "virtual";
+      const r = await fetch(`${BACKEND_API}/api/kis/strategy/check?account_type=${accountType}&auto_sell=true`, { method: "POST" });
+      const data = await r.json();
+      setStratResult(data);
+      // 매도/매수가 발생했으면 잔고 새로고침
+      if (data?.signals_count > 0 || data?.auto_buy?.action === "buy") {
+        setTimeout(() => { load(); loadCandidates(); }, 2000);
+      }
+    } catch (e) { setStratResult({ error: e.message }); }
+    setStratChecking(false);
+  };
+
+  // ★ 수동 자동투자 실행
+  const [autoInvesting, setAutoInvesting] = useState(false);
+  const [autoInvestResult, setAutoInvestResult] = useState(null);
+  const runAutoInvest = async () => {
+    setAutoInvesting(true);
+    setAutoInvestResult(null);
+    try {
+      const activeMode = getKisActiveMode();
+      const accountType = activeMode === "real" ? "real" : "virtual";
+      const r = await fetch(`${BACKEND_API}/api/kis/strategy/auto-invest?account_type=${accountType}`, { method: "POST" });
+      const data = await r.json();
+      setAutoInvestResult(data);
+      if (data?.action === "buy") {
+        setTimeout(() => { load(); loadCandidates(); }, 2000);
+      }
+    } catch (e) { setAutoInvestResult({ error: e.message }); }
+    setAutoInvesting(false);
+  };
+
   useEffect(() => { load(); loadOrders(); loadPending(); loadCandidates(); }, [load, loadOrders, loadPending, loadCandidates]);
 
   if (loading) return <div style={{ ...S.panel, textAlign: "center", padding: 40, color: "#6688aa" }}>대시보드 로딩 중...</div>;
@@ -830,7 +894,7 @@ function BalancePanel() {
 
   const { positions, summary } = data;
   const GOAL = 10000000;
-  const initCap = 3000000;
+  const initCap = 1000000;
   // 추정자산 = 예수금 + 주식평가 (서버에서 계산, 폴백 로컬)
   const totalAssets = summary.total_assets || (summary.deposit + summary.total_eval);
   const tgtPct = totalAssets ? (totalAssets / GOAL * 100) : 0;
@@ -838,21 +902,25 @@ function BalancePanel() {
   const cashRatio = totalAssets > 0 ? (summary.deposit / totalAssets * 100) : 0;
   const investRatio = 100 - cashRatio;
   const dailyPnl = summary.daily_pnl || 0;
+  // 미실현 손익 합산
+  const totalUnrealized = positions.reduce((s, p) => s + (p.profit_loss || 0), 0);
+  const totalDailyPnl = dailyPnl + totalUnrealized;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       {/* ★ 상단 요약 카드 2행 */}
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-        {/* 주요 4카드: 추정자산, 총손익, 수익률, 당일손익 */}
+        {/* 주요 4카드: 추정자산, 총손익, 수익률, 당일손익(실현+미실현) */}
         {[
           ["💰", "추정자산", `${fmt(totalAssets)}원`, clr(summary.total_profit), null],
           ["📊", "총 손익", fmtWon(summary.total_profit), clr(summary.total_profit), null],
           ["📈", "수익률", fmtPct(summary.profit_rate), clr(summary.profit_rate), null],
-          ["📅", "당일 손익", fmtWon(dailyPnl), clr(dailyPnl), null],
-        ].map(([icon, title, value, color]) => (
+          ["📅", "당일 손익", fmtWon(totalDailyPnl), clr(totalDailyPnl), `실현 ${fmtWon(dailyPnl)} + 미실현 ${fmtWon(totalUnrealized)}`],
+        ].map(([icon, title, value, color, sub]) => (
           <div key={title} style={{ ...S.panel, flex: 1, minWidth: 160 }}>
             <div style={{ color: "#6688aa", fontSize: 11, marginBottom: 4 }}>{icon} {title}</div>
             <div style={{ color, fontSize: 18, fontWeight: 700, fontFamily: "'JetBrains Mono',monospace" }}>{value}</div>
+            {sub && <div style={{ color: "#556677", fontSize: 9, marginTop: 2 }}>{sub}</div>}
           </div>
         ))}
       </div>
@@ -921,6 +989,33 @@ function BalancePanel() {
         );
       })()}
 
+      {/* ★ 스마트 전략 실행 패널 */}
+      <div style={{ ...S.panel, padding: "10px 14px", display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+        <span style={{ color: "#e0e6f0", fontSize: 13, fontWeight: 600 }}>🧠 스마트 매매</span>
+        <button onClick={runStrategyCheck} disabled={stratChecking}
+          style={{ ...S.btn("#2196f3"), padding: "6px 14px", fontSize: 11, opacity: stratChecking ? 0.6 : 1 }}>
+          {stratChecking ? "체크 중..." : "전략 체크 (트레일링/손절/익절)"}
+        </button>
+        <button onClick={runAutoInvest} disabled={autoInvesting}
+          style={{ ...S.btn("#ff9800"), padding: "6px 14px", fontSize: 11, opacity: autoInvesting ? 0.6 : 1 }}>
+          {autoInvesting ? "매수 중..." : "예비후보 자동 매수"}
+        </button>
+        {stratResult && (
+          <span style={{ color: stratResult.error ? "#ff4444" : stratResult.signals_count > 0 ? "#4cff8b" : "#6688aa", fontSize: 11 }}>
+            {stratResult.error ? `오류: ${stratResult.error}` :
+              `체크 ${stratResult.checked || 0}건 / 신호 ${stratResult.signals_count || 0}건` +
+              (stratResult.auto_buy?.action === "buy" ? ` → 자동매수: ${stratResult.auto_buy.stock_name} ${stratResult.auto_buy.qty}주` : "")}
+          </span>
+        )}
+        {autoInvestResult && (
+          <span style={{ color: autoInvestResult.action === "buy" ? "#4cff8b" : autoInvestResult.error ? "#ff4444" : "#6688aa", fontSize: 11 }}>
+            {autoInvestResult.error ? `오류: ${autoInvestResult.error}` :
+              autoInvestResult.action === "buy" ? `매수: ${autoInvestResult.stock_name} ${autoInvestResult.qty}주 (${fmt(autoInvestResult.total_amount)}원)` :
+              autoInvestResult.reason || "실행 완료"}
+          </span>
+        )}
+      </div>
+
       {/* ★ 중간행: 예비 후보 종목 + 보유종목 */}
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
         {/* 예비 후보 종목 패널 */}
@@ -950,12 +1045,12 @@ function BalancePanel() {
                 return (
                   <div key={c.id} style={{
                     display: "grid", gridTemplateColumns: "1fr 90px 50px 50px 42px",
-                    padding: "7px 8px", fontSize: 12, alignItems: "center",
+                    padding: "7px 8px", fontSize: 12, alignItems: "center", cursor: "pointer",
                     borderBottom: i < candidates.length - 1 ? "1px solid rgba(100,140,200,0.08)" : "none",
-                    background: daysLeft <= 1 ? "rgba(220,38,38,0.05)" : "transparent",
-                  }}>
+                    background: candChartStock?.code === c.code ? "rgba(79,195,247,0.08)" : daysLeft <= 1 ? "rgba(220,38,38,0.05)" : "transparent",
+                  }} onClick={() => openCandidateChart(c)}>
                     <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      <span style={{ fontWeight: 600, color: "#e0e6f0" }}>{c.name}</span>
+                      <span style={{ fontWeight: 600, color: candChartStock?.code === c.code ? "#4fc3f7" : "#e0e6f0", textDecoration: "underline", textDecorationStyle: "dashed", textUnderlineOffset: 3 }}>{c.name}</span>
                       <span style={{ color: "#556677", marginLeft: 4, fontSize: 10 }}>{c.code}</span>
                     </div>
                     <div style={{ textAlign: "right", fontFamily: "monospace", fontSize: 11 }}>
@@ -968,6 +1063,43 @@ function BalancePanel() {
                   </div>
                 );
               })}
+            </div>
+          )}
+          {/* ★ 예비후보 차트 표시 영역 */}
+          {candChartStock && (
+            <div style={{ marginTop: 10, borderTop: "1px solid rgba(100,140,200,0.15)", paddingTop: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                <span style={{ color: "#4fc3f7", fontSize: 12, fontWeight: 600 }}>📊 {candChartStock.name} ({candChartStock.code})</span>
+                <button onClick={() => { setCandChartStock(null); setCandChartCandles(null); setCandQuoteData(null); }}
+                  style={{ background: "transparent", color: "#556677", border: "none", cursor: "pointer", fontSize: 14 }}>✕</button>
+              </div>
+              {candChartLoading ? (
+                <div style={{ height: 200, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(8,15,30,0.6)", borderRadius: 8 }}>
+                  <span style={{ color: "#6688aa", fontSize: 12 }}>📊 차트 로딩 중...</span>
+                </div>
+              ) : candChartCandles && candChartCandles.length > 0 ? (
+                <>
+                  <StockChart candles={candChartCandles.slice(0, 100)} />
+                  {candQuoteData && (
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6, marginTop: 6, background: "rgba(8,15,30,0.6)", borderRadius: 6, padding: 8 }}>
+                      {[
+                        ["현재가", fmt(candQuoteData.price), clr(candQuoteData.change)],
+                        ["등락률", `${candQuoteData.change_rate >= 0 ? "+" : ""}${candQuoteData.change_rate}%`, clr(candQuoteData.change_rate)],
+                        ["거래량", fmt(candQuoteData.volume), "#8899bb"],
+                      ].map(([label, val, color]) => (
+                        <div key={label} style={{ textAlign: "center" }}>
+                          <div style={{ color: "#556677", fontSize: 9 }}>{label}</div>
+                          <div style={{ color, fontSize: 11, fontWeight: 600, fontFamily: "monospace" }}>{val}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div style={{ height: 120, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(8,15,30,0.6)", borderRadius: 8 }}>
+                  <span style={{ color: "#556677", fontSize: 11 }}>차트 데이터를 불러올 수 없습니다</span>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1160,7 +1292,7 @@ function BalancePanel() {
 
         {/* 300만원 → 1천만원 여정 */}
         <div style={{ ...S.panel, flex: "1 1 400px" }}>
-          <div style={S.title}>🎯 300만원 → 1천만원 여정</div>
+          <div style={S.title}>🎯 100만원 → 1천만원 여정</div>
           <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, gap: 8 }}>
             {[
               ["시작금액", `${fmt(initCap)}원`, "#e0e6f0"],

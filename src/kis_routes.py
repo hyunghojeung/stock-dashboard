@@ -14,6 +14,7 @@ from kis_strategy_executor import (
     get_kis_managed_positions,
     remove_kis_managed_position,
     update_kis_strategy_params,
+    auto_invest_from_candidates,
 )
 
 router = APIRouter(prefix="/api/kis", tags=["KIS 모의투자"])
@@ -602,6 +603,22 @@ async def strategy_update_params(position_id: int, req: StrategyUpdateRequest):
 
     params = {k: v for k, v in req.model_dump().items() if v is not None}
     result = await update_kis_strategy_params(supabase, position_id, params)
+    if "error" in result:
+        raise HTTPException(500, result["error"])
+    return result
+
+
+@router.post("/strategy/auto-invest")
+async def strategy_auto_invest(
+    account_type: str = Query("virtual", description="virtual 또는 real"),
+):
+    """예비후보 종목에서 종합 판단 후 자동 매수 (예수금 전액)"""
+    _require_configured()
+    supabase = _get_supabase()
+    if not supabase:
+        raise HTTPException(500, "DB 연결 실패")
+
+    result = await auto_invest_from_candidates(supabase, account_type)
     if "error" in result:
         raise HTTPException(500, result["error"])
     return result
