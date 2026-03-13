@@ -448,8 +448,10 @@ export default function PatternDetector() {
           stocks: stocksList,
           capital: regCapital,
           preset: regPreset,
+          strategy_type: regPreset,
           take_profit_pct: p.tp, stop_loss_pct: p.sl,
           max_hold_days: p.days, trailing_stop_pct: p.trailing, grace_days: p.grace,
+          profit_activation_pct: regPreset === 'smart' ? 15 : 0,
           filters: filtersPayload,
         };
         const res = await fetch(`${API_BASE}/api/virtual-invest/realtime/start`, {

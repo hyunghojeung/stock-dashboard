@@ -8,6 +8,13 @@ from typing import Optional, List
 from datetime import datetime
 
 from kis_api import get_kis_client, reset_kis_client, KISClient
+from kis_strategy_executor import (
+    register_kis_position,
+    check_and_execute_kis_positions,
+    get_kis_managed_positions,
+    remove_kis_managed_position,
+    update_kis_strategy_params,
+)
 
 router = APIRouter(prefix="/api/kis", tags=["KIS 모의투자"])
 
@@ -480,3 +487,121 @@ async def get_finance_bs(stock_code: str):
         return {"success": True, "data": result.get("output", [])}
     except Exception as e:
         raise HTTPException(500, f"대차대조표 조회 실패: {str(e)}")
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 전략 자동매매 관리
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+class StrategyRegisterRequest(BaseModel):
+    stock_code: str
+    stock_name: str = ""
+    buy_price: float
+    buy_date: str = ""
+    qty: int
+    strategy: str = "smart"
+    account_type: str = "virtual"
+    custom_params: Optional[dict] = None
+
+
+class StrategyUpdateRequest(BaseModel):
+    strategy: Optional[str] = None
+    stop_loss_pct: Optional[float] = None
+    take_profit_pct: Optional[float] = None
+    max_hold_days: Optional[int] = None
+    trailing_stop_pct: Optional[float] = None
+    profit_activation_pct: Optional[float] = None
+    grace_days: Optional[int] = None
+
+
+def _get_supabase():
+    """Supabase 클라이언트 가져오기"""
+    try:
+        from app.core.config import config
+        return config.supabase
+    except Exception:
+        return None
+
+
+@router.post("/strategy/register")
+async def strategy_register(req: StrategyRegisterRequest):
+    """보유종목에 자동매매 전략 등록"""
+    supabase = _get_supabase()
+    if not supabase:
+        raise HTTPException(500, "DB 연결 실패")
+
+    buy_date = req.buy_date or datetime.now().strftime("%Y-%m-%d")
+    result = await register_kis_position(
+        supabase=supabase,
+        stock_code=req.stock_code,
+        stock_name=req.stock_name,
+        buy_price=req.buy_price,
+        buy_date=buy_date,
+        qty=req.qty,
+        strategy=req.strategy,
+        account_type=req.account_type,
+        custom_params=req.custom_params,
+    )
+    if "error" in result:
+        raise HTTPException(500, result["error"])
+    return result
+
+
+@router.get("/strategy/positions")
+async def strategy_positions(
+    account_type: str = Query("virtual", description="virtual 또는 real"),
+    status: str = Query("all", description="all, holding, 또는 sold_*"),
+):
+    """전략 관리 포지션 목록 조회"""
+    supabase = _get_supabase()
+    if not supabase:
+        raise HTTPException(500, "DB 연결 실패")
+
+    result = await get_kis_managed_positions(supabase, account_type, status)
+    if "error" in result:
+        raise HTTPException(500, result["error"])
+    return result
+
+
+@router.post("/strategy/check")
+async def strategy_check(
+    account_type: str = Query("virtual"),
+    auto_sell: bool = Query(True, description="True=매도 실행, False=신호만 반환"),
+):
+    """전략 체크 실행 — 매도 신호 확인 및 주문"""
+    _require_configured()
+    supabase = _get_supabase()
+    if not supabase:
+        raise HTTPException(500, "DB 연결 실패")
+
+    result = await check_and_execute_kis_positions(supabase, account_type, auto_sell)
+    if "error" in result:
+        raise HTTPException(500, result["error"])
+    return result
+
+
+@router.delete("/strategy/positions/{position_id}")
+async def strategy_remove(position_id: int):
+    """전략 관리에서 포지션 제거"""
+    supabase = _get_supabase()
+    if not supabase:
+        raise HTTPException(500, "DB 연결 실패")
+
+    result = await remove_kis_managed_position(supabase, position_id)
+    if "error" in result:
+        raise HTTPException(500, result["error"])
+    return result
+
+
+@router.put("/strategy/positions/{position_id}")
+async def strategy_update_params(position_id: int, req: StrategyUpdateRequest):
+    """전략 파라미터 변경"""
+    supabase = _get_supabase()
+    if not supabase:
+        raise HTTPException(500, "DB 연결 실패")
+
+    params = {k: v for k, v in req.model_dump().items() if v is not None}
+    result = await update_kis_strategy_params(supabase, position_id, params)
+    if "error" in result:
+        raise HTTPException(500, result["error"])
+    return result

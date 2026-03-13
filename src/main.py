@@ -43,8 +43,70 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"[스케줄러] 패턴 수집 스케줄러 등록 실패 (무시): {e}")
 
+    # ★ 통합 전략 자동 체크 스케줄러 (장중 10분 간격)
+    strategy_scheduler = None
+    try:
+        from apscheduler.schedulers.background import BackgroundScheduler as BgScheduler
+        from apscheduler.triggers.cron import CronTrigger as Cron
+        import asyncio as _asyncio
+
+        async def _scheduled_strategy_check():
+            """장중 자동 전략 체크 — 가상투자 + KIS 관리 포지션"""
+            now = datetime.now(KST)
+            if not is_market_open_now(now):
+                return
+
+            try:
+                supabase = config.supabase
+                if not supabase:
+                    return
+
+                # 1. 가상투자 활성 세션 업데이트
+                from virtual_invest import update_realtime
+                sessions = supabase.table("virtual_realtime_session").select(
+                    "session_id"
+                ).eq("status", "active").execute()
+                for s in (sessions.data or []):
+                    await update_realtime(s["session_id"], supabase)
+
+                # 2. KIS 모의투자 전략 체크
+                from kis_strategy_executor import check_and_execute_kis_positions
+                await check_and_execute_kis_positions(supabase, "virtual")
+
+            except Exception as ex:
+                print(f"[전략체크] 오류: {ex}")
+
+        def _run_strategy_check():
+            try:
+                loop = _asyncio.new_event_loop()
+                loop.run_until_complete(_scheduled_strategy_check())
+                loop.close()
+            except Exception as ex:
+                print(f"[전략체크] 실행 오류: {ex}")
+
+        strategy_scheduler = BgScheduler(timezone=pytz.timezone("Asia/Seoul"))
+        strategy_scheduler.add_job(
+            _run_strategy_check,
+            Cron(
+                day_of_week='mon-fri',
+                hour='9-15',
+                minute='*/10',
+                timezone=pytz.timezone("Asia/Seoul"),
+            ),
+            id="strategy_auto_check",
+            name="전략 자동 체크 (10분 간격)",
+            replace_existing=True,
+        )
+        strategy_scheduler.start()
+        print("[스케줄러] 전략 자동 체크 등록 (장중 10분 간격)")
+    except Exception as e:
+        print(f"[스케줄러] 전략 자동 체크 등록 실패 (무시): {e}")
+
     print("[서버] 10억 만들기 자동매매 서버 시작")
     yield
+
+    if strategy_scheduler:
+        strategy_scheduler.shutdown(wait=False)
     print("[서버] 서버 종료")
 
 app = FastAPI(title="10억 만들기 - 주식 자동매매", version="1.0.0", lifespan=lifespan)
