@@ -2970,7 +2970,7 @@ function AutoTradePanel({ mode = "virtual" }) {
         </div>
         {managedPositions.length === 0 ? (
           <div style={{ textAlign: 'center', padding: 24, color: '#556677', fontSize: 12 }}>
-            대시보드에서 스마트 매매 전략 체크를 실행하면 보유종목이 자동 등록됩니다
+            스마트 매매 관리 종목이 없습니다 (예비후보 자동매수 시 자동 등록)
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
