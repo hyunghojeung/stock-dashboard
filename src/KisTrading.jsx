@@ -1107,7 +1107,7 @@ function BalancePanel() {
           </div>
         )}
 
-        {/* 보유종목 테이블 */}
+        {/* 보유종목 통합 패널 (테이블 + 차트) */}
         <div style={{ ...S.panel, flex: "1 1 600px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
             <div style={S.title}>💼 보유종목 ({positions.length})</div>
@@ -1116,183 +1116,116 @@ function BalancePanel() {
           {positions.length === 0 ? (
             <div style={{ textAlign: "center", padding: 30, color: "#6688aa" }}>보유 종목 없음</div>
           ) : (
-            <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 700 }}>
-              <thead>
-                <tr>{["종목", "수량", "매수금액", "평균가", "현재가", "당일", "손익", "수익률", "평가금액", "비중"].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
-              </thead>
-              <tbody>
-                {positions.map((p, i) => {
-                  const evalAmt = p.eval_amount || (p.current_price * p.qty);
-                  const buyAmt = p.buy_amount || Math.round(p.avg_price * p.qty);
-                  const weight = summary.total_eval > 0 ? (evalAmt / summary.total_eval * 100) : 0;
-                  const dailyChg = p.prdy_ctrt || 0;
-                  const rule = tradeRulesMap[p.stock_code];
-                  const buyDate = rule?.buy_date;
-                  const holdDays = buyDate ? Math.floor((Date.now() - new Date(buyDate).getTime()) / 86400000) : null;
-                  return (
-                  <tr key={i} style={{ borderBottom: "1px solid rgba(100,140,200,0.08)", cursor: "pointer", background: chartStock?.stock_code === p.stock_code ? "rgba(79,195,247,0.08)" : "transparent" }}
-                    onClick={() => openChart(p)}>
-                    <td style={{ ...S.td, color: chartStock?.stock_code === p.stock_code ? "#4fc3f7" : "#e0e6f0", fontWeight: 600, textDecoration: "underline", textDecorationStyle: "dashed", textUnderlineOffset: 3 }}>
-                      {p.stock_name}
-                      <div style={{ fontSize: 9, color: "#556677", fontWeight: 400 }}>
-                        {p.stock_code}{holdDays !== null ? ` · ${holdDays}일` : ''}
-                      </div>
-                    </td>
-                    <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace" }}>{fmt(p.qty)}</td>
-                    <td style={{ ...S.td, color: "#8899bb", fontFamily: "monospace", fontSize: 11 }}>{fmt(buyAmt)}</td>
-                    <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace" }}>{fmt(Math.round(p.avg_price))}</td>
-                    <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace" }}>{fmt(p.current_price)}</td>
-                    <td style={{ ...S.td, color: clr(dailyChg), fontFamily: "monospace", fontSize: 11 }}>{dailyChg !== 0 ? `${dailyChg >= 0 ? '+' : ''}${dailyChg.toFixed(1)}%` : '-'}</td>
-                    <td style={{ ...S.td, color: clr(p.profit_loss), fontFamily: "monospace", fontWeight: 600 }}>{fmtWon(p.profit_loss)}</td>
-                    <td style={{ ...S.td, color: clr(p.profit_rate), fontFamily: "monospace", fontWeight: 600 }}>{fmtPct(p.profit_rate)}</td>
-                    <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace", fontWeight: 600 }}>{fmt(evalAmt)}원</td>
-                    <td style={{ ...S.td, fontFamily: "monospace", fontSize: 11 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                        <div style={{ width: 32, height: 5, borderRadius: 3, background: "rgba(100,140,200,0.15)", overflow: "hidden" }}>
-                          <div style={{ width: `${Math.min(weight, 100)}%`, height: "100%", background: weight > 30 ? "#f59e0b" : "#4fc3f7", borderRadius: 3 }} />
+            <>
+              <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 700 }}>
+                <thead>
+                  <tr>{["종목", "수량", "매수금액", "평균가", "현재가", "당일", "손익", "수익률", "평가금액", "비중"].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
+                </thead>
+                <tbody>
+                  {positions.map((p, i) => {
+                    const evalAmt = p.eval_amount || (p.current_price * p.qty);
+                    const buyAmt = p.buy_amount || Math.round(p.avg_price * p.qty);
+                    const weight = summary.total_eval > 0 ? (evalAmt / summary.total_eval * 100) : 0;
+                    const dailyChg = p.prdy_ctrt || 0;
+                    const rule = tradeRulesMap[p.stock_code];
+                    const buyDate = rule?.buy_date;
+                    const holdDays = buyDate ? Math.floor((Date.now() - new Date(buyDate).getTime()) / 86400000) : null;
+                    return (
+                    <tr key={i} style={{ borderBottom: "1px solid rgba(100,140,200,0.08)", cursor: "pointer", background: chartStock?.stock_code === p.stock_code ? "rgba(79,195,247,0.08)" : "transparent" }}
+                      onClick={() => openChart(p)}>
+                      <td style={{ ...S.td, color: chartStock?.stock_code === p.stock_code ? "#4fc3f7" : "#e0e6f0", fontWeight: 600, textDecoration: "underline", textDecorationStyle: "dashed", textUnderlineOffset: 3 }}>
+                        {p.stock_name}
+                        <div style={{ fontSize: 9, color: "#556677", fontWeight: 400 }}>
+                          {p.stock_code}{holdDays !== null ? ` · ${holdDays}일` : ''}
                         </div>
-                        <span style={{ color: weight > 30 ? "#f59e0b" : "#8899bb" }}>{weight.toFixed(1)}%</span>
+                      </td>
+                      <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace" }}>{fmt(p.qty)}</td>
+                      <td style={{ ...S.td, color: "#8899bb", fontFamily: "monospace", fontSize: 11 }}>{fmt(buyAmt)}</td>
+                      <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace" }}>{fmt(Math.round(p.avg_price))}</td>
+                      <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace" }}>{fmt(p.current_price)}</td>
+                      <td style={{ ...S.td, color: clr(dailyChg), fontFamily: "monospace", fontSize: 11 }}>{dailyChg !== 0 ? `${dailyChg >= 0 ? '+' : ''}${dailyChg.toFixed(1)}%` : '-'}</td>
+                      <td style={{ ...S.td, color: clr(p.profit_loss), fontFamily: "monospace", fontWeight: 600 }}>{fmtWon(p.profit_loss)}</td>
+                      <td style={{ ...S.td, color: clr(p.profit_rate), fontFamily: "monospace", fontWeight: 600 }}>{fmtPct(p.profit_rate)}</td>
+                      <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace", fontWeight: 600 }}>{fmt(evalAmt)}원</td>
+                      <td style={{ ...S.td, fontFamily: "monospace", fontSize: 11 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                          <div style={{ width: 32, height: 5, borderRadius: 3, background: "rgba(100,140,200,0.15)", overflow: "hidden" }}>
+                            <div style={{ width: `${Math.min(weight, 100)}%`, height: "100%", background: weight > 30 ? "#f59e0b" : "#4fc3f7", borderRadius: 3 }} />
+                          </div>
+                          <span style={{ color: weight > 30 ? "#f59e0b" : "#8899bb" }}>{weight.toFixed(1)}%</span>
+                        </div>
+                      </td>
+                    </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              </div>
+
+              {/* 종목 차트 영역 */}
+              <div style={{ marginTop: 12, borderTop: "1px solid rgba(100,140,200,0.15)", paddingTop: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <div style={{ color: "#8899bb", fontSize: 12, fontWeight: 600 }}>
+                    📊 {chartStock ? `${chartStock.stock_name} (${chartStock.stock_code})` : "종목을 클릭하면 차트가 표시됩니다"}
+                  </div>
+                  {positions.length > 1 && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      {positions.map((p, i) => (
+                        <button key={i} onClick={() => openChart(p)} style={{
+                          background: chartStock?.stock_code === p.stock_code ? "rgba(79,195,247,0.2)" : "transparent",
+                          color: chartStock?.stock_code === p.stock_code ? "#4fc3f7" : "#556677",
+                          border: `1px solid ${chartStock?.stock_code === p.stock_code ? "rgba(79,195,247,0.3)" : "rgba(100,140,200,0.15)"}`,
+                          borderRadius: 6, padding: "3px 8px", fontSize: 10, cursor: "pointer",
+                        }}>{p.stock_name}</button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {!chartStock ? (
+                  <div style={{ height: 200, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(8,15,30,0.6)", borderRadius: 8 }}>
+                    <span style={{ color: "#556677", fontSize: 12 }}>종목 행을 클릭하면 차트가 표시됩니다</span>
+                  </div>
+                ) : chartLoading ? (
+                  <div style={{ height: 300, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(8,15,30,0.6)", borderRadius: 8 }}>
+                    <span style={{ color: "#6688aa", fontSize: 13 }}>📊 차트 로딩 중...</span>
+                  </div>
+                ) : (
+                  <>
+                    {chartCandles && chartCandles.length > 0 ? (
+                      <StockChart candles={chartCandles.slice(0, 100)} buyPrice={chartStock?.avg_price} />
+                    ) : (
+                      <div style={{ height: 200, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(8,15,30,0.6)", borderRadius: 8 }}>
+                        <span style={{ color: "#556677", fontSize: 12 }}>차트 데이터를 불러올 수 없습니다</span>
                       </div>
-                    </td>
-                  </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-            </div>
+                    )}
+                    {quoteData && (
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 8, marginTop: 8, background: "rgba(8,15,30,0.6)", borderRadius: 8, padding: 10 }}>
+                        {[
+                          ["현재가", fmt(quoteData.price), clr(quoteData.change)],
+                          ["전일대비", `${quoteData.change >= 0 ? "+" : ""}${fmt(quoteData.change)}`, clr(quoteData.change)],
+                          ["등락률", `${quoteData.change_rate >= 0 ? "+" : ""}${quoteData.change_rate}%`, clr(quoteData.change_rate)],
+                          ["시가", fmt(quoteData.open), "#e0e6f0"],
+                          ["고가", fmt(quoteData.high), "#ff4444"],
+                          ["저가", fmt(quoteData.low), "#4488ff"],
+                        ].map(([label, val, color]) => (
+                          <div key={label} style={{ textAlign: "center" }}>
+                            <div style={{ color: "#556677", fontSize: 9 }}>{label}</div>
+                            <div style={{ color, fontSize: 12, fontWeight: 600, fontFamily: "monospace" }}>{val}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </>
           )}
         </div>
       </div>
 
-      {/* ★ 포트폴리오 구성 시각화 */}
-      {positions.length > 0 && (
-        <div style={{ ...S.panel }}>
-          <div style={S.title}>📊 포트폴리오 구성</div>
-          <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 8 }}>
-            {/* 종목별 비중 바차트 */}
-            <div style={{ flex: "1 1 350px" }}>
-              <div style={{ color: "#556677", fontSize: 10, marginBottom: 6 }}>종목별 비중</div>
-              {(() => {
-                const barColors = ["#4fc3f7", "#f59e0b", "#4cff8b", "#ff4444", "#ab47bc", "#ff7043", "#29b6f6", "#66bb6a"];
-                const total = summary.total_eval || 1;
-                return positions.map((p, i) => {
-                  const w = ((p.eval_amount || (p.current_price * p.qty)) / total * 100);
-                  return (
-                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                      <span style={{ color: "#8899bb", fontSize: 10, minWidth: 60, textAlign: "right", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.stock_name}</span>
-                      <div style={{ flex: 1, height: 14, borderRadius: 3, background: "rgba(10,18,40,0.8)", overflow: "hidden", position: "relative" }}>
-                        <div style={{
-                          width: `${Math.max(w, 1)}%`, height: "100%", borderRadius: 3,
-                          background: `linear-gradient(90deg, ${barColors[i % barColors.length]}88, ${barColors[i % barColors.length]})`,
-                        }} />
-                        <span style={{ position: "absolute", right: 4, top: 0, fontSize: 9, color: "#e0e6f0", lineHeight: "14px", fontFamily: "monospace" }}>
-                          {w.toFixed(1)}%
-                        </span>
-                      </div>
-                      <span style={{ color: clr(p.profit_rate), fontSize: 10, fontFamily: "monospace", minWidth: 45, textAlign: "right" }}>
-                        {p.profit_rate >= 0 ? '+' : ''}{p.profit_rate?.toFixed(1)}%
-                      </span>
-                    </div>
-                  );
-                });
-              })()}
-              {/* 현금 */}
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}>
-                <span style={{ color: "#64b5f6", fontSize: 10, minWidth: 60, textAlign: "right" }}>현금(예수금)</span>
-                <div style={{ flex: 1, height: 14, borderRadius: 3, background: "rgba(10,18,40,0.8)", overflow: "hidden", position: "relative" }}>
-                  <div style={{ width: `${Math.max(cashRatio, 0.5)}%`, height: "100%", borderRadius: 3, background: "linear-gradient(90deg, #42a5f588, #64b5f6)" }} />
-                  <span style={{ position: "absolute", right: 4, top: 0, fontSize: 9, color: "#e0e6f0", lineHeight: "14px", fontFamily: "monospace" }}>{cashRatio.toFixed(1)}%</span>
-                </div>
-                <span style={{ color: "#64b5f6", fontSize: 10, fontFamily: "monospace", minWidth: 45, textAlign: "right" }}>{fmt(summary.deposit)}원</span>
-              </div>
-            </div>
-
-            {/* 손익 히트맵 */}
-            <div style={{ flex: "0 1 220px" }}>
-              <div style={{ color: "#556677", fontSize: 10, marginBottom: 6 }}>종목별 손익</div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                {positions.map((p, i) => {
-                  const rate = p.profit_rate || 0;
-                  const bg = rate >= 5 ? "rgba(76,255,139,0.25)" : rate >= 0 ? "rgba(76,255,139,0.1)" : rate >= -5 ? "rgba(255,76,76,0.1)" : "rgba(255,76,76,0.25)";
-                  const border = rate >= 0 ? "rgba(76,255,139,0.3)" : "rgba(255,76,76,0.3)";
-                  return (
-                    <div key={i} style={{
-                      padding: "6px 8px", borderRadius: 6, background: bg, border: `1px solid ${border}`,
-                      textAlign: "center", minWidth: 65, cursor: "pointer",
-                    }} onClick={() => openChart(p)}>
-                      <div style={{ color: "#e0e6f0", fontSize: 10, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 60 }}>{p.stock_name}</div>
-                      <div style={{ color: clr(rate), fontSize: 12, fontWeight: 700, fontFamily: "monospace" }}>{rate >= 0 ? '+' : ''}{rate.toFixed(1)}%</div>
-                      <div style={{ color: clr(p.profit_loss), fontSize: 9, fontFamily: "monospace" }}>{fmtWon(p.profit_loss)}</div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ★ 하단행: 종목 차트 + 목표 여정 */}
+      {/* ★ 하단행: 목표 여정 */}
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-        {/* 보유종목 차트 */}
-        <div style={{ ...S.panel, flex: "1 1 500px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-            <div style={S.title}>
-              📊 {chartStock ? `${chartStock.stock_name} 차트` : "종목 차트"}
-            </div>
-            {chartStock && (
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                {positions.length > 1 && positions.map((p, i) => (
-                  <button key={i} onClick={() => openChart(p)} style={{
-                    background: chartStock?.stock_code === p.stock_code ? "rgba(79,195,247,0.2)" : "transparent",
-                    color: chartStock?.stock_code === p.stock_code ? "#4fc3f7" : "#556677",
-                    border: `1px solid ${chartStock?.stock_code === p.stock_code ? "rgba(79,195,247,0.3)" : "rgba(100,140,200,0.15)"}`,
-                    borderRadius: 6, padding: "3px 8px", fontSize: 10, cursor: "pointer",
-                  }}>{p.stock_name}</button>
-                ))}
-              </div>
-            )}
-          </div>
-          {!chartStock ? (
-            <div style={{ height: 300, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(8,15,30,0.6)", borderRadius: 8 }}>
-              <span style={{ color: "#556677", fontSize: 13 }}>보유종목을 클릭하면 차트가 표시됩니다</span>
-            </div>
-          ) : chartLoading ? (
-            <div style={{ height: 300, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(8,15,30,0.6)", borderRadius: 8 }}>
-              <span style={{ color: "#6688aa", fontSize: 13 }}>📊 차트 로딩 중...</span>
-            </div>
-          ) : (
-            <>
-              {chartCandles && chartCandles.length > 0 ? (
-                <StockChart candles={chartCandles.slice(0, 100)} buyPrice={chartStock?.avg_price} />
-              ) : (
-                <div style={{ height: 200, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(8,15,30,0.6)", borderRadius: 8 }}>
-                  <span style={{ color: "#556677", fontSize: 12 }}>차트 데이터를 불러올 수 없습니다</span>
-                </div>
-              )}
-              {/* 시세 요약 */}
-              {quoteData && (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 8, marginTop: 8, background: "rgba(8,15,30,0.6)", borderRadius: 8, padding: 10 }}>
-                  {[
-                    ["현재가", fmt(quoteData.price), clr(quoteData.change)],
-                    ["전일대비", `${quoteData.change >= 0 ? "+" : ""}${fmt(quoteData.change)}`, clr(quoteData.change)],
-                    ["등락률", `${quoteData.change_rate >= 0 ? "+" : ""}${quoteData.change_rate}%`, clr(quoteData.change_rate)],
-                    ["시가", fmt(quoteData.open), "#e0e6f0"],
-                    ["고가", fmt(quoteData.high), "#ff4444"],
-                    ["저가", fmt(quoteData.low), "#4488ff"],
-                  ].map(([label, val, color]) => (
-                    <div key={label} style={{ textAlign: "center" }}>
-                      <div style={{ color: "#556677", fontSize: 9 }}>{label}</div>
-                      <div style={{ color, fontSize: 12, fontWeight: 600, fontFamily: "monospace" }}>{val}</div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-        </div>
-
         {/* 300만원 → 1천만원 여정 */}
         <div style={{ ...S.panel, flex: "1 1 400px" }}>
           <div style={S.title}>🎯 100만원 → 1천만원 여정</div>
