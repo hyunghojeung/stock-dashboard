@@ -736,7 +736,8 @@ function BalancePanel() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const accountType = mode === "virtual" ? "virtual" : "real";
+    const activeMode = getKisActiveMode();
+    const accountType = activeMode === "real" ? "real" : "virtual";
     const [r, stratResp] = await Promise.all([
       kisApi("balance"),
       fetch(`${BACKEND_API}/api/kis/strategy/positions?account_type=${accountType}&status=holding`).then(r => r.json()).catch(() => ({ positions: [] })),
