@@ -155,7 +155,7 @@ function DashboardPage() {
   const todayProfit=sells.reduce((s,t)=>s+(t.net_profit||0),0);
   const wins=sells.filter(t=>(t.net_profit||0)>0).length,losses=sells.filter(t=>(t.net_profit||0)<=0).length;
   const totalUnrealized=hList.reduce((s,h)=>s+(h.unrealized_profit||0),0);
-  const initCap=strategies?.[0]?.initial_capital||3000000;
+  const initCap=strategies?.[0]?.initial_capital||1000000;
   const totalAsset=accountData?.total_eval||null;
   const cumRet=totalAsset?((totalAsset-initCap)/initCap*100):0;
   const tgtPct=totalAsset?(totalAsset/1e7*100):0;
@@ -167,7 +167,7 @@ function DashboardPage() {
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
       <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
         <Card icon="💰" title="총 자산" value={totalAsset?`${fmt(totalAsset)}원`:"—"} sub={totalAsset?fmtPct(cumRet):"로딩..."} color={totalAsset?"#4cff8b":"#e0e6f0"}/>
-        <Card icon="📈" title="오늘 순수익" value={!mkt.isOpen?"—":fmtWon(todayProfit)} sub={!mkt.isOpen?mkt.status:"수수료·세금 차감"} color={!mkt.isOpen?"#ff9800":clr(todayProfit)}/>
+        <Card icon="📈" title="오늘 순수익" value={!mkt.isOpen?"—":fmtWon(todayProfit+totalUnrealized)} sub={!mkt.isOpen?mkt.status:`실현 ${fmtWon(todayProfit)} + 미실현 ${fmtWon(totalUnrealized)}`} color={!mkt.isOpen?"#ff9800":clr(todayProfit+totalUnrealized)}/>
         <Card icon="💼" title="보유 종목" value={`${hList.length} 종목`} sub={`미실현 ${fmtWon(totalUnrealized)}`} color="#64b5f6"/>
         <Card icon="🔄" title="오늘 매매" value={!mkt.isOpen?"0회 (휴장)":`${sells.length}회 (${wins}승 ${losses}패)`} sub={!mkt.isOpen?mkt.status:`승률 ${sells.length?Math.round(wins/sells.length*100):0}%`} color={!mkt.isOpen?"#ff9800":"#ffd54f"}/>
       </div>
@@ -217,11 +217,13 @@ function DashboardPage() {
           </table>
           <div style={{borderTop:"1px solid rgba(100,140,200,0.15)",marginTop:8,paddingTop:8,display:"flex",gap:20}}>
             <span style={{color:"#6688aa",fontSize:12}}>매매 {sells.length}회 | {wins}승 {losses}패 | 승률 {sells.length?Math.round(wins/sells.length*100):0}%</span>
-            <span style={{color:clr(todayProfit),fontSize:13,fontWeight:600,fontFamily:"monospace"}}>실현 순수익: {fmtWon(todayProfit)}</span>
+            <span style={{color:clr(todayProfit),fontSize:13,fontWeight:600,fontFamily:"monospace"}}>실현: {fmtWon(todayProfit)}</span>
+            <span style={{color:clr(totalUnrealized),fontSize:13,fontWeight:600,fontFamily:"monospace"}}>미실현: {fmtWon(totalUnrealized)}</span>
+            <span style={{color:clr(todayProfit+totalUnrealized),fontSize:14,fontWeight:700,fontFamily:"monospace"}}>합산: {fmtWon(todayProfit+totalUnrealized)}</span>
           </div></>}
         </div>
         <div style={{flex:"1 1 400px",background:"linear-gradient(135deg,rgba(25,35,65,0.9),rgba(15,22,48,0.95))",border:"1px solid rgba(100,140,200,0.15)",borderRadius:12,padding:16}}>
-          <div style={{color:"#e0e6f0",fontWeight:600,fontSize:15,marginBottom:12}}>🎯 300만원 → 1천만원 여정</div>
+          <div style={{color:"#e0e6f0",fontWeight:600,fontSize:15,marginBottom:12}}>🎯 100만원 → 1천만원 여정</div>
           <MiniChart data={hist} width={420} height={130}/>
           <div style={{display:"flex",justifyContent:"space-between",marginTop:12,gap:8}}>
             {[["시작금액",`${fmt(initCap)}원`,"#e0e6f0"],["현재자산",totalAsset?`${fmt(totalAsset)}원`:"—","#4cff8b"],["남은금액",totalAsset?`${fmt(10000000-totalAsset)}원`:"—","#ffd54f"]].map(([l,v,c])=><div key={l} style={{flex:1}}><div style={{color:"#556677",fontSize:11}}>{l}</div><div style={{color:c,fontSize:13,fontWeight:600,fontFamily:"monospace"}}>{v}</div></div>)}
@@ -319,12 +321,12 @@ function GrowthPage() {
   const {data:st}=useApi("/api/strategy/",0);
   if(loading) return <Loader t="성장 여정 로딩..."/>;
   const hist=[];
-  const ic=st?.[0]?.initial_capital||3000000;
+  const ic=st?.[0]?.initial_capital||1000000;
   const la=accountData?.total_eval||ic;
   const tp=la/1e7*100;
   return (
     <div style={{background:"linear-gradient(135deg,rgba(25,35,65,0.9),rgba(15,22,48,0.95))",border:"1px solid rgba(100,140,200,0.15)",borderRadius:12,padding:24}}>
-      <div style={{color:"#e0e6f0",fontWeight:600,fontSize:18,marginBottom:16}}>🎯 300만원 → 1천만원 여정</div>
+      <div style={{color:"#e0e6f0",fontWeight:600,fontSize:18,marginBottom:16}}>🎯 100만원 → 1천만원 여정</div>
       <MiniChart data={hist} width={700} height={200}/>
       <div style={{display:"flex",justifyContent:"space-between",marginTop:20,gap:16}}>
         {[["시작금액",`${fmt(ic)}원`,"#e0e6f0"],["현재자산",`${fmt(la)}원`,"#4cff8b"],["목표","10,000,000원","#ffd54f"],["남은금액",`${fmt(1e7-la)}원`,"#ff9800"]].map(([l,v,c])=><div key={l} style={{flex:1}}><div style={{color:"#556677",fontSize:12}}>{l}</div><div style={{color:c,fontSize:16,fontWeight:600,fontFamily:"monospace"}}>{v}</div></div>)}

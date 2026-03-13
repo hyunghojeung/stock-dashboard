@@ -32,6 +32,16 @@
 - Supabase service_role key가 필요한 경우 환경변수 SUPABASE_SERVICE_ROLE_KEY 사용
 - 새 PC 설정: `export SUPABASE_SERVICE_ROLE_KEY="your_key_here"` 실행 후 Claude Code 시작
 
+## 환경변수 토큰
+- GH_TOKEN과 SUPABASE_SERVICE_ROLE_KEY는 사용자가 직접 제공한다.
+- 제공된 토큰은 해당 세션에서 gh CLI 및 Supabase API 호출에 사용한다.
+- gh CLI 인증 실패 시 `export GH_TOKEN="토큰"` 후 curl로 GitHub REST API 직접 호출한다.
+
+## 머지 충돌 해결
+- PR에서 머지 충돌 발생 시, 로컬에서 `git fetch origin main && git merge origin/main`으로 해결한다.
+- 양쪽 변경사항을 모두 살리는 방향으로 통합한다 (삭제하지 않는다).
+- 충돌 해결 후 별도 커밋으로 푸시한다.
+
 ## 언어 규칙
 - 모든 대화, 진행 상황 안내, 커밋 메시지, PR 설명은 한글로 작성한다.
 - 코드 내 주석도 한글로 작성한다.

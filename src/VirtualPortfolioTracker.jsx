@@ -1414,6 +1414,94 @@ function StockCandleChart({ candles, pos, buyDate, buyPrice, sellDate, sellPrice
         <span><span style={{ color: '#556677' }}>보유일 </span><span style={{ color: COLORS.text }}>{pos.hold_days || 0}일</span></span>
         <span><span style={{ color: '#556677' }}>유사도 </span><span style={{ color: '#4fc3f7' }}>{pos.similarity || 0}%</span></span>
       </div>
+
+      {/* ★ 스마트형 전략 상태 바 */}
+      {pos.strategy_type === 'smart' && pos.status === 'holding' && (() => {
+        const peakP = pos.peak_price || pos.buy_price;
+        const buyP = pos.buy_price || 1;
+        const curP = pos.current_price || buyP;
+        const peakPct = ((peakP - buyP) / buyP * 100);
+        const activationPct = pos.profit_activation_pct || 15;
+        const trailingPct = pos.trailing_stop_pct || 5;
+        const graceDays = pos.grace_days || 7;
+        const holdDays = pos.hold_days || 0;
+        const isActivated = pos.trailing_activated || false;
+        const dropFromPeak = peakP > 0 ? ((curP - peakP) / peakP * 100) : 0;
+        const trailingGauge = Math.min(100, Math.max(0, (Math.abs(dropFromPeak) / trailingPct) * 100));
+        const inGrace = holdDays <= graceDays;
+
+        return (
+          <div style={{
+            display: 'flex', gap: 8, marginTop: 6, padding: '6px 14px',
+            background: 'rgba(255,152,0,0.06)', borderRadius: 8, fontSize: 10,
+            border: '1px solid rgba(255,152,0,0.15)', alignItems: 'center', flexWrap: 'wrap',
+          }}>
+            {/* 전략 배지 */}
+            <span style={{
+              padding: '2px 8px', borderRadius: 4, fontWeight: 700, fontSize: 10,
+              background: 'rgba(255,152,0,0.15)', color: '#ff9800',
+            }}>SMART</span>
+
+            {/* 유예기간 */}
+            {inGrace ? (
+              <span style={{ color: '#78909c' }}>
+                유예 D{holdDays}/{graceDays}
+              </span>
+            ) : (
+              <span style={{ color: '#546e7a' }}>
+                유예 완료
+              </span>
+            )}
+
+            {/* 수익 활성화 */}
+            <span style={{
+              padding: '1px 6px', borderRadius: 3,
+              background: isActivated ? 'rgba(0,230,118,0.12)' : 'rgba(120,144,156,0.12)',
+              color: isActivated ? '#00E676' : '#78909c',
+              fontWeight: isActivated ? 700 : 400,
+            }}>
+              {isActivated ? '활성화' : `활성화 ${peakPct.toFixed(1)}/${activationPct}%`}
+            </span>
+
+            {/* 추적손절 게이지 */}
+            {isActivated && (
+              <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ color: '#ff5252' }}>추적</span>
+                <span style={{
+                  display: 'inline-block', width: 50, height: 6, background: 'rgba(255,82,82,0.15)',
+                  borderRadius: 3, overflow: 'hidden', verticalAlign: 'middle',
+                }}>
+                  <span style={{
+                    display: 'block', height: '100%', borderRadius: 3,
+                    width: `${trailingGauge}%`,
+                    background: trailingGauge > 80 ? '#ff5252' : trailingGauge > 50 ? '#ff9800' : '#4caf50',
+                  }} />
+                </span>
+                <span style={{ color: dropFromPeak < 0 ? '#ff5252' : '#78909c', fontFamily: 'JetBrains Mono, monospace' }}>
+                  {dropFromPeak.toFixed(1)}%/{-trailingPct}%
+                </span>
+              </span>
+            )}
+
+            {/* 손절선 */}
+            <span style={{ color: '#546e7a' }}>
+              손절 -{pos.stop_loss_pct || 12}%
+            </span>
+          </div>
+        );
+      })()}
+
+      {/* 매도 사유 (청산된 포지션) */}
+      {pos.sell_reason && pos.status !== 'holding' && (
+        <div style={{
+          marginTop: 6, padding: '4px 14px', fontSize: 10,
+          color: pos.status === 'sold_trailing' ? '#ff9800' : pos.status === 'sold_profit' ? '#00E676' : '#ff5252',
+          background: pos.status === 'sold_trailing' ? 'rgba(255,152,0,0.06)' : pos.status === 'sold_profit' ? 'rgba(0,230,118,0.06)' : 'rgba(255,82,82,0.06)',
+          borderRadius: 6, border: `1px solid ${pos.status === 'sold_trailing' ? 'rgba(255,152,0,0.15)' : pos.status === 'sold_profit' ? 'rgba(0,230,118,0.15)' : 'rgba(255,82,82,0.15)'}`,
+        }}>
+          {pos.sell_reason}
+        </div>
+      )}
     </div>
   );
 }
