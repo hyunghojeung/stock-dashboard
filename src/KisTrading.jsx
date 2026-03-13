@@ -901,21 +901,20 @@ function BalancePanel() {
   const remaining = Math.max(0, GOAL - totalAssets);
   const cashRatio = totalAssets > 0 ? (summary.deposit / totalAssets * 100) : 0;
   const investRatio = 100 - cashRatio;
+  // 당일 손익: KIS API의 daily_pnl = 오늘자산 - 전일자산 (실현+미실현 포함)
   const dailyPnl = summary.daily_pnl || 0;
-  // 미실현 손익 합산
-  const totalUnrealized = positions.reduce((s, p) => s + (p.profit_loss || 0), 0);
-  const totalDailyPnl = dailyPnl + totalUnrealized;
+  const prevAssets = summary.prev_total_assets || 0;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       {/* ★ 상단 요약 카드 2행 */}
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-        {/* 주요 4카드: 추정자산, 총손익, 수익률, 당일손익(실현+미실현) */}
+        {/* 주요 4카드: 추정자산, 총손익, 수익률, 당일손익 */}
         {[
           ["💰", "추정자산", `${fmt(totalAssets)}원`, clr(summary.total_profit), null],
           ["📊", "총 손익", fmtWon(summary.total_profit), clr(summary.total_profit), null],
           ["📈", "수익률", fmtPct(summary.profit_rate), clr(summary.profit_rate), null],
-          ["📅", "당일 손익", fmtWon(totalDailyPnl), clr(totalDailyPnl), `실현 ${fmtWon(dailyPnl)} + 미실현 ${fmtWon(totalUnrealized)}`],
+          ["📅", "당일 손익", fmtWon(dailyPnl), clr(dailyPnl), prevAssets > 0 ? `전일 ${fmt(prevAssets)}원 → 금일 ${fmt(totalAssets)}원` : null],
         ].map(([icon, title, value, color, sub]) => (
           <div key={title} style={{ ...S.panel, flex: 1, minWidth: 160 }}>
             <div style={{ color: "#6688aa", fontSize: 11, marginBottom: 4 }}>{icon} {title}</div>
@@ -1065,44 +1064,48 @@ function BalancePanel() {
               })}
             </div>
           )}
-          {/* ★ 예비후보 차트 표시 영역 */}
-          {candChartStock && (
-            <div style={{ marginTop: 10, borderTop: "1px solid rgba(100,140,200,0.15)", paddingTop: 10 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                <span style={{ color: "#4fc3f7", fontSize: 12, fontWeight: 600 }}>📊 {candChartStock.name} ({candChartStock.code})</span>
-                <button onClick={() => { setCandChartStock(null); setCandChartCandles(null); setCandQuoteData(null); }}
-                  style={{ background: "transparent", color: "#556677", border: "none", cursor: "pointer", fontSize: 14 }}>✕</button>
-              </div>
-              {candChartLoading ? (
-                <div style={{ height: 200, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(8,15,30,0.6)", borderRadius: 8 }}>
-                  <span style={{ color: "#6688aa", fontSize: 12 }}>📊 차트 로딩 중...</span>
-                </div>
-              ) : candChartCandles && candChartCandles.length > 0 ? (
-                <>
-                  <StockChart candles={candChartCandles.slice(0, 100)} />
-                  {candQuoteData && (
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6, marginTop: 6, background: "rgba(8,15,30,0.6)", borderRadius: 6, padding: 8 }}>
-                      {[
-                        ["현재가", fmt(candQuoteData.price), clr(candQuoteData.change)],
-                        ["등락률", `${candQuoteData.change_rate >= 0 ? "+" : ""}${candQuoteData.change_rate}%`, clr(candQuoteData.change_rate)],
-                        ["거래량", fmt(candQuoteData.volume), "#8899bb"],
-                      ].map(([label, val, color]) => (
-                        <div key={label} style={{ textAlign: "center" }}>
-                          <div style={{ color: "#556677", fontSize: 9 }}>{label}</div>
-                          <div style={{ color, fontSize: 11, fontWeight: 600, fontFamily: "monospace" }}>{val}</div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div style={{ height: 120, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(8,15,30,0.6)", borderRadius: 8 }}>
-                  <span style={{ color: "#556677", fontSize: 11 }}>차트 데이터를 불러올 수 없습니다</span>
-                </div>
-              )}
-            </div>
-          )}
         </div>
+
+        {/* ★ 예비후보 차트 (오른쪽 패널) */}
+        {candChartStock && (
+          <div style={{ ...S.panel, flex: "1 1 500px", minWidth: 400 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+              <span style={{ color: "#4fc3f7", fontSize: 13, fontWeight: 600 }}>📊 {candChartStock.name} ({candChartStock.code})</span>
+              <button onClick={() => { setCandChartStock(null); setCandChartCandles(null); setCandQuoteData(null); }}
+                style={{ background: "transparent", color: "#556677", border: "none", cursor: "pointer", fontSize: 16, padding: "2px 6px" }}>✕</button>
+            </div>
+            {candChartLoading ? (
+              <div style={{ height: 300, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(8,15,30,0.6)", borderRadius: 8 }}>
+                <span style={{ color: "#6688aa", fontSize: 13 }}>📊 차트 로딩 중...</span>
+              </div>
+            ) : candChartCandles && candChartCandles.length > 0 ? (
+              <>
+                <StockChart candles={candChartCandles.slice(0, 100)} />
+                {candQuoteData && (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 8, marginTop: 8, background: "rgba(8,15,30,0.6)", borderRadius: 8, padding: 10 }}>
+                    {[
+                      ["현재가", fmt(candQuoteData.price), clr(candQuoteData.change)],
+                      ["전일대비", `${candQuoteData.change >= 0 ? "+" : ""}${fmt(candQuoteData.change)}`, clr(candQuoteData.change)],
+                      ["등락률", `${candQuoteData.change_rate >= 0 ? "+" : ""}${candQuoteData.change_rate}%`, clr(candQuoteData.change_rate)],
+                      ["시가", fmt(candQuoteData.open), "#e0e6f0"],
+                      ["고가", fmt(candQuoteData.high), "#ff4444"],
+                      ["저가", fmt(candQuoteData.low), "#4488ff"],
+                    ].map(([label, val, color]) => (
+                      <div key={label} style={{ textAlign: "center" }}>
+                        <div style={{ color: "#556677", fontSize: 9 }}>{label}</div>
+                        <div style={{ color, fontSize: 12, fontWeight: 600, fontFamily: "monospace" }}>{val}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : (
+              <div style={{ height: 200, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(8,15,30,0.6)", borderRadius: 8 }}>
+                <span style={{ color: "#556677", fontSize: 12 }}>차트 데이터를 불러올 수 없습니다</span>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* 보유종목 테이블 */}
         <div style={{ ...S.panel, flex: "1 1 600px" }}>
