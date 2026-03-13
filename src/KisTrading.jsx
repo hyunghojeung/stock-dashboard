@@ -2767,9 +2767,7 @@ function StockChart({ candles, buyDate, buyPrice, sellDate, sellPrice, pos }) {
 function AutoTradePanel({ mode = "virtual" }) {
   const [monitoring, setMonitoring] = useState(false);
   const [logs, setLogs] = useState([]);
-  const [positions, setPositions] = useState([]); // KIS 잔고
-  const [managedPositions, setManagedPositions] = useState([]); // 스마트 매매 관리 포지션
-  const [loadingBal, setLoadingBal] = useState(false);
+  const [positions, setPositions] = useState([]);
   const intervalRef = useRef(null);
   const checkRef = useRef(null);
   const [intervalSec, setIntervalSec] = useState(30);
@@ -2779,25 +2777,10 @@ function AutoTradePanel({ mode = "virtual" }) {
     setLogs(prev => [{ time: new Date().toLocaleTimeString('ko-KR'), msg }, ...prev].slice(0, 50));
   }, []);
 
-  // 스마트 매매 관리 포지션 조회 (백엔드 DB)
-  const loadManagedPositions = useCallback(async () => {
-    try {
-      const activeMode = getKisActiveMode();
-      const accountType = activeMode === "real" ? "real" : "virtual";
-      const r = await fetch(`${BACKEND_API}/api/kis/strategy/positions?account_type=${accountType}&status=holding`);
-      const data = await r.json();
-      if (data?.positions) setManagedPositions(data.positions);
-    } catch (e) {
-      console.error("managed positions 조회 실패:", e);
-    }
-  }, []);
-
   // 잔고 조회
   const loadPositions = useCallback(async () => {
-    setLoadingBal(true);
     const r = await kisApi("balance");
     if (r?.success && r.positions) setPositions(r.positions);
-    setLoadingBal(false);
   }, []);
 
   // 스마트 매매 체크 1회 실행 (서버 API 호출)
@@ -2830,13 +2813,11 @@ function AutoTradePanel({ mode = "virtual" }) {
         });
       }
       addLog("체크 완료");
-      // 관리 포지션 갱신
-      await loadManagedPositions();
       if (signals > 0) await loadPositions();
     } catch (e) {
       addLog(`❌ 체크 오류: ${e.message}`);
     }
-  }, [addLog, loadManagedPositions, loadPositions]);
+  }, [addLog, loadPositions]);
 
   // checkRef 항상 최신 유지
   useEffect(() => { checkRef.current = checkAndExecute; }, [checkAndExecute]);
@@ -2880,10 +2861,8 @@ function AutoTradePanel({ mode = "virtual" }) {
     }
 
     (async () => {
-      setLoadingBal(true);
-      const [balR] = await Promise.all([kisApi("balance"), loadManagedPositions()]);
+      const balR = await kisApi("balance");
       if (balR?.success && balR.positions) setPositions(balR.positions);
-      setLoadingBal(false);
 
       // 30초 간격 자동 모니터링 시작
       setIntervalSec(30);
@@ -2955,89 +2934,6 @@ function AutoTradePanel({ mode = "virtual" }) {
             {monitoring ? '⏹ 정지' : '▶ 모니터링 시작'}
           </button>
         </div>
-      </div>
-
-      {/* 스마트 매매 관리 포지션 현황 */}
-      <div style={S.panel}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#e0e6f0' }}>
-            스마트 매매 관리 종목 ({managedPositions.length}개)
-          </div>
-          <button onClick={async () => { await loadManagedPositions(); await loadPositions(); }} disabled={loadingBal}
-            style={{ ...S.btn('#333', '#444'), padding: '6px 14px', fontSize: 11 }}>
-            {loadingBal ? '조회 중...' : '새로고침'}
-          </button>
-        </div>
-        {managedPositions.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 24, color: '#556677', fontSize: 12 }}>
-            스마트 매매 관리 종목이 없습니다 (예비후보 자동매수 시 자동 등록)
-          </div>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr>
-                  {['종목', '전략', '매수가', '현재가', '수익률', '최고가', '추적활성', '보유일', '손절%', '추적손절%', '최대보유일'].map(h =>
-                    <th key={h} style={S.th}>{h}</th>
-                  )}
-                </tr>
-              </thead>
-              <tbody>
-                {managedPositions.map(mp => {
-                  const pos = positions.find(p => p.stock_code === mp.stock_code);
-                  const pRate = mp.profit_pct || pos?.profit_rate || 0;
-                  const holdDays = mp.hold_days || 0;
-                  const peakPrice = mp.peak_price || 0;
-                  const trailingOn = mp.trailing_activated || false;
-                  return (
-                    <tr key={mp.id} style={{ borderBottom: '1px solid rgba(100,140,200,0.08)' }}>
-                      <td style={{ ...S.td, color: '#e0e6f0', fontWeight: 600 }}>
-                        <span onClick={() => openChart(mp.stock_code, mp.stock_name)}
-                          style={{ cursor: 'pointer', borderBottom: '1px dashed rgba(100,140,200,0.3)' }}
-                          title="클릭하여 차트 보기">
-                          {mp.stock_name}
-                        </span>
-                        <span style={{ color: '#6688aa', fontSize: 10, marginLeft: 4 }}>{mp.stock_code}</span>
-                      </td>
-                      <td style={{ ...S.td, fontSize: 10 }}>
-                        <span style={{ padding: '2px 6px', borderRadius: 4, fontSize: 10, fontWeight: 600, background: 'rgba(255,152,0,0.2)', color: '#ff9800' }}>
-                          🧠스마트
-                        </span>
-                      </td>
-                      <td style={{ ...S.td, color: '#8899bb', fontFamily: 'monospace', fontSize: 11 }}>{fmt(mp.buy_price)}</td>
-                      <td style={{ ...S.td, color: '#e0e6f0', fontFamily: 'monospace', fontSize: 11 }}>{fmt(mp.current_price || pos?.current_price || 0)}</td>
-                      <td style={{ ...S.td, fontFamily: 'monospace', fontWeight: 600, color: clr(pRate) }}>
-                        {pRate >= 0 ? '+' : ''}{pRate.toFixed(2)}%
-                      </td>
-                      <td style={{ ...S.td, color: '#ffd54f', fontFamily: 'monospace', fontSize: 11 }}>{fmt(peakPrice)}</td>
-                      <td style={{ ...S.td, textAlign: 'center' }}>
-                        {trailingOn
-                          ? <span style={{ color: '#4cff8b', fontSize: 10, fontWeight: 600 }}>● 활성</span>
-                          : <span style={{ color: '#556677', fontSize: 10 }}>대기</span>
-                        }
-                      </td>
-                      <td style={{ ...S.td, fontFamily: 'monospace', fontSize: 11, color: holdDays >= (mp.max_hold_days || 30) - 3 ? '#ff9800' : '#8899bb' }}>
-                        {holdDays}일
-                      </td>
-                      <td style={{ ...S.td, color: '#ff6b6b', fontFamily: 'monospace', fontSize: 11 }}>{mp.stop_loss_pct || 12}%</td>
-                      <td style={{ ...S.td, color: '#64b5f6', fontFamily: 'monospace', fontSize: 11 }}>{mp.trailing_stop_pct || 5}%</td>
-                      <td style={{ ...S.td, color: '#8899bb', fontFamily: 'monospace', fontSize: 11 }}>{mp.max_hold_days || 30}일</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-        {/* 전략 요약 */}
-        {managedPositions.length > 0 && (
-          <div style={{ marginTop: 8, padding: '8px 12px', background: 'rgba(10,18,40,0.6)', borderRadius: 8, display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 10, color: '#6688aa' }}>
-            <span>손절: 종가 기준 -{managedPositions[0]?.stop_loss_pct || 12}% 이하 매도</span>
-            <span>추적손절: 수익 +{managedPositions[0]?.profit_activation_pct || 15}% 달성 후 최고가 대비 -{managedPositions[0]?.trailing_stop_pct || 5}% 하락 시 매도</span>
-            <span>만기: {managedPositions[0]?.max_hold_days || 30}일 초과 시 청산</span>
-            <span>유예: 매수 후 {managedPositions[0]?.grace_days || 7}일간 손절/추적 유예</span>
-          </div>
-        )}
       </div>
 
       {/* 실행 로그 */}
