@@ -943,49 +943,18 @@ function BalancePanel() {
   const remaining = Math.max(0, GOAL - totalAssets);
   const cashRatio = totalAssets > 0 ? (summary.deposit / totalAssets * 100) : 0;
   const investRatio = 100 - cashRatio;
-  // 당일 손익: localStorage에 전일 자산 저장하여 계산
-  const todayStr = new Date().toISOString().slice(0, 10);
-  const PREV_ASSETS_KEY = "kis_prev_total_assets";
-  let prevAssets = 0;
-  let dailyPnl = summary.daily_pnl || 0;
-  try {
-    const saved = JSON.parse(localStorage.getItem(PREV_ASSETS_KEY) || "{}");
-    // 저장된 날짜가 오늘이 아니면 = 전일 데이터 → prevAssets로 사용
-    if (saved.date && saved.date !== todayStr && saved.assets > 0) {
-      prevAssets = saved.assets;
-      dailyPnl = totalAssets - prevAssets;
-    }
-    // 오늘 날짜로 현재 자산 저장 (마지막 조회 시점의 자산)
-    // 날짜가 바뀌면 이전 값이 prevAssets가 됨
-    if (!saved.date || saved.date !== todayStr) {
-      // 날짜가 바뀌었으면 이전 데이터를 prev로 보관하고 오늘 시작
-      localStorage.setItem(PREV_ASSETS_KEY, JSON.stringify({ date: todayStr, assets: totalAssets, prev_date: saved.date, prev_assets: saved.assets }));
-    } else {
-      // 같은 날이면 자산만 업데이트 (장중 갱신)
-      localStorage.setItem(PREV_ASSETS_KEY, JSON.stringify({ ...saved, assets: totalAssets }));
-      // 같은 날이지만 prev_assets가 있으면 그걸로 계산
-      if (saved.prev_assets > 0) {
-        prevAssets = saved.prev_assets;
-        dailyPnl = totalAssets - prevAssets;
-      }
-    }
-  } catch {}
-  // KIS API 값이 있으면 우선 사용
-  if (summary.prev_total_assets > 0) {
-    prevAssets = summary.prev_total_assets;
-    dailyPnl = totalAssets - prevAssets;
-  }
+  // 수익률: API 값이 0이면 직접 계산 (총손익 / 총매입 * 100)
+  const profitRate = summary.profit_rate || (summary.total_buy > 0 ? (summary.total_profit / summary.total_buy * 100) : 0);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       {/* ★ 상단 요약 카드 2행 */}
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-        {/* 주요 4카드: 추정자산, 총손익, 수익률, 당일손익 */}
+        {/* 주요 3카드: 추정자산, 총손익, 수익률 */}
         {[
           ["💰", "추정자산", `${fmt(totalAssets)}원`, clr(summary.total_profit), null],
           ["📊", "총 손익", fmtWon(summary.total_profit), clr(summary.total_profit), null],
-          ["📈", "수익률", fmtPct(summary.profit_rate), clr(summary.profit_rate), null],
-          ["📅", "당일 손익", fmtWon(dailyPnl), clr(dailyPnl), prevAssets > 0 ? `전일 ${fmt(prevAssets)}원 → 금일 ${fmt(totalAssets)}원` : null],
+          ["📈", "수익률", fmtPct(profitRate), clr(profitRate), null],
         ].map(([icon, title, value, color, sub]) => (
           <div key={title} style={{ ...S.panel, flex: 1, minWidth: 160 }}>
             <div style={{ color: "#6688aa", fontSize: 11, marginBottom: 4 }}>{icon} {title}</div>
