@@ -774,7 +774,7 @@ function BalancePanel() {
       if (c?.success) setChartCandles(c.candles);
       setChartLoading(false);
     }
-  }, []);
+  }, [mode]);
 
   const loadOrders = useCallback(async () => {
     setOrdersLoading(true);
