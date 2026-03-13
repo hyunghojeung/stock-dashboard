@@ -2761,195 +2761,84 @@ function StockChart({ candles, buyDate, buyPrice, sellDate, sellPrice, pos }) {
 }
 
 // ============================================================
-// Auto Trade Panel (자동 손절/익절)
+// Auto Trade Panel (스마트 매매 모니터링)
 // ============================================================
-const AUTO_TRADE_STORAGE_KEY = "kis_auto_trade_rules";
 
 function AutoTradePanel({ mode = "virtual" }) {
-  // 패턴탐지기 전략 동기화: localStorage에서 읽기
-  const initStrategy = (() => {
-    try { return JSON.parse(localStorage.getItem('kis_auto_trade_strategy')) || {}; } catch { return {}; }
-  })();
-
-  const [rules, setRules] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(`${AUTO_TRADE_STORAGE_KEY}_${mode}`) || "[]"); } catch { return []; }
-  });
   const [monitoring, setMonitoring] = useState(false);
   const [logs, setLogs] = useState([]);
-  const [positions, setPositions] = useState([]);
+  const [positions, setPositions] = useState([]); // KIS 잔고
+  const [managedPositions, setManagedPositions] = useState([]); // 스마트 매매 관리 포지션
   const [loadingBal, setLoadingBal] = useState(false);
   const intervalRef = useRef(null);
-  const checkRef = useRef(null); // 최신 checkAndExecute 참조용
+  const checkRef = useRef(null);
   const [intervalSec, setIntervalSec] = useState(30);
-  const [globalTP, setGlobalTP] = useState(initStrategy.tp ?? 7);
-  const [globalSL, setGlobalSL] = useState(initStrategy.sl ?? 3);
-  const [globalMaxDays, setGlobalMaxDays] = useState(initStrategy.days ?? 10);
-
-  // 규칙 저장
-  const saveRules = useCallback((r) => {
-    setRules(r);
-    try { localStorage.setItem(`${AUTO_TRADE_STORAGE_KEY}_${mode}`, JSON.stringify(r)); } catch {}
-    // ★ 서버사이드 자동매매에도 동기화
-    syncRulesToBackend(mode, r);
-  }, [mode]);
-
-  // 잔고 조회 → 보유종목 로드
-  const loadPositions = useCallback(async () => {
-    setLoadingBal(true);
-    const r = await kisApi("balance");
-    if (r?.success && r.positions) {
-      setPositions(r.positions);
-      // 새 종목이 추가되었으면 규칙에 자동 등록
-      const existing = new Set(rules.map(r => r.stock_code));
-      const newRules = [...rules];
-      r.positions.forEach(p => {
-        if (!existing.has(p.stock_code)) {
-          // ★ initStrategy에서 스마트형 파라미터 가져오기
-          const _tr = initStrategy.trailing ?? 0;
-          const _gr = initStrategy.grace ?? 0;
-          const _act = initStrategy.activation ?? 15;
-          const _stType = _tr > 0 ? 'smart' : 'fixed';
-          newRules.push({
-            stock_code: p.stock_code,
-            stock_name: p.stock_name,
-            take_profit_pct: globalTP,
-            stop_loss_pct: globalSL,
-            max_hold_days: globalMaxDays,
-            enabled: true,
-            buy_date: new Date().toISOString().slice(0, 10),
-            strategy: _stType,
-            trailing_stop_pct: _tr,
-            profit_activation_pct: _act,
-            grace_days: _gr,
-            peak_price: 0,
-          });
-        }
-      });
-      if (newRules.length !== rules.length) saveRules(newRules);
-    }
-    setLoadingBal(false);
-  }, [rules, globalTP, globalSL, globalMaxDays, saveRules]);
 
   // 로그 추가
   const addLog = useCallback((msg) => {
     setLogs(prev => [{ time: new Date().toLocaleTimeString('ko-KR'), msg }, ...prev].slice(0, 50));
   }, []);
 
-  // 자동매매 체크 1회 실행
-  const checkAndExecute = useCallback(async () => {
-    addLog("잔고 조회 중...");
-    const bal = await kisApi("balance");
-    if (!bal?.success) { addLog("❌ 잔고 조회 실패"); return; }
-
-    const posMap = {};
-    (bal.positions || []).forEach(p => { posMap[p.stock_code] = p; });
-    setPositions(bal.positions || []);
-
-    const activeRules = rules.filter(r => r.enabled && posMap[r.stock_code]);
-    if (activeRules.length === 0) { addLog("활성 규칙 없음 (보유종목 매칭 0건)"); return; }
-
-    addLog(`${activeRules.length}개 종목 모니터링 중...`);
-    const journalMode = mode === 'real' ? 'real' : 'mock';
-
-    for (const rule of activeRules) {
-      const pos = posMap[rule.stock_code];
-      const profitRate = pos.profit_rate || 0;
-      const holdDays = rule.buy_date
-        ? Math.floor((Date.now() - new Date(rule.buy_date).getTime()) / 86400000)
-        : 0;
-      const stratType = rule.strategy || 'fixed';
-
-      let reason = null;
-
-      if (stratType === 'smart') {
-        // ━━━ 스마트형: 트레일링 스탑 ━━━
-        // const graceD = rule.grace_days ?? 7;  // ★ 유예기간 보류
-        const slPct = rule.stop_loss_pct ?? 12;
-        const trailingPct = rule.trailing_stop_pct ?? 5;
-        const activationPct = rule.profit_activation_pct ?? 15;
-        let peak = rule.peak_price ?? 0;
-        // peak_price 업데이트
-        if (pos.current_price > peak) {
-          peak = pos.current_price;
-          saveRules(rules.map(r => r.stock_code === rule.stock_code ? { ...r, peak_price: peak } : r));
-        }
-        if (holdDays > 0) {  // ★ 유예기간 보류 (기존: holdDays > graceD)
-          const peakProfit = peak > 0 && rule.buy_price > 0 ? ((peak - rule.buy_price) / rule.buy_price * 100) : 0;
-          if (peakProfit >= activationPct && peak > 0) {
-            const dropFromPeak = ((pos.current_price - peak) / peak * 100);
-            if (dropFromPeak <= -trailingPct) {
-              reason = `트레일링 (최고${peakProfit.toFixed(1)}%→현재${profitRate.toFixed(1)}%, 하락${dropFromPeak.toFixed(1)}%)`;
-            }
-          }
-          if (!reason && profitRate <= -slPct) {
-            reason = `손절 (수익률 ${profitRate.toFixed(2)}% ≤ -${slPct}%)`;
-          }
-        }
-        if (!reason && rule.max_hold_days > 0 && holdDays >= rule.max_hold_days) {
-          reason = `만기매도 (보유 ${holdDays}일 ≥ ${rule.max_hold_days}일)`;
-        }
-      } else {
-        // ━━━ 고정형: 기존 로직 ━━━
-        if (profitRate >= rule.take_profit_pct) reason = `익절 (수익률 ${profitRate.toFixed(2)}% ≥ ${rule.take_profit_pct}%)`;
-        else if (profitRate <= -rule.stop_loss_pct) reason = `손절 (수익률 ${profitRate.toFixed(2)}% ≤ -${rule.stop_loss_pct}%)`;
-        else if (rule.max_hold_days > 0 && holdDays >= rule.max_hold_days) reason = `만기매도 (보유 ${holdDays}일 ≥ ${rule.max_hold_days}일)`;
-      }
-
-      if (!reason) {
-        const tag = stratType === 'smart' ? '[스마트]' : '[고정]';
-        addLog(`  ${pos.stock_name}(${pos.stock_code}) ${tag} 수익률 ${profitRate >= 0 ? '+' : ''}${profitRate.toFixed(2)}% → 유지`);
-        continue;
-      }
-
-      // 자동 매도 실행
-      addLog(`🔔 ${pos.stock_name}(${pos.stock_code}) [${stratType}] ${reason} → 시장가 매도 실행`);
-      const sellResult = await kisApi("order/sell", {}, {
-        method: "POST",
-        body: JSON.stringify({
-          stock_code: pos.stock_code,
-          qty: pos.qty,
-          price: 0,
-          order_type: "01", // 시장가
-        }),
-      });
-
-      if (sellResult?.success) {
-        addLog(`✅ ${pos.stock_name} 매도 성공! 주문번호: ${sellResult.order_no}`);
-
-        // 매매 일지 자동 기록
-        try {
-          const realizedPnl = pos.profit_loss || 0;
-          const realizedPnlPct = pos.profit_rate || 0;
-          await supabase.from('trade_journal').insert({
-            mode: journalMode,
-            trade_type: 'sell',
-            stock_code: pos.stock_code,
-            stock_name: pos.stock_name,
-            price: pos.current_price,
-            quantity: pos.qty,
-            amount: pos.current_price * pos.qty,
-            realized_pnl: realizedPnl,
-            realized_pnl_pct: Math.round(realizedPnlPct * 100) / 100,
-            cash_balance: (bal.summary?.deposit || 0) + pos.eval_amount,
-            order_no: sellResult.order_no || '',
-            memo: `자동매매 ${reason}`,
-            trade_date: new Date().toISOString(),
-          });
-          addLog(`📋 매매 일지 기록 완료: ${pos.stock_name} ${reason}`);
-        } catch (e) {
-          addLog(`⚠️ 매매 일지 기록 실패: ${e.message}`);
-        }
-
-        // 매도된 종목 규칙 비활성화
-        saveRules(rules.map(r => r.stock_code === pos.stock_code ? { ...r, enabled: false } : r));
-      } else {
-        addLog(`❌ ${pos.stock_name} 매도 실패: ${sellResult?.message || sellResult?.detail || '알 수 없는 오류'}`);
-      }
+  // 스마트 매매 관리 포지션 조회 (백엔드 DB)
+  const loadManagedPositions = useCallback(async () => {
+    try {
+      const activeMode = getKisActiveMode();
+      const accountType = activeMode === "real" ? "real" : "virtual";
+      const r = await fetch(`${BACKEND_API}/api/kis/strategy/positions?account_type=${accountType}&status=holding`);
+      const data = await r.json();
+      if (data?.positions) setManagedPositions(data.positions);
+    } catch (e) {
+      console.error("managed positions 조회 실패:", e);
     }
-    addLog("체크 완료");
-  }, [rules, mode, addLog, saveRules]);
+  }, []);
 
-  // checkRef를 항상 최신 checkAndExecute로 유지 (interval 내 stale closure 방지)
+  // 잔고 조회
+  const loadPositions = useCallback(async () => {
+    setLoadingBal(true);
+    const r = await kisApi("balance");
+    if (r?.success && r.positions) setPositions(r.positions);
+    setLoadingBal(false);
+  }, []);
+
+  // 스마트 매매 체크 1회 실행 (서버 API 호출)
+  const checkAndExecute = useCallback(async () => {
+    addLog("스마트 매매 체크 중...");
+    try {
+      const activeMode = getKisActiveMode();
+      const accountType = activeMode === "real" ? "real" : "virtual";
+      const r = await fetch(`${BACKEND_API}/api/kis/strategy/check?account_type=${accountType}&auto_sell=true`, { method: "POST" });
+      const data = await r.json();
+      if (data?.error) {
+        addLog(`❌ 체크 실패: ${data.error}`);
+        return;
+      }
+      const checked = data.checked || 0;
+      const signals = data.signals_count || 0;
+      if (signals > 0) {
+        addLog(`🔔 체크 ${checked}건 / 매도 신호 ${signals}건`);
+        // 매도 결과 표시
+        (data.results || []).forEach(r => {
+          if (r.signal && r.signal !== "HOLD") {
+            const icon = r.sell_success ? "✅" : r.signal?.includes("SELL") ? "🔔" : "";
+            addLog(`  ${icon} ${r.stock_name}(${r.stock_code}) [${r.signal}] 수익률 ${r.profit_pct >= 0 ? "+" : ""}${r.profit_pct?.toFixed(2)}%`);
+          }
+        });
+      } else {
+        // 각 종목 상태 간략 표시
+        (data.results || []).forEach(r => {
+          addLog(`  ${r.stock_name}(${r.stock_code}) [스마트] 수익률 ${r.profit_pct >= 0 ? "+" : ""}${r.profit_pct?.toFixed(2)}% → 유지`);
+        });
+      }
+      addLog("체크 완료");
+      // 관리 포지션 갱신
+      await loadManagedPositions();
+      if (signals > 0) await loadPositions();
+    } catch (e) {
+      addLog(`❌ 체크 오류: ${e.message}`);
+    }
+  }, [addLog, loadManagedPositions, loadPositions]);
+
+  // checkRef 항상 최신 유지
   useEffect(() => { checkRef.current = checkAndExecute; }, [checkAndExecute]);
 
   // 모니터링 시작/정지
@@ -2977,72 +2866,26 @@ function AutoTradePanel({ mode = "virtual" }) {
   // 컴포넌트 언마운트 시 정리
   useEffect(() => () => { if (intervalRef.current) clearInterval(intervalRef.current); }, []);
 
-  // ── 마운트 시 자동 초기화: 백그라운드 인계 + 보유종목 로드 + 전략 동기화 + 모니터링 시작 ──
+  // 마운트 시 자동 초기화
   const autoInitRef = useRef(false);
   useEffect(() => {
     if (autoInitRef.current) return;
     autoInitRef.current = true;
 
-    // 0. 백그라운드 글로벌 모니터가 실행 중이면 인계 (중복 방지)
+    // 백그라운드 글로벌 모니터 인계
     if (isKisAutoTradeRunning(mode)) {
       stopKisAutoTrade(mode);
-      // 백그라운드 로그 가져오기
       const bgLogs = getKisAutoTradeLogs(mode);
       if (bgLogs.length > 0) setLogs(bgLogs);
     }
 
-    // 1. 패턴탐지기 전략값으로 기존 규칙 동기화
-    const tp = initStrategy.tp ?? 7;
-    const sl = initStrategy.sl ?? 3;
-    const days = initStrategy.days ?? 10;
-    // ★ 스마트형 트레일링 스탑 파라미터
-    const trailing = initStrategy.trailing ?? 0;
-    const grace = initStrategy.grace ?? 0;
-    const activation = initStrategy.activation ?? 15;
-    const strategyType = trailing > 0 ? 'smart' : 'fixed';
-    setRules(prev => {
-      if (prev.length === 0) return prev;
-      const updated = prev.map(r => ({
-        ...r, take_profit_pct: tp, stop_loss_pct: sl, max_hold_days: days,
-        strategy: strategyType, trailing_stop_pct: trailing,
-        profit_activation_pct: activation, grace_days: grace,
-      }));
-      try { localStorage.setItem(`${AUTO_TRADE_STORAGE_KEY}_${mode}`, JSON.stringify(updated)); } catch {}
-      return updated;
-    });
-
-    // 2. 보유종목 자동 로드 → 완료 후 모니터링 자동 시작
     (async () => {
       setLoadingBal(true);
-      const r = await kisApi("balance");
-      if (r?.success && r.positions) {
-        setPositions(r.positions);
-        setRules(prev => {
-          const existing = new Set(prev.map(x => x.stock_code));
-          const newRules = [...prev];
-          r.positions.forEach(p => {
-            if (!existing.has(p.stock_code)) {
-              newRules.push({
-                stock_code: p.stock_code, stock_name: p.stock_name,
-                take_profit_pct: tp, stop_loss_pct: sl, max_hold_days: days,
-                enabled: true, buy_date: new Date().toISOString().slice(0, 10),
-                strategy: strategyType,
-                trailing_stop_pct: trailing,
-                profit_activation_pct: activation,
-                grace_days: grace,
-                peak_price: 0,
-              });
-            }
-          });
-          if (newRules.length !== prev.length) {
-            try { localStorage.setItem(`${AUTO_TRADE_STORAGE_KEY}_${mode}`, JSON.stringify(newRules)); } catch {}
-          }
-          return newRules;
-        });
-      }
+      const [balR] = await Promise.all([kisApi("balance"), loadManagedPositions()]);
+      if (balR?.success && balR.positions) setPositions(balR.positions);
       setLoadingBal(false);
 
-      // 3. 30초 간격 자동 모니터링 시작
+      // 30초 간격 자동 모니터링 시작
       setIntervalSec(30);
       setMonitoring(true);
       addLog(`▶️ 자동 모니터링 시작 (30초 간격)`);
@@ -3050,47 +2893,11 @@ function AutoTradePanel({ mode = "virtual" }) {
         checkRef.current?.();
         intervalRef.current = setInterval(() => checkRef.current?.(), 30 * 1000);
       }, 500);
-
-      // 4. ★ 서버사이드 자동매매를 위해 백엔드에 규칙 동기화
-      try {
-        const currentRules = JSON.parse(localStorage.getItem(`${AUTO_TRADE_STORAGE_KEY}_${mode}`) || '[]');
-        if (currentRules.length > 0) syncRulesToBackend(mode, currentRules);
-      } catch {}
     })();
-
-    // autostart 플래그 소비
-    try { localStorage.removeItem(`kis_auto_trade_sync_${mode}`); } catch {}
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 규칙 수정
-  const updateRule = (code, field, value) => {
-    saveRules(rules.map(r => r.stock_code === code ? { ...r, [field]: value } : r));
-  };
-
-  const removeRule = (code) => saveRules(rules.filter(r => r.stock_code !== code));
-
-  // 전체 일괄 설정
-  const applyGlobalSettings = () => {
-    // ★ 현재 전략 설정도 함께 반영
-    const _tr = initStrategy.trailing ?? 0;
-    const _gr = initStrategy.grace ?? 0;
-    const _act = initStrategy.activation ?? 15;
-    const _stType = _tr > 0 ? 'smart' : 'fixed';
-    saveRules(rules.map(r => ({
-      ...r,
-      take_profit_pct: globalTP,
-      stop_loss_pct: globalSL,
-      max_hold_days: globalMaxDays,
-      strategy: _stType,
-      trailing_stop_pct: _tr,
-      profit_activation_pct: _act,
-      grace_days: _gr,
-    })));
-    addLog(`전체 규칙 일괄 변경: 익절 ${globalTP}% / 손절 ${globalSL}% / 최대보유 ${globalMaxDays}일 / 전략: ${_stType}`);
-  };
-
   // ── 종목 차트 모달 ──
-  const [chartStock, setChartStock] = useState(null); // { stock_code, stock_name }
+  const [chartStock, setChartStock] = useState(null);
   const [chartCandles, setChartCandles] = useState(null);
   const [chartQuote, setChartQuote] = useState(null);
   const [chartLoading, setChartLoading] = useState(false);
@@ -3110,7 +2917,6 @@ function AutoTradePanel({ mode = "virtual" }) {
   };
 
   const isVirtual = mode === 'virtual';
-  const accent = isVirtual ? '#60a5fa' : '#ef4444';
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -3118,10 +2924,10 @@ function AutoTradePanel({ mode = "virtual" }) {
       <div style={{ ...S.panel, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
         <div>
           <div style={{ fontSize: 15, fontWeight: 700, color: '#e0e6f0', marginBottom: 4 }}>
-            🤖 자동 손절/익절
+            🧠 스마트 매매 모니터링
           </div>
           <div style={{ fontSize: 11, color: '#6688aa' }}>
-            보유종목 수익률을 주기적으로 체크하여 조건 도달 시 자동 시장가 매도 · 탭 진입 시 자동 시작
+            대시보드 스마트 매매로 등록된 종목을 주기적으로 체크 · 트레일링/손절/만기 자동 매도
           </div>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 4, padding: '2px 8px', background: 'rgba(0,200,120,0.15)', borderRadius: 10, border: '1px solid rgba(0,200,120,0.3)' }}>
             <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#00c878', display: 'inline-block' }} />
@@ -3151,106 +2957,88 @@ function AutoTradePanel({ mode = "virtual" }) {
         </div>
       </div>
 
-      {/* 전체 규칙 설정 */}
-      <div style={{ ...S.panel }}>
+      {/* 스마트 매매 관리 포지션 현황 */}
+      <div style={S.panel}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#e0e6f0' }}>전체 규칙 설정</div>
-          {initStrategy.tp != null && (
-            <span style={{ fontSize: 10, color: '#4cff8b', opacity: 0.8 }}>
-              🔗 패턴탐지기 전략 동기화됨 (익절 {initStrategy.tp}% / 손절 {initStrategy.sl}% / {initStrategy.days}일)
-            </span>
-          )}
-        </div>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-          <div>
-            <label style={S.label}>익절 (%)</label>
-            <input type="number" value={globalTP} onChange={e => setGlobalTP(Number(e.target.value))}
-              style={{ ...S.input, width: 80 }} />
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#e0e6f0' }}>
+            스마트 매매 관리 종목 ({managedPositions.length}개)
           </div>
-          <div>
-            <label style={S.label}>손절 (%)</label>
-            <input type="number" value={globalSL} onChange={e => setGlobalSL(Number(e.target.value))}
-              style={{ ...S.input, width: 80 }} />
-          </div>
-          <div>
-            <label style={S.label}>최대보유 (일)</label>
-            <input type="number" value={globalMaxDays} onChange={e => setGlobalMaxDays(Number(e.target.value))}
-              style={{ ...S.input, width: 80 }} />
-          </div>
-          <button onClick={applyGlobalSettings} style={{ ...S.btn(), padding: '8px 16px', fontSize: 12 }}>전체 적용</button>
-          <button onClick={loadPositions} disabled={loadingBal}
-            style={{ ...S.btn('#333', '#444'), padding: '8px 16px', fontSize: 12 }}>
-            {loadingBal ? '조회 중...' : '보유종목 새로고침'}
+          <button onClick={async () => { await loadManagedPositions(); await loadPositions(); }} disabled={loadingBal}
+            style={{ ...S.btn('#333', '#444'), padding: '6px 14px', fontSize: 11 }}>
+            {loadingBal ? '조회 중...' : '새로고침'}
           </button>
         </div>
-      </div>
-
-      {/* 종목별 규칙 */}
-      {rules.length > 0 && (
-        <div style={S.panel}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#e0e6f0', marginBottom: 10 }}>
-            종목별 규칙 ({rules.length}개)
+        {managedPositions.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: 24, color: '#556677', fontSize: 12 }}>
+            대시보드에서 스마트 매매 전략 체크를 실행하면 보유종목이 자동 등록됩니다
           </div>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                {['활성', '종목', '전략', '익절%', '손절%', '최대보유일', '현재수익률', '삭제'].map(h =>
-                  <th key={h} style={S.th}>{h}</th>
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {rules.map(r => {
-                const pos = positions.find(p => p.stock_code === r.stock_code);
-                const pRate = pos?.profit_rate || 0;
-                return (
-                  <tr key={r.stock_code}>
-                    <td style={S.td}>
-                      <input type="checkbox" checked={r.enabled} onChange={e => updateRule(r.stock_code, 'enabled', e.target.checked)} />
-                    </td>
-                    <td style={{ ...S.td, color: '#e0e6f0', fontWeight: 600 }}>
-                      <span onClick={() => openChart(r.stock_code, r.stock_name)}
-                        style={{ cursor: 'pointer', borderBottom: '1px dashed rgba(100,140,200,0.3)' }}
-                        title="클릭하여 차트 보기">
-                        {r.stock_name}
-                      </span> <span style={{ color: '#6688aa', fontSize: 10 }}>{r.stock_code}</span>
-                    </td>
-                    <td style={{ ...S.td, fontSize: 10 }}>
-                      <span style={{
-                        padding: '2px 6px', borderRadius: 4, fontSize: 10, fontWeight: 600,
-                        background: r.strategy === 'smart' ? 'rgba(255,152,0,0.2)' : 'rgba(100,140,200,0.15)',
-                        color: r.strategy === 'smart' ? '#ff9800' : '#8899bb',
-                      }}>
-                        {r.strategy === 'smart' ? '🧠스마트' : '📊고정'}
-                      </span>
-                    </td>
-                    <td style={S.td}>
-                      <input type="number" value={r.take_profit_pct} onChange={e => updateRule(r.stock_code, 'take_profit_pct', Number(e.target.value))}
-                        style={{ ...S.input, width: 60, padding: '4px 6px', fontSize: 11 }} />
-                    </td>
-                    <td style={S.td}>
-                      <input type="number" value={r.stop_loss_pct} onChange={e => updateRule(r.stock_code, 'stop_loss_pct', Number(e.target.value))}
-                        style={{ ...S.input, width: 60, padding: '4px 6px', fontSize: 11 }} />
-                    </td>
-                    <td style={S.td}>
-                      <input type="number" value={r.max_hold_days} onChange={e => updateRule(r.stock_code, 'max_hold_days', Number(e.target.value))}
-                        style={{ ...S.input, width: 60, padding: '4px 6px', fontSize: 11 }} />
-                    </td>
-                    <td style={{ ...S.td, fontFamily: 'monospace', fontWeight: 600, color: clr(pRate) }}>
-                      {pos ? `${pRate >= 0 ? '+' : ''}${pRate.toFixed(2)}%` : '—'}
-                    </td>
-                    <td style={S.td}>
-                      <button onClick={() => removeRule(r.stock_code)} style={{
-                        background: 'transparent', border: 'none', cursor: 'pointer', color: '#ff4444', fontSize: 14,
-                      }}>✕</button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  {['종목', '전략', '매수가', '현재가', '수익률', '최고가', '추적활성', '보유일', '손절%', '추적손절%', '최대보유일'].map(h =>
+                    <th key={h} style={S.th}>{h}</th>
+                  )}
+                </tr>
+              </thead>
+              <tbody>
+                {managedPositions.map(mp => {
+                  const pos = positions.find(p => p.stock_code === mp.stock_code);
+                  const pRate = mp.profit_pct || pos?.profit_rate || 0;
+                  const holdDays = mp.hold_days || 0;
+                  const peakPrice = mp.peak_price || 0;
+                  const trailingOn = mp.trailing_activated || false;
+                  return (
+                    <tr key={mp.id} style={{ borderBottom: '1px solid rgba(100,140,200,0.08)' }}>
+                      <td style={{ ...S.td, color: '#e0e6f0', fontWeight: 600 }}>
+                        <span onClick={() => openChart(mp.stock_code, mp.stock_name)}
+                          style={{ cursor: 'pointer', borderBottom: '1px dashed rgba(100,140,200,0.3)' }}
+                          title="클릭하여 차트 보기">
+                          {mp.stock_name}
+                        </span>
+                        <span style={{ color: '#6688aa', fontSize: 10, marginLeft: 4 }}>{mp.stock_code}</span>
+                      </td>
+                      <td style={{ ...S.td, fontSize: 10 }}>
+                        <span style={{ padding: '2px 6px', borderRadius: 4, fontSize: 10, fontWeight: 600, background: 'rgba(255,152,0,0.2)', color: '#ff9800' }}>
+                          🧠스마트
+                        </span>
+                      </td>
+                      <td style={{ ...S.td, color: '#8899bb', fontFamily: 'monospace', fontSize: 11 }}>{fmt(mp.buy_price)}</td>
+                      <td style={{ ...S.td, color: '#e0e6f0', fontFamily: 'monospace', fontSize: 11 }}>{fmt(mp.current_price || pos?.current_price || 0)}</td>
+                      <td style={{ ...S.td, fontFamily: 'monospace', fontWeight: 600, color: clr(pRate) }}>
+                        {pRate >= 0 ? '+' : ''}{pRate.toFixed(2)}%
+                      </td>
+                      <td style={{ ...S.td, color: '#ffd54f', fontFamily: 'monospace', fontSize: 11 }}>{fmt(peakPrice)}</td>
+                      <td style={{ ...S.td, textAlign: 'center' }}>
+                        {trailingOn
+                          ? <span style={{ color: '#4cff8b', fontSize: 10, fontWeight: 600 }}>● 활성</span>
+                          : <span style={{ color: '#556677', fontSize: 10 }}>대기</span>
+                        }
+                      </td>
+                      <td style={{ ...S.td, fontFamily: 'monospace', fontSize: 11, color: holdDays >= (mp.max_hold_days || 30) - 3 ? '#ff9800' : '#8899bb' }}>
+                        {holdDays}일
+                      </td>
+                      <td style={{ ...S.td, color: '#ff6b6b', fontFamily: 'monospace', fontSize: 11 }}>{mp.stop_loss_pct || 12}%</td>
+                      <td style={{ ...S.td, color: '#64b5f6', fontFamily: 'monospace', fontSize: 11 }}>{mp.trailing_stop_pct || 5}%</td>
+                      <td style={{ ...S.td, color: '#8899bb', fontFamily: 'monospace', fontSize: 11 }}>{mp.max_hold_days || 30}일</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {/* 전략 요약 */}
+        {managedPositions.length > 0 && (
+          <div style={{ marginTop: 8, padding: '8px 12px', background: 'rgba(10,18,40,0.6)', borderRadius: 8, display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 10, color: '#6688aa' }}>
+            <span>손절: 종가 기준 -{managedPositions[0]?.stop_loss_pct || 12}% 이하 매도</span>
+            <span>추적손절: 수익 +{managedPositions[0]?.profit_activation_pct || 15}% 달성 후 최고가 대비 -{managedPositions[0]?.trailing_stop_pct || 5}% 하락 시 매도</span>
+            <span>만기: {managedPositions[0]?.max_hold_days || 30}일 초과 시 청산</span>
+            <span>유예: 매수 후 {managedPositions[0]?.grace_days || 7}일간 손절/추적 유예</span>
+          </div>
+        )}
+      </div>
 
       {/* 실행 로그 */}
       <div style={S.panel}>
