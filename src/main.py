@@ -73,9 +73,13 @@ async def lifespan(app: FastAPI):
                 for s in (sessions.data or []):
                     await update_realtime(s["session_id"], supabase)
 
-                # 2. KIS 모의투자 전략 체크
+                # 2. KIS 전략 체크 (모의 + 실전)
                 from kis_strategy_executor import check_and_execute_kis_positions
-                await check_and_execute_kis_positions(supabase, "virtual")
+                for acc_type in ["virtual", "real"]:
+                    try:
+                        await check_and_execute_kis_positions(supabase, acc_type)
+                    except Exception as ex2:
+                        print(f"[전략체크] {acc_type} 오류: {ex2}")
 
             except Exception as ex:
                 print(f"[전략체크] 오류: {ex}")
