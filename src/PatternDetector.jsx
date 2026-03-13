@@ -841,12 +841,17 @@ export default function PatternDetector() {
         body: JSON.stringify({ keyword: addStockKeyword.trim() }),
       });
       const data = await resp.json();
-      setAddStockResults(data.results || []);
+      const results = data.results || [];
+      setAddStockResults(results);
+      // ★ 검색 결과 나오면 자동으로 현재가 조회 (silent 모드)
+      results.forEach(stock => {
+        if (stock.code) addStockGetPrice(stock.code, true);
+      });
     } catch (e) { alert('검색 실패: ' + e.message); }
     finally { setAddStockSearching(false); }
   };
 
-  const addStockGetPrice = async (code) => {
+  const addStockGetPrice = async (code, silent = false) => {
     setAddStockPriceLoading(prev => ({ ...prev, [code]: true }));
     try {
       const resp = await fetch(`${API_BASE}/api/stocks/quote/${code}`);
@@ -856,10 +861,10 @@ export default function PatternDetector() {
           price: d.price, change: d.change || 0, change_pct: d.change_pct || 0,
           high: d.high || 0, low: d.low || 0, open: d.open || 0, volume: d.volume || 0,
         }}));
-      } else {
+      } else if (!silent) {
         alert(`시세 조회 실패: ${d.error || '알 수 없는 오류'}`);
       }
-    } catch (e) { console.error('시세조회 실패:', e); alert('시세 조회 실패: 서버 연결 오류'); }
+    } catch (e) { console.error('시세조회 실패:', e); if (!silent) alert('시세 조회 실패: 서버 연결 오류'); }
     finally { setAddStockPriceLoading(prev => ({ ...prev, [code]: false })); }
   };
 
