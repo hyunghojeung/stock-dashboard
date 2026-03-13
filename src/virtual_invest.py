@@ -869,6 +869,26 @@ async def start_realtime(
                     pos_data["pattern_id"] = stock["pattern_id"]
                 supabase.table("virtual_positions").insert(pos_data).execute()
 
+                # ── 매매 일지 자동 기록 (매수) ──
+                try:
+                    qty_int = max(1, round(per_stock / stock["buy_price"])) if stock["buy_price"] > 0 else 1
+                    supabase.table("trade_journal").insert({
+                        "mode": "virtual",
+                        "trade_type": "buy",
+                        "stock_code": stock["code"],
+                        "stock_name": stock.get("name", stock["code"]),
+                        "price": round(stock["buy_price"]),
+                        "quantity": qty_int,
+                        "amount": round(stock["buy_price"] * qty_int),
+                        "realized_pnl": 0,
+                        "realized_pnl_pct": 0,
+                        "cash_balance": round(capital - per_stock * (stocks[:MAX_POSITIONS].index(stock) + 1)),
+                        "memo": f"가상투자 자동 매수 ({session_id[:12]})",
+                        "trade_date": datetime.now().isoformat(),
+                    }).execute()
+                except Exception as je:
+                    logger.warning(f"[매매일지] 가상투자 매수 기록 실패 (무시): {je}")
+
             logger.info(f"[실시간모의] 시작: session={session_id}, 전략={strategy_type}, 종목수={num_stocks}")
 
         except Exception as e:
@@ -1002,6 +1022,49 @@ async def update_realtime(session_id: str, supabase=None) -> Dict:
                     f"[실시간모의] 매도: {pos['stock_name']}({code}) "
                     f"{signal.action} — {signal.reason} / 수익 {profit_won:,}원"
                 )
+
+                # ── 매매 일지 자동 기록 (매도) ──
+                try:
+                    new_status = signal_to_db_status(signal.action)
+                    sell_price = signal.sell_price
+                    status_label = {"sold_profit": "익절", "sold_loss": "손절", "sold_trailing": "추적매도", "sold_timeout": "만기"}.get(new_status, "자동매도")
+                    profit_pct_val = round(((sell_price - buy_price) / buy_price) * 100, 2) if buy_price > 0 else 0
+                    qty_int = max(1, round(quantity))
+
+                    # 매수 기록
+                    supabase.table("trade_journal").insert({
+                        "mode": "virtual",
+                        "trade_type": "buy",
+                        "stock_code": code,
+                        "stock_name": pos.get("stock_name", code),
+                        "price": round(buy_price),
+                        "quantity": qty_int,
+                        "amount": round(buy_price * qty_int),
+                        "realized_pnl": 0,
+                        "realized_pnl_pct": 0,
+                        "cash_balance": 0,
+                        "memo": f"가상투자 자동 매수 ({session_id[:12]})",
+                        "trade_date": pos.get("buy_date", datetime.now().strftime("%Y-%m-%d")),
+                    }).execute()
+
+                    # 매도 기록
+                    supabase.table("trade_journal").insert({
+                        "mode": "virtual",
+                        "trade_type": "sell",
+                        "stock_code": code,
+                        "stock_name": pos.get("stock_name", code),
+                        "price": round(sell_price),
+                        "quantity": qty_int,
+                        "amount": round(sell_price * qty_int),
+                        "realized_pnl": profit_won,
+                        "realized_pnl_pct": profit_pct_val,
+                        "cash_balance": 0,
+                        "memo": f"가상투자 {status_label} ({session_id[:12]})",
+                        "trade_date": datetime.now().isoformat(),
+                    }).execute()
+                    logger.info(f"[매매일지] 가상투자 {status_label} 기록: {code} {pos.get('stock_name', '')} {profit_won:+,}원")
+                except Exception as je:
+                    logger.warning(f"[매매일지] 가상투자 기록 실패 (무시): {je}")
 
             supabase.table("virtual_positions").update(update_data).eq("id", pos["id"]).execute()
             updated += 1

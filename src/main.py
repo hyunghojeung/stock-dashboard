@@ -1,8 +1,11 @@
 """FastAPI 메인 앱"""
-from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBasic
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from contextlib import asynccontextmanager
+import os
 from app.core.config import config, KST
 from app.core.scheduler import setup_scheduler
 from app.api import stock_routes, trade_routes, portfolio_routes, watchlist_routes, strategy_routes, kakao_routes
@@ -13,6 +16,7 @@ from app.api.swing_routes import router as swing_router
 from app.api.pattern_routes import router as pattern_router
 from app.api.surge_scanner_routes import router as scanner_router
 from app.api.virtual_invest_routes import router as virtual_invest_router
+from app.api.buy_candidates_routes import router as candidates_router
 
 # ★ KIS 모의투자 API
 from kis_routes import router as kis_router
@@ -131,9 +135,10 @@ app.include_router(scanner_router)
 app.include_router(pattern_router)
 app.include_router(virtual_invest_router)
 app.include_router(kis_router)
+app.include_router(candidates_router)
 
-@app.get("/")
-async def root():
+@app.get("/api/health")
+async def health():
     now = datetime.now(KST)
     return {"name": "10억 만들기", "status": "running", "market": get_market_status(now)}
 
@@ -220,6 +225,148 @@ async def collect_patterns_status():
         "started_at": _pattern_collect_state["started_at"],
         "result": _pattern_collect_state["result"],
     }
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# ★ 스캔 히스토리 저장/조회 API
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+from pydantic import BaseModel
+from typing import Optional, List, Any
+
+class ScanHistorySaveRequest(BaseModel):
+    scan_date: str
+    market: str = "ALL"
+    period_days: int = 365
+    rise_pct: float = 30
+    rise_window: int = 5
+    min_volume_ratio: float = 2.0
+    total_scanned: int = 0
+    total_found: int = 0
+    total_surges: int = 0
+    high_manip_count: int = 0
+    medium_manip_count: int = 0
+    entry_signal_count: int = 0
+    stocks: List[Any] = []
+
+@app.post("/api/scan-history/save")
+async def save_scan_history(req: ScanHistorySaveRequest):
+    """스캔 결과를 scan_history 테이블에 저장"""
+    try:
+        from app.core.database import db
+        save_data = {
+            "scan_date": req.scan_date,
+            "status": "done",
+            "market": req.market,
+            "period_days": req.period_days,
+            "rise_pct": req.rise_pct,
+            "rise_window": req.rise_window,
+            "min_volume_ratio": req.min_volume_ratio,
+            "total_scanned": req.total_scanned,
+            "total_found": req.total_found,
+            "total_surges": req.total_surges,
+            "high_manip_count": req.high_manip_count,
+            "medium_manip_count": req.medium_manip_count,
+            "entry_signal_count": req.entry_signal_count,
+            "stocks": req.stocks,
+        }
+        result = db.table("scan_history").insert(save_data).execute()
+        return {"success": True, "id": result.data[0]["id"] if result.data else None}
+    except Exception as e:
+        print(f"[scan-history] 저장 실패: {e}")
+        raise HTTPException(500, f"저장 실패: {str(e)}")
+
+@app.get("/api/scan-history/list")
+async def list_scan_history(limit: int = 20):
+    """스캔 히스토리 목록 조회 (최근 N개, stocks 제외)"""
+    try:
+        from app.core.database import db
+        resp = (
+            db.table("scan_history")
+            .select("id, scan_date, status, market, period_days, rise_pct, rise_window, min_volume_ratio, total_scanned, total_found, total_surges, high_manip_count, medium_manip_count, entry_signal_count, created_at")
+            .order("scan_date", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        return {"items": resp.data}
+    except Exception as e:
+        print(f"[scan-history] 목록 조회 실패: {e}")
+        raise HTTPException(500, f"조회 실패: {str(e)}")
+
+@app.get("/api/scan-history/{history_id}")
+async def get_scan_history_detail(history_id: int):
+    """특정 스캔 히스토리 상세 조회 (stocks 포함)"""
+    try:
+        from app.core.database import db
+        resp = (
+            db.table("scan_history")
+            .select("*")
+            .eq("id", history_id)
+            .single()
+            .execute()
+        )
+        if not resp.data:
+            raise HTTPException(404, "스캔 히스토리를 찾을 수 없습니다")
+        row = resp.data
+        return {
+            "status": "done",
+            "scan_date": row["scan_date"],
+            "market": row["market"],
+            "source": "db",
+            "stats": {
+                "total_scanned": row["total_scanned"],
+                "total_found": row["total_found"],
+                "total_surges": row["total_surges"],
+                "high_manip_count": row["high_manip_count"],
+                "medium_manip_count": row["medium_manip_count"],
+                "entry_signal_count": row["entry_signal_count"],
+            },
+            "stocks": row.get("stocks", []),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[scan-history] 상세 조회 실패: {e}")
+        raise HTTPException(500, f"조회 실패: {str(e)}")
+
+class ScanHistoryDeleteRequest(BaseModel):
+    ids: List[int]
+
+@app.post("/api/scan-history/delete")
+async def delete_scan_history(req: ScanHistoryDeleteRequest):
+    """스캔 히스토리 다중 삭제"""
+    try:
+        from app.core.database import db
+        for hid in req.ids:
+            db.table("scan_history").delete().eq("id", hid).execute()
+        return {"success": True, "deleted": len(req.ids)}
+    except Exception as e:
+        print(f"[scan-history] 삭제 실패: {e}")
+        raise HTTPException(500, f"삭제 실패: {str(e)}")
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# ★ 프론트엔드 정적 파일 서빙 (SPA)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DIST_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "dist")
+if not os.path.isdir(DIST_DIR):
+    DIST_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dist")
+
+if os.path.isdir(DIST_DIR):
+    # /assets 등 정적 파일 서빙
+    app.mount("/assets", StaticFiles(directory=os.path.join(DIST_DIR, "assets")), name="static-assets")
+
+    @app.get("/{full_path:path}")
+    async def serve_spa(request: Request, full_path: str):
+        """SPA 라우팅: API가 아닌 모든 경로는 index.html 반환"""
+        # 정적 파일 존재하면 직접 서빙
+        file_path = os.path.join(DIST_DIR, full_path)
+        if full_path and os.path.isfile(file_path):
+            return FileResponse(file_path)
+        # 그 외 모든 경로 → index.html (React Router)
+        return FileResponse(os.path.join(DIST_DIR, "index.html"))
+else:
+    @app.get("/")
+    async def root():
+        now = datetime.now(KST)
+        return {"name": "10억 만들기", "status": "running", "market": get_market_status(now), "note": "프론트엔드 빌드 파일(dist/)이 없습니다. npm run build 를 실행하세요."}
 
 if __name__ == "__main__":
     import uvicorn

@@ -1,0 +1,6 @@
+{
+  "rewrites": [
+    { "source": "/api/kis/:path*", "destination": "/api/kis" },
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
+  ]
+}

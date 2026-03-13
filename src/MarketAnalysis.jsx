@@ -1,15 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
 
-const API_BASE = "https://web-production-139e9.up.railway.app";
+// KIS API: KisTrading의 공유 함수 사용 (암호화된 크레덴셜)
+import { kisApi as sharedKisApi } from "./KisTrading";
 
-async function kisApi(path) {
-  try {
-    const res = await fetch(`${API_BASE}${path}`);
-    if (!res.ok) return null;
-    return await res.json();
-  } catch {
-    return null;
-  }
+async function kisApi(route, params = {}) {
+  return await sharedKisApi(route, params);
 }
 
 const fmt = (n) => n?.toLocaleString("ko-KR") ?? "—";
@@ -71,7 +66,7 @@ function MarketIndexPanel() {
 
   useEffect(() => {
     (async () => {
-      const r = await kisApi("/api/kis/index");
+      const r = await kisApi("index");
       if (r?.success) setData(r);
       setLoading(false);
     })();
@@ -123,7 +118,7 @@ function VolumeRankPanel() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const r = await kisApi(`/api/kis/ranking/volume?market=${market}`);
+    const r = await kisApi("ranking/volume", { market });
     if (r?.success) setData(r.items);
     setLoading(false);
   }, [market]);
@@ -173,12 +168,19 @@ function VolumeRankPanel() {
 function FluctuationPanel({ sort, title }) {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [market, setMarket] = useState("J");
 
   const load = useCallback(async () => {
     setLoading(true);
-    const r = await kisApi(`/api/kis/ranking/fluctuation?market=${market}&sort=${sort}`);
-    if (r?.success) setData(r.items);
+    setError(null);
+    const r = await kisApi("ranking/fluctuation", { market, sort });
+    console.log("[MarketAnalysis] fluctuation response:", r);
+    if (r?.success && r.items) {
+      setData(r.items);
+    } else {
+      setError(r?.detail || r?.msg1 || JSON.stringify(r) || "응답 없음");
+    }
     setLoading(false);
   }, [market, sort]);
 
@@ -196,7 +198,11 @@ function FluctuationPanel({ sort, title }) {
         </div>
       </div>
 
-      {loading ? <div style={{ textAlign: "center", padding: 40, color: "#6688aa" }}>조회 중...</div> : (
+      {loading ? <div style={{ textAlign: "center", padding: 40, color: "#6688aa" }}>조회 중...</div> : error ? (
+        <div style={{ textAlign: "center", padding: 40, color: "#ff9800" }}>등락률 조회 실패: {error}</div>
+      ) : data.length === 0 ? (
+        <div style={{ textAlign: "center", padding: 40, color: "#6688aa" }}>데이터가 없습니다</div>
+      ) : (
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr>{["순위", "종목명", "종목코드", "현재가", "전일대비", "등락률", "거래량"].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
@@ -244,8 +250,8 @@ function InvestorPanel() {
     if (!code) return;
     setLoading(true);
     const [inv, q] = await Promise.all([
-      kisApi(`/api/kis/investor/${code}`),
-      kisApi(`/api/kis/quote/${code}`),
+      kisApi(`investor/${code}`),
+      kisApi(`quote/${code}`),
     ]);
     if (inv?.success) setData(inv.data);
     if (q?.success) setQuote(q);

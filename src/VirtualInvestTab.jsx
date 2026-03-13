@@ -7,6 +7,7 @@
  * 매수추천 종목을 5가지 전략으로 동시 비교 백테스트 + 실시간 모의투자.
  */
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { supabase } from "./supabaseClient";
 
 const API_BASE = "https://web-production-139e9.up.railway.app";
 
@@ -380,6 +381,43 @@ export default function VirtualInvestTab({ recommendations = [], backtestRecomme
   const [selectedSession, setSelectedSession] = useState(null);  // 세션 클릭 시 상세
 
   const pollRef = useRef(null);
+
+  // ━━━ 매수 후보 추천 ━━━
+  const [nextCandidates, setNextCandidates] = useState([]);
+  const [nextCandidatesLoading, setNextCandidatesLoading] = useState(false);
+
+  const fetchNextCandidates = useCallback(async (excludeCodes = []) => {
+    setNextCandidatesLoading(true);
+    try {
+      let query = supabase
+        .from('buy_candidates')
+        .select('*')
+        .eq('status', 'active')
+        .order('composite_score', { ascending: false })
+        .limit(5);
+      if (excludeCodes.length > 0) {
+        query = query.not('code', 'in', `(${excludeCodes.join(',')})`);
+      }
+      const { data, error } = await query;
+      if (error) throw error;
+      setNextCandidates(data || []);
+    } catch (e) { console.error('후보 추천 로드 실패:', e); }
+    setNextCandidatesLoading(false);
+  }, []);
+
+  // 실시간 세션이 변경되면 후보 추천도 갱신
+  useEffect(() => {
+    if (subTab === 'realtime' && rtSessions.length > 0) {
+      // 현재 보유중인 종목코드 수집
+      const holdingCodes = [];
+      rtSessions.forEach(s => {
+        (s.positions || []).forEach(p => {
+          if (p.status === 'holding') holdingCodes.push(p.stock_code);
+        });
+      });
+      fetchNextCandidates(holdingCodes);
+    }
+  }, [subTab, rtSessions, fetchNextCandidates]);
 
   // ── 프리셋 파라미터 변경 ──
   const updateParam = (presetKey, field, value) => {
@@ -1007,12 +1045,12 @@ export default function VirtualInvestTab({ recommendations = [], backtestRecomme
         </>
       )}
 
-      {/* ━━━━ 실시간 가상투자 추적 ━━━━ */}
+      {/* ━━━━ 가상투자추적 ━━━━ */}
       {subTab === "realtime" && (
         <div>
           {/* 헤더 */}
           <div style={{ ...S.card, marginBottom: 12 }}>
-            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>📊 실시간 가상투자 추적</div>
+            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>📊 가상투자추적</div>
             <div style={S.dimText}>매수추천 종목으로 가상 포트폴리오를 만들고 실시간으로 수익을 추적합니다</div>
           </div>
 
@@ -1199,6 +1237,51 @@ export default function VirtualInvestTab({ recommendations = [], backtestRecomme
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          {/* ━━━ 다음 매수 추천 (후보 풀) ━━━ */}
+          {nextCandidates.length > 0 && (
+            <div style={{ ...S.card, marginTop: 12, border: '1px solid rgba(245,158,11,0.3)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 16 }}>🎯</span>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: '#f59e0b' }}>다음 매수 추천</span>
+                  <span style={{ fontSize: 11, color: '#9ca3af' }}>후보 풀에서 상위 {nextCandidates.length}개</span>
+                </div>
+                <button onClick={() => fetchNextCandidates([])} style={{
+                  padding: '4px 10px', fontSize: 11, borderRadius: 6, cursor: 'pointer',
+                  border: '1px solid rgba(245,158,11,0.3)', background: 'transparent', color: '#f59e0b',
+                  fontFamily: 'inherit',
+                }}>🔄 새로고침</button>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 60px 60px 50px', gap: 0, fontSize: 12 }}>
+                <div style={{ padding: '6px 8px', color: '#9ca3af', fontSize: 10, fontWeight: 600, borderBottom: '1px solid rgba(100,140,200,0.08)' }}>종목</div>
+                <div style={{ padding: '6px 4px', color: '#9ca3af', fontSize: 10, fontWeight: 600, textAlign: 'right', borderBottom: '1px solid rgba(100,140,200,0.08)' }}>현재가</div>
+                <div style={{ padding: '6px 4px', color: '#9ca3af', fontSize: 10, fontWeight: 600, textAlign: 'center', borderBottom: '1px solid rgba(100,140,200,0.08)' }}>종합</div>
+                <div style={{ padding: '6px 4px', color: '#9ca3af', fontSize: 10, fontWeight: 600, textAlign: 'center', borderBottom: '1px solid rgba(100,140,200,0.08)' }}>진입</div>
+                <div style={{ padding: '6px 4px', color: '#9ca3af', fontSize: 10, fontWeight: 600, textAlign: 'center', borderBottom: '1px solid rgba(100,140,200,0.08)' }}>잔여</div>
+                {nextCandidates.map((c, i) => {
+                  const daysLeft = c.expires_at ? Math.max(0, Math.ceil((new Date(c.expires_at) - new Date()) / 86400000)) : 0;
+                  const scoreColor = c.composite_score >= 80 ? '#ef4444' : c.composite_score >= 60 ? '#f59e0b' : '#9ca3af';
+                  return (
+                    <React.Fragment key={c.id}>
+                      <div style={{ padding: '8px', borderBottom: i < nextCandidates.length - 1 ? '1px solid rgba(100,140,200,0.06)' : 'none' }}>
+                        <span style={{ fontWeight: 600, color: '#e2e8f0' }}>{c.name}</span>
+                        <span style={{ color: '#9ca3af', marginLeft: 4, fontSize: 10 }}>{c.code}</span>
+                        {c.source && <span style={{ marginLeft: 6, fontSize: 9, padding: '1px 4px', borderRadius: 3, background: 'rgba(245,158,11,0.15)', color: '#f59e0b' }}>{c.source}</span>}
+                      </div>
+                      <div style={{ padding: '8px 4px', textAlign: 'right', color: '#e2e8f0', borderBottom: i < nextCandidates.length - 1 ? '1px solid rgba(100,140,200,0.06)' : 'none' }}>{c.current_price?.toLocaleString() || '-'}</div>
+                      <div style={{ padding: '8px 4px', textAlign: 'center', color: scoreColor, fontWeight: 600, borderBottom: i < nextCandidates.length - 1 ? '1px solid rgba(100,140,200,0.06)' : 'none' }}>{c.composite_score || '-'}</div>
+                      <div style={{ padding: '8px 4px', textAlign: 'center', color: '#9ca3af', borderBottom: i < nextCandidates.length - 1 ? '1px solid rgba(100,140,200,0.06)' : 'none' }}>{c.entry_score || '-'}</div>
+                      <div style={{ padding: '8px 4px', textAlign: 'center', color: daysLeft <= 1 ? '#ef4444' : '#9ca3af', fontSize: 11, borderBottom: i < nextCandidates.length - 1 ? '1px solid rgba(100,140,200,0.06)' : 'none' }}>D-{daysLeft}</div>
+                    </React.Fragment>
+                  );
+                })}
+              </div>
+              {nextCandidates[0]?.reason && <div style={{ marginTop: 8, fontSize: 11, color: '#9ca3af', padding: '0 8px' }}>
+                💡 {nextCandidates[0].reason}
+              </div>}
             </div>
           )}
 

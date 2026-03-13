@@ -84,13 +84,13 @@ const STRATEGY_PARAMS = {
     label: '🧠 스마트형',
     desc: '수익 활성화 후 추적손절 — 급등주 대응 전략',
     params: [
-      { key: 'grace_days', label: '유예기간', value: 7, unit: '일', desc: '매수 후 청산 유예' },
+      // { key: 'grace_days', label: '유예기간', value: 0, unit: '일', desc: '매수 후 청산 유예 (보류)' },  // ★ 유예기간 보류
       { key: 'stop_loss_pct', label: '손절선', value: 12.0, unit: '%', desc: '최대 허용 손실' },
       { key: 'profit_activation_pct', label: '수익 활성화', value: 15.0, unit: '%', desc: '추적손절 시작 조건' },
       { key: 'trailing_stop_pct', label: '추적손절', value: 5.0, unit: '%', desc: '고점 대비 하락 시 매도' },
       { key: 'max_hold_days', label: '최대보유', value: 30, unit: '일', desc: '자동 만기 청산' },
     ],
-    flow: '매수 → 7일 유예 → 15% 수익 활성화 → 고점 대비 -5% 시 매도 / -12% 손절 / 30일 만기',
+    flow: '매수 → 15% 수익 활성화 → 고점 대비 -5% 시 매도 / -12% 손절 / 30일 만기',  // ★ 유예기간 보류
   },
   aggressive: {
     label: '🔥 공격형',
@@ -118,20 +118,13 @@ const STRATEGY_PARAMS = {
 // 메인 컴포넌트
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-export default function VirtualPortfolioTracker() {
-  const [view, setView] = useState('list');    // list | detail | compound | compound-detail
+export default function VirtualPortfolioTracker({ readOnly = false }) {
+  const [view, setView] = useState('list');    // list | detail
   const [portfolios, setPortfolios] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(false);
   const [updating, setUpdating] = useState(false);
-
-  // ★ v2: 복리 그룹 상태
-  const [compoundGroups, setCompoundGroups] = useState([]);
-  const [compoundDetail, setCompoundDetail] = useState(null);
-  const [compoundLoading, setCompoundLoading] = useState(false);
-  const [showCreateForm, setShowCreateForm] = useState(false);
-  const [createForm, setCreateForm] = useState({ name: '10억 도전', seedMoney: 100000, goalAmount: 1000000000 });
 
   // ── 포트폴리오 목록 로드 (★ v3: 타임아웃 + 리트라이) ──
   const loadList = useCallback(async () => {
@@ -291,99 +284,6 @@ export default function VirtualPortfolioTracker() {
 
   useEffect(() => { loadList(); }, [loadList]);
 
-  // ★ v2: 복리 그룹 목록 로드
-  const loadCompoundGroups = useCallback(async () => {
-    try {
-      setCompoundLoading(true);
-      const res = await fetch(`${API_BASE}/api/virtual-portfolio/compound/list`);
-      const data = await res.json();
-      if (data.success) setCompoundGroups(data.groups || []);
-    } catch (e) { console.error('복리 그룹 로드 실패:', e); }
-    finally { setCompoundLoading(false); }
-  }, []);
-
-  // ★ v2: 복리 그룹 상세 로드
-  const loadCompoundDetail = useCallback(async (id) => {
-    try {
-      setLoading(true);
-      const res = await fetch(`${API_BASE}/api/virtual-portfolio/compound/${id}`);
-      const data = await res.json();
-      if (data.success) {
-        setCompoundDetail(data);
-        setView('compound-detail');
-      }
-    } catch (e) { console.error('복리 상세 로드 실패:', e); }
-    finally { setLoading(false); }
-  }, []);
-
-  // ★ v2: 복리 그룹 생성
-  const handleCreateCompound = async () => {
-    try {
-      const res = await fetch(`${API_BASE}/api/virtual-portfolio/compound/create`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: createForm.name,
-          seed_money: createForm.seedMoney,
-          goal_amount: createForm.goalAmount,
-          strategy: 'smart',
-          stocks: [],
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setShowCreateForm(false);
-        await loadCompoundGroups();
-      }
-    } catch (e) { console.error('복리 그룹 생성 실패:', e); }
-  };
-
-  // ★ v2: 복리 그룹 중단
-  const handleStopCompound = async (id) => {
-    if (!window.confirm('이 복리 그룹을 중단하시겠습니까?')) return;
-    try {
-      await fetch(`${API_BASE}/api/virtual-portfolio/compound/${id}/stop`, { method: 'PUT' });
-      await loadCompoundGroups();
-      if (compoundDetail?.group?.id === id) loadCompoundDetail(id);
-    } catch (e) { console.error('중단 실패:', e); }
-  };
-
-  // ★ v2: 복리 그룹 수정
-  const [editingCompound, setEditingCompound] = useState(null); // {id, name, goal_amount, seed_money, strategy}
-  const handleEditCompound = async () => {
-    if (!editingCompound) return;
-    try {
-      const res = await fetch(`${API_BASE}/api/virtual-portfolio/compound/${editingCompound.id}/edit`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: editingCompound.name,
-          goal_amount: editingCompound.goal_amount,
-          seed_money: editingCompound.seed_money,
-          strategy: editingCompound.strategy,
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setEditingCompound(null);
-        await loadCompoundGroups();
-        if (compoundDetail?.group?.id === editingCompound.id) loadCompoundDetail(editingCompound.id);
-      } else { alert(data.message || '수정 실패'); }
-    } catch (e) { console.error('수정 실패:', e); alert('수정 실패: ' + e.message); }
-  };
-
-  // ★ v2: 복리 그룹 삭제
-  const handleDeleteCompound = async (id, name) => {
-    if (!window.confirm(`복리 그룹 "${name}"을(를) 영구 삭제하시겠습니까?\n\n연결된 포트폴리오는 보존되지만 그룹 연결이 해제됩니다.`)) return;
-    try {
-      const res = await fetch(`${API_BASE}/api/virtual-portfolio/compound/${id}`, { method: 'DELETE' });
-      const data = await res.json();
-      if (data.success) {
-        await loadCompoundGroups();
-        if (compoundDetail?.group?.id === id) { setCompoundDetail(null); setView('compound'); }
-      } else { alert(data.message || '삭제 실패'); }
-    } catch (e) { console.error('삭제 실패:', e); alert('삭제 실패: ' + e.message); }
-  };
-
   // ── 장중 20분마다 자동 가격 갱신 (Auto-refresh every 20min during market hours) ──
   useEffect(() => {
     if (view !== 'detail' || !selectedId || !detail) return;
@@ -416,41 +316,21 @@ export default function VirtualPortfolioTracker() {
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: COLORS.white, margin: 0 }}>
-            📊 실시간 가상투자 추적
+            📊 가상투자
           </h1>
           <p style={{ fontSize: 12, color: COLORS.textDim, marginTop: 4 }}>
             매수추천 종목으로 가상 포트폴리오를 만들고 실시간으로 수익을 추적합니다
           </p>
         </div>
-        {(view === 'detail' || view === 'compound-detail') && (
-          <button onClick={() => setView(view === 'compound-detail' ? 'compound' : 'list')} style={{
+        {view === 'detail' && (
+          <button onClick={() => setView('list')} style={{
             padding: '8px 18px', borderRadius: 8, border: `1px solid ${COLORS.cardBorder}`,
             background: COLORS.card, color: COLORS.text, cursor: 'pointer', fontSize: 13, fontWeight: 600,
           }}>← 목록으로</button>
         )}
       </div>
 
-      {/* ★ v2: 탭 전환 (포트폴리오 | 복리 그룹) */}
-      {(view === 'list' || view === 'compound') && (
-        <div style={{ display: 'flex', gap: 4, marginBottom: 16 }}>
-          {[
-            { id: 'list', label: '📋 포트폴리오', count: portfolios.length },
-            { id: 'compound', label: '🔄 복리 그룹', count: compoundGroups.length },
-          ].map(tab => (
-            <button key={tab.id} onClick={() => { setView(tab.id); if(tab.id==='compound') loadCompoundGroups(); }}
-              style={{
-                padding: '8px 16px', borderRadius: 8, border: `1px solid ${view === tab.id ? COLORS.accent + '60' : COLORS.cardBorder}`,
-                background: view === tab.id ? COLORS.accentDim : COLORS.card,
-                color: view === tab.id ? COLORS.accent : COLORS.textDim,
-                cursor: 'pointer', fontSize: 13, fontWeight: 600,
-              }}>
-              {tab.label} <span style={{ fontSize: 11, opacity: 0.7 }}>({tab.count})</span>
-            </button>
-          ))}
-        </div>
-      )}
-
-      {view === 'list' && <PortfolioList portfolios={portfolios} loading={loading} onSelect={loadDetail} onRefresh={loadList} onRename={handleRenamePortfolio} onBatchDelete={handleBatchDelete} onBatchRefresh={handleBatchRefresh} />}
+      {view === 'list' && <PortfolioList portfolios={portfolios} loading={loading} onSelect={loadDetail} onRefresh={loadList} onRename={handleRenamePortfolio} onBatchDelete={handleBatchDelete} onBatchRefresh={handleBatchRefresh} readOnly={readOnly} />}
       {view === 'detail' && detail && (
         <PortfolioDetail
           detail={detail}
@@ -460,91 +340,8 @@ export default function VirtualPortfolioTracker() {
           onDelete={() => handleDelete(selectedId)}
           onRename={(newName) => handleRenamePortfolio(selectedId, newName)}
           onBack={() => setView('list')}
+          readOnly={readOnly}
         />
-      )}
-
-      {/* ★ v2: 복리 그룹 뷰 */}
-      {view === 'compound' && (
-        <CompoundGroupList
-          groups={compoundGroups}
-          loading={compoundLoading}
-          onSelect={loadCompoundDetail}
-          onRefresh={loadCompoundGroups}
-          onStop={handleStopCompound}
-          onDelete={handleDeleteCompound}
-          editingCompound={editingCompound}
-          setEditingCompound={setEditingCompound}
-          onSaveEdit={handleEditCompound}
-          showCreate={showCreateForm}
-          setShowCreate={setShowCreateForm}
-          createForm={createForm}
-          setCreateForm={setCreateForm}
-          onCreate={handleCreateCompound}
-        />
-      )}
-      {view === 'compound-detail' && compoundDetail && (
-        <CompoundGroupDetailView
-          data={compoundDetail}
-          onBack={() => setView('compound')}
-          onSelectPortfolio={loadDetail}
-          onStop={handleStopCompound}
-          onDelete={handleDeleteCompound}
-          setEditingCompound={setEditingCompound}
-        />
-      )}
-
-      {/* ★ 복리 그룹 수정 모달 (부모 레벨 — 목록/상세 어디서든 접근 가능) */}
-      {editingCompound && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          onClick={() => setEditingCompound(null)}>
-          <div style={{ background: '#1a2234', border: '1px solid rgba(100,140,200,0.3)', borderRadius: 16, padding: 24, width: 420, maxWidth: '90vw' }}
-            onClick={e => e.stopPropagation()}>
-            <div style={{ fontSize: 16, fontWeight: 700, color: '#e5e7eb', marginBottom: 16 }}>✏️ 복리 그룹 수정</div>
-
-            <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 4 }}>그룹명</div>
-              <input value={editingCompound.name} onChange={e => setEditingCompound({ ...editingCompound, name: e.target.value })}
-                style={{ width: '100%', padding: '8px 12px', fontSize: 13, background: '#0d1321', border: '1px solid #1e293b', borderRadius: 6, color: '#e5e7eb', outline: 'none', fontFamily: 'inherit' }} />
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
-              <div>
-                <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 4 }}>시드머니</div>
-                <input type="number" value={editingCompound.seed_money}
-                  onChange={e => setEditingCompound({ ...editingCompound, seed_money: Number(e.target.value) })}
-                  style={{ width: '100%', padding: '8px 12px', fontSize: 13, background: '#0d1321', border: '1px solid #1e293b', borderRadius: 6, color: '#e5e7eb', outline: 'none', fontFamily: 'inherit' }} />
-                <div style={{ fontSize: 9, color: '#6b7280', marginTop: 2 }}>※ 회차 시작 전만 수정 가능</div>
-              </div>
-              <div>
-                <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 4 }}>목표금액</div>
-                <input type="number" value={editingCompound.goal_amount}
-                  onChange={e => setEditingCompound({ ...editingCompound, goal_amount: Number(e.target.value) })}
-                  style={{ width: '100%', padding: '8px 12px', fontSize: 13, background: '#0d1321', border: '1px solid #1e293b', borderRadius: 6, color: '#e5e7eb', outline: 'none', fontFamily: 'inherit' }} />
-              </div>
-            </div>
-
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 4 }}>전략</div>
-              <div style={{ display: 'flex', gap: 6 }}>
-                {['smart', 'aggressive', 'standard', 'conservative', 'longterm'].map(s => (
-                  <button key={s} onClick={() => setEditingCompound({ ...editingCompound, strategy: s })}
-                    style={{ flex: 1, padding: '6px 4px', fontSize: 10, borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit',
-                      border: editingCompound.strategy === s ? '1px solid #4fc3f7' : '1px solid #1e293b',
-                      background: editingCompound.strategy === s ? 'rgba(79,195,247,0.15)' : 'transparent',
-                      color: editingCompound.strategy === s ? '#4fc3f7' : '#9ca3af',
-                    }}>{s}</button>
-                ))}
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-              <button onClick={() => setEditingCompound(null)}
-                style={{ padding: '8px 16px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontFamily: 'inherit', background: 'transparent', border: '1px solid #374151', color: '#9ca3af' }}>취소</button>
-              <button onClick={handleEditCompound}
-                style={{ padding: '8px 24px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit', background: '#4fc3f7', border: 'none', color: '#000' }}>저장</button>
-            </div>
-          </div>
-        </div>
       )}
     </div>
   );
@@ -555,7 +352,7 @@ export default function VirtualPortfolioTracker() {
 // 포트폴리오 목록
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-function PortfolioList({ portfolios, loading, onSelect, onRefresh, onRename, onBatchDelete, onBatchRefresh }) {
+function PortfolioList({ portfolios, loading, onSelect, onRefresh, onRename, onBatchDelete, onBatchRefresh, readOnly }) {
   const [renamingId, setRenamingId] = useState(null);
   const [renameText, setRenameText] = useState('');
   const [selectedIds, setSelectedIds] = useState(new Set());
@@ -568,6 +365,9 @@ function PortfolioList({ portfolios, loading, onSelect, onRefresh, onRename, onB
     catch { return {}; }
   });
   const getFilters = (pf) => pf.filters || pfFiltersCache[pf.id] || [];
+
+  // ★ DB seq_no 기반 고유번호 (삭제해도 번호 불변)
+  const getSeqNo = (pf) => pf.seq_no ? `P${String(pf.seq_no).padStart(4, '0')}` : `P${String(pf.id).padStart(4, '0')}`;
   if (loading) {
     return (
       <div>
@@ -650,7 +450,7 @@ function PortfolioList({ portfolios, loading, onSelect, onRefresh, onRename, onB
       </div>
 
       {/* 선택 컨트롤 */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+      {!readOnly && <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, color: COLORS.textDim }}>
             <input type="checkbox"
@@ -710,11 +510,11 @@ function PortfolioList({ portfolios, loading, onSelect, onRefresh, onRename, onB
               }}>🗑 선택 삭제 ({selectedIds.size})</button>
           )}
         </div>
-      </div>
+      </div>}
 
       {/* 포트폴리오 리스트 */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {portfolios.map(pf => {
+        {portfolios.map((pf, pfIdx) => {
           const isActive = pf.status === 'active';
           const isProfit = (pf.total_return_won || 0) >= 0;
           const pcts = pf.total_return_pct || 0;
@@ -744,6 +544,13 @@ function PortfolioList({ portfolios, loading, onSelect, onRefresh, onRename, onB
                     });
                   }}
                   style={{ accentColor: COLORS.accent, width: 18, height: 18, cursor: 'pointer', flexShrink: 0 }} />
+                {/* 고유번호 뱃지 (DB id 기반 고정) */}
+                <div style={{
+                  background: COLORS.accentDim,
+                  color: COLORS.accent,
+                  fontSize: 11, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace',
+                  padding: '8px 10px', borderRadius: 8, minWidth: 52, textAlign: 'center',
+                }}>{getSeqNo(pf)}</div>
                 {/* 날짜 뱃지 */}
                 <div style={{
                   background: isProfit ? COLORS.greenDim : COLORS.redDim,
@@ -763,9 +570,9 @@ function PortfolioList({ portfolios, loading, onSelect, onRefresh, onRename, onB
                         style={{ fontSize: 14, fontWeight: 700, color: COLORS.white, background: '#0d1321', border: `1px solid ${COLORS.accent}`, borderRadius: 4, padding: '1px 6px', outline: 'none', fontFamily: 'inherit', width: 200 }} />
                     ) : (
                       <>{pf.name}
-                        <button onClick={e => { e.stopPropagation(); setRenamingId(pf.id); setRenameText(pf.name); }}
+                        {!readOnly && <button onClick={e => { e.stopPropagation(); setRenamingId(pf.id); setRenameText(pf.name); }}
                           style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 12, color: COLORS.textDim, padding: '1px 3px', opacity: 0.6 }}
-                          title="제목 수정">✏️</button>
+                          title="제목 수정">✏️</button>}
                         {/* 패턴명 뱃지 - 제목 옆 */}
                         {(() => {
                           const pnames = [...new Set(stocks.filter(s => s.pattern_name).map(s => s.pattern_name))];
@@ -811,16 +618,10 @@ function PortfolioList({ portfolios, loading, onSelect, onRefresh, onRename, onB
 
               {/* 수익 */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{
-                    fontSize: 18, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace',
-                    color: isProfit ? COLORS.red : COLORS.accent,
-                  }}>{isProfit ? '+' : ''}{pcts}%</div>
-                  <div style={{
-                    fontSize: 11, fontFamily: 'JetBrains Mono, monospace',
-                    color: COLORS.textDim,
-                  }}>{isProfit ? '+' : ''}{fmt(pf.total_return_won || 0)}원</div>
-                </div>
+                <div style={{
+                  fontFamily: 'JetBrains Mono, monospace',
+                  color: isProfit ? COLORS.red : COLORS.accent, textAlign: 'right', whiteSpace: 'nowrap',
+                }}><span style={{ fontSize: 14, fontWeight: 400 }}>{isProfit ? '+' : ''}{fmt(pf.total_return_won || 0)}원</span> <span style={{ fontSize: 18, fontWeight: 700 }}>({isProfit ? '+' : ''}{pcts}%)</span></div>
                 <div style={{
                   fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 6,
                   background: isActive ? COLORS.greenDim : 'rgba(107,114,128,0.15)',
@@ -840,7 +641,7 @@ function PortfolioList({ portfolios, loading, onSelect, onRefresh, onRename, onB
 // 포트폴리오 상세
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-function PortfolioDetail({ detail, updating, onUpdate, onClose, onDelete, onRename, onBack }) {
+function PortfolioDetail({ detail, updating, onUpdate, onClose, onDelete, onRename, onBack, readOnly }) {
   const { portfolio: pf, positions } = detail;
   const [selectedCode, setSelectedCode] = useState(null);
   const [chartData, setChartData] = useState(null);
@@ -890,9 +691,9 @@ function PortfolioDetail({ detail, updating, onUpdate, onClose, onDelete, onRena
                   style={{ fontSize: 18, fontWeight: 800, color: COLORS.white, background: '#0d1321', border: `1px solid ${COLORS.accent}`, borderRadius: 6, padding: '2px 8px', outline: 'none', fontFamily: 'inherit', width: 260 }} />
               ) : (
                 <>{pf.name}
-                  <button onClick={() => { setTempName(pf.name); setEditingName(true); }}
+                  {!readOnly && <button onClick={() => { setTempName(pf.name); setEditingName(true); }}
                     style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 14, color: COLORS.textDim, padding: '2px 4px' }}
-                    title="제목 수정">✏️</button>
+                    title="제목 수정">✏️</button>}
                   {/* 패턴명 뱃지 - 상세 제목 옆 */}
                   {(() => {
                     const pnames = [...new Set(positions.filter(p => p.pattern_name).map(p => p.pattern_name))];
@@ -923,7 +724,7 @@ function PortfolioDetail({ detail, updating, onUpdate, onClose, onDelete, onRena
               {!isActive && ` · 종료: ${pf.closed_at ? toKST(pf.closed_at).slice(0, 10) : ''}`}
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 8 }}>
+          {!readOnly && <div style={{ display: 'flex', gap: 8 }}>
             {isActive && (
               <>
                 <button onClick={onUpdate} disabled={updating} style={{
@@ -948,7 +749,7 @@ function PortfolioDetail({ detail, updating, onUpdate, onClose, onDelete, onRena
               padding: '7px 16px', borderRadius: 8, border: `1px solid ${COLORS.cardBorder}`,
               background: 'transparent', color: COLORS.textDim, cursor: 'pointer', fontSize: 12, fontWeight: 600,
             }}>🗑 삭제</button>
-          </div>
+          </div>}
         </div>
 
         {/* 요약 카드 */}
@@ -1034,7 +835,7 @@ function PortfolioDetail({ detail, updating, onUpdate, onClose, onDelete, onRena
       }}>
         {/* 테이블 헤더 */}
         <div style={{
-          display: 'grid', gridTemplateColumns: '1.5fr 70px 55px 85px 75px 75px 70px 75px 45px 80px',
+          display: 'grid', gridTemplateColumns: '1.5fr 70px 55px 85px 75px 75px 70px 70px 75px 45px 80px',
           padding: '12px 16px', fontSize: 11, color: COLORS.textDim, fontWeight: 600,
           background: '#0d1321', borderBottom: `1px solid ${COLORS.cardBorder}`,
         }}>
@@ -1044,6 +845,7 @@ function PortfolioDetail({ detail, updating, onUpdate, onClose, onDelete, onRena
           <span style={{ textAlign: 'right' }}>평가금</span>
           <span style={{ textAlign: 'right' }}>매수가</span>
           <span style={{ textAlign: 'right' }}>현재가</span>
+          <span style={{ textAlign: 'right' }}>매도가</span>
           <span style={{ textAlign: 'right' }}>수익률</span>
           <span style={{ textAlign: 'right' }}>수익금</span>
           <span style={{ textAlign: 'center' }}>일수</span>
@@ -1061,7 +863,7 @@ function PortfolioDetail({ detail, updating, onUpdate, onClose, onDelete, onRena
           return (
             <React.Fragment key={i}>
               <div onClick={() => handleStockClick(pos)} style={{
-                display: 'grid', gridTemplateColumns: '1.5fr 70px 55px 85px 75px 75px 70px 75px 45px 80px',
+                display: 'grid', gridTemplateColumns: '1.5fr 70px 55px 85px 75px 75px 70px 70px 75px 45px 80px',
                 padding: '12px 16px', alignItems: 'center',
                 borderBottom: `1px solid ${COLORS.cardBorder}`,
                 background: isSelected ? 'rgba(59,130,246,0.08)' : i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)',
@@ -1099,8 +901,12 @@ function PortfolioDetail({ detail, updating, onUpdate, onClose, onDelete, onRena
                 <div style={{ textAlign: 'right', fontSize: 12, fontFamily: 'JetBrains Mono, monospace', color: COLORS.text }}>
                   {fmt(pos.buy_price)}
                 </div>
-                <div style={{ textAlign: 'right', fontSize: 12, fontFamily: 'JetBrains Mono, monospace', fontWeight: 700, color: profitColor }}>
-                  {fmt(pos.status === 'holding' ? pos.current_price : pos.sell_price || pos.current_price)}
+                <div style={{ textAlign: 'right', fontSize: 12, fontFamily: 'JetBrains Mono, monospace', fontWeight: 700, color: COLORS.text }}>
+                  {fmt(pos.current_price)}
+                </div>
+                <div style={{ textAlign: 'right', fontSize: 12, fontFamily: 'JetBrains Mono, monospace', fontWeight: 700,
+                  color: pos.status !== 'holding' && pos.sell_price ? '#f59e0b' : COLORS.textDim }}>
+                  {pos.status !== 'holding' && pos.sell_price ? fmt(pos.sell_price) : '-'}
                 </div>
                 <div style={{ textAlign: 'right', fontSize: 12, fontFamily: 'JetBrains Mono, monospace', fontWeight: 700, color: profitColor }}>
                   {isProfit ? '+' : ''}{pos.profit_pct || 0}%
@@ -1701,372 +1507,3 @@ function StockCandleChart({ candles, pos, buyDate, buyPrice, sellDate, sellPrice
 }
 
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// ★ v2: 복리 그룹 목록
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-function CompoundGroupList({ groups, loading, onSelect, onRefresh, onStop, onDelete, editingCompound, setEditingCompound, onSaveEdit, showCreate, setShowCreate, createForm, setCreateForm, onCreate }) {
-  if (loading) return <div style={{ textAlign: 'center', padding: 60, color: COLORS.textDim }}>로딩 중...</div>;
-
-  const statusMap = {
-    active: { label: '진행중', color: COLORS.green, bg: COLORS.greenDim },
-    goal_reached: { label: '🎉 목표달성', color: '#ffd700', bg: 'rgba(255,215,0,0.12)' },
-    stopped: { label: '중단', color: COLORS.gray, bg: 'rgba(107,114,128,0.15)' },
-  };
-
-  return (
-    <div>
-      {/* 생성 버튼 */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-        <span style={{ fontSize: 13, color: COLORS.textDim }}>
-          총 {groups.length}개 그룹 · 진행중 {groups.filter(g => g.status === 'active').length}개
-        </span>
-        <button onClick={() => setShowCreate(!showCreate)} style={{
-          padding: '6px 14px', borderRadius: 6, border: `1px solid ${COLORS.accent}40`,
-          background: COLORS.accentDim, color: COLORS.accent, cursor: 'pointer', fontSize: 12, fontWeight: 600,
-        }}>
-          {showCreate ? '✕ 닫기' : '+ 복리 그룹 생성'}
-        </button>
-      </div>
-
-      {/* 생성 폼 */}
-      {showCreate && (
-        <div style={{
-          background: COLORS.card, border: `1px solid ${COLORS.accent}30`, borderRadius: 10,
-          padding: 16, marginBottom: 12,
-        }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: COLORS.white, marginBottom: 12 }}>🔄 새 복리 그룹</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 12 }}>
-            <div>
-              <div style={{ fontSize: 11, color: COLORS.textDim, marginBottom: 4 }}>그룹명</div>
-              <input value={createForm.name} onChange={e => setCreateForm({...createForm, name: e.target.value})}
-                style={{ width: '100%', padding: '6px 10px', borderRadius: 6, border: `1px solid ${COLORS.cardBorder}`,
-                  background: COLORS.bg, color: COLORS.white, fontSize: 13 }} />
-            </div>
-            <div>
-              <div style={{ fontSize: 11, color: COLORS.textDim, marginBottom: 4 }}>시드머니 (원)</div>
-              <input type="number" value={createForm.seedMoney}
-                onChange={e => setCreateForm({...createForm, seedMoney: Number(e.target.value)})}
-                style={{ width: '100%', padding: '6px 10px', borderRadius: 6, border: `1px solid ${COLORS.cardBorder}`,
-                  background: COLORS.bg, color: COLORS.white, fontSize: 13 }} />
-            </div>
-            <div>
-              <div style={{ fontSize: 11, color: COLORS.textDim, marginBottom: 4 }}>목표금액 (원)</div>
-              <input type="number" value={createForm.goalAmount}
-                onChange={e => setCreateForm({...createForm, goalAmount: Number(e.target.value)})}
-                style={{ width: '100%', padding: '6px 10px', borderRadius: 6, border: `1px solid ${COLORS.cardBorder}`,
-                  background: COLORS.bg, color: COLORS.white, fontSize: 13 }} />
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={onCreate} style={{
-              padding: '8px 20px', borderRadius: 6, border: 'none',
-              background: COLORS.accent, color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600,
-            }}>생성</button>
-            <div style={{ fontSize: 11, color: COLORS.textDim, lineHeight: '32px' }}>
-              시드 {fmt(createForm.seedMoney)}원 → 목표 {fmt(createForm.goalAmount)}원
-              ({createForm.seedMoney > 0 ? Math.round(createForm.goalAmount / createForm.seedMoney).toLocaleString() : 0}배)
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 그룹 카드 */}
-      {groups.length === 0 ? (
-        <div style={{
-          background: COLORS.card, border: `1px solid ${COLORS.cardBorder}`, borderRadius: 10,
-          padding: 40, textAlign: 'center',
-        }}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>🔄</div>
-          <div style={{ fontSize: 15, fontWeight: 600, color: COLORS.white, marginBottom: 6 }}>복리 그룹이 없습니다</div>
-          <div style={{ fontSize: 12, color: COLORS.textDim }}>
-            시드머니를 정하고 목표금액까지 복리로 성장하는 과정을 추적합니다
-          </div>
-        </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {groups.map(g => {
-            const st = statusMap[g.status] || statusMap.active;
-            const isProfit = g.current_capital > g.seed_money;
-            const growthPct = g.seed_money > 0 ? ((g.current_capital / g.seed_money - 1) * 100) : 0;
-            const progress = g.goal_progress || 0;
-
-            return (
-              <div key={g.id} onClick={() => onSelect(g.id)} style={{
-                background: COLORS.card, border: `1px solid ${COLORS.cardBorder}`, borderRadius: 10,
-                padding: 16, cursor: 'pointer', transition: 'border-color 0.2s',
-              }}
-                onMouseEnter={e => e.currentTarget.style.borderColor = COLORS.accent + '60'}
-                onMouseLeave={e => e.currentTarget.style.borderColor = COLORS.cardBorder}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 15, fontWeight: 700, color: COLORS.white }}>{g.name}</span>
-                    <span style={{
-                      fontSize: 10, padding: '2px 8px', borderRadius: 10,
-                      background: st.bg, color: st.color, fontWeight: 600,
-                    }}>{st.label}</span>
-                  </div>
-                  <div style={{ fontSize: 12, color: COLORS.textDim }}>
-                    {g.current_round}회차 · {g.total_rounds}회 완료
-                  </div>
-                </div>
-
-                {/* 시드→현재→목표 */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
-                  <div>
-                    <span style={{ fontSize: 11, color: COLORS.textDim }}>시드 </span>
-                    <span style={{ fontSize: 13, color: COLORS.white, fontFamily: 'JetBrains Mono, monospace' }}>{fmt(g.seed_money)}</span>
-                  </div>
-                  <div>
-                    <span style={{ fontSize: 11, color: COLORS.textDim }}>현재 </span>
-                    <span style={{
-                      fontSize: 16, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace',
-                      color: isProfit ? COLORS.green : COLORS.red,
-                    }}>{fmt(g.current_capital)}</span>
-                    <span style={{ fontSize: 11, color: isProfit ? COLORS.green : COLORS.red, marginLeft: 4 }}>
-                      ({growthPct >= 0 ? '+' : ''}{growthPct.toFixed(1)}%)
-                    </span>
-                  </div>
-                  <div>
-                    <span style={{ fontSize: 11, color: COLORS.textDim }}>목표 </span>
-                    <span style={{ fontSize: 13, color: '#ffd700', fontFamily: 'JetBrains Mono, monospace' }}>{fmt(g.goal_amount)}</span>
-                  </div>
-                </div>
-
-                {/* 진행률 바 */}
-                <div style={{ background: 'rgba(100,140,200,0.1)', borderRadius: 6, height: 8, overflow: 'hidden' }}>
-                  <div style={{
-                    width: `${Math.min(progress, 100)}%`, height: '100%', borderRadius: 6,
-                    background: progress >= 100 ? 'linear-gradient(90deg, #ffd700, #ffaa00)' :
-                      `linear-gradient(90deg, ${COLORS.accent}, ${COLORS.green})`,
-                    transition: 'width 0.5s ease',
-                  }} />
-                </div>
-                <div style={{ textAlign: 'right', fontSize: 10, color: COLORS.textDim, marginTop: 2 }}>
-                  목표 진행률 {progress.toFixed(1)}% · {g.growth_multiple || 1}배 성장
-                </div>
-
-                {/* 하단 통계 + 액션 버튼 */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
-                  <div style={{ display: 'flex', gap: 16, fontSize: 11, color: COLORS.textDim }}>
-                    <span>승률 {g.total_rounds > 0 ? Math.round(g.win_rounds / g.total_rounds * 100) : 0}% ({g.win_rounds}승 {g.loss_rounds}패)</span>
-                    {g.best_round_pct > 0 && <span style={{ color: COLORS.green }}>최고 +{g.best_round_pct}%</span>}
-                    {g.worst_round_pct < 0 && <span style={{ color: COLORS.red }}>최저 {g.worst_round_pct}%</span>}
-                  </div>
-                  <div style={{ display: 'flex', gap: 4 }} onClick={e => e.stopPropagation()}>
-                    <button onClick={() => setEditingCompound({ id: g.id, name: g.name, goal_amount: g.goal_amount, seed_money: g.seed_money, strategy: g.strategy || 'smart' })}
-                      style={{ padding: '3px 8px', fontSize: 10, borderRadius: 4, border: `1px solid ${COLORS.cardBorder}`, background: 'transparent', color: COLORS.textDim, cursor: 'pointer' }}
-                      title="수정">✏️</button>
-                    {g.status === 'active' && <button onClick={() => onStop(g.id)}
-                      style={{ padding: '3px 8px', fontSize: 10, borderRadius: 4, border: `1px solid ${COLORS.orange}40`, background: 'transparent', color: COLORS.orange, cursor: 'pointer' }}
-                      title="중단">⏸</button>}
-                    <button onClick={() => onDelete(g.id, g.name)}
-                      style={{ padding: '3px 8px', fontSize: 10, borderRadius: 4, border: `1px solid ${COLORS.red}40`, background: 'transparent', color: COLORS.red, cursor: 'pointer' }}
-                      title="삭제">🗑</button>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// ★ v2: 복리 그룹 상세
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-function CompoundGroupDetailView({ data, onBack, onSelectPortfolio, onStop, onDelete, setEditingCompound }) {
-  const { group, rounds } = data;
-  if (!group) return null;
-
-  const isProfit = group.current_capital > group.seed_money;
-  const growthPct = group.seed_money > 0 ? ((group.current_capital / group.seed_money - 1) * 100) : 0;
-  const progress = group.goal_progress || 0;
-
-  const statusMap = {
-    active: { label: '진행중', color: COLORS.green },
-    goal_reached: { label: '🎉 목표달성!', color: '#ffd700' },
-    stopped: { label: '중단', color: COLORS.gray },
-  };
-  const st = statusMap[group.status] || statusMap.active;
-
-  return (
-    <div>
-      {/* 그룹 요약 카드 */}
-      <div style={{
-        background: COLORS.card, border: `1px solid ${COLORS.cardBorder}`, borderRadius: 12,
-        padding: 20, marginBottom: 16,
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ fontSize: 20, fontWeight: 800, color: COLORS.white }}>🔄 {group.name}</span>
-            <span style={{
-              fontSize: 11, padding: '3px 10px', borderRadius: 10,
-              background: st.color + '18', color: st.color, fontWeight: 600,
-            }}>{st.label}</span>
-          </div>
-          <span style={{ fontSize: 12, color: COLORS.textDim }}>
-            {group.current_round}회차 · {group.total_rounds}회 완료
-          </span>
-        </div>
-
-        {/* ★ 액션 버튼 행 */}
-        <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-          <button onClick={() => setEditingCompound({ id: group.id, name: group.name, goal_amount: group.goal_amount, seed_money: group.seed_money, strategy: group.strategy || 'smart' })}
-            style={{ padding: '6px 14px', fontSize: 11, borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit',
-              border: `1px solid ${COLORS.accent}40`, background: COLORS.accentDim, color: COLORS.accent, fontWeight: 600 }}>
-            ✏️ 수정</button>
-          {group.status === 'active' && <button onClick={() => onStop(group.id)}
-            style={{ padding: '6px 14px', fontSize: 11, borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit',
-              border: `1px solid ${COLORS.orange}40`, background: 'transparent', color: COLORS.orange, fontWeight: 600 }}>
-            ⏸ 중단</button>}
-          <button onClick={() => onDelete(group.id, group.name)}
-            style={{ padding: '6px 14px', fontSize: 11, borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit',
-              border: `1px solid ${COLORS.red}40`, background: 'transparent', color: COLORS.red, fontWeight: 600 }}>
-            🗑 삭제</button>
-        </div>
-
-        {/* 3열 금액 표시 */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 14 }}>
-          <div style={{ background: COLORS.bg, borderRadius: 8, padding: 12 }}>
-            <div style={{ fontSize: 10, color: COLORS.textDim, marginBottom: 4 }}>💰 시드머니</div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: COLORS.white, fontFamily: 'JetBrains Mono, monospace' }}>
-              {fmt(group.seed_money)}
-            </div>
-          </div>
-          <div style={{ background: COLORS.bg, borderRadius: 8, padding: 12 }}>
-            <div style={{ fontSize: 10, color: COLORS.textDim, marginBottom: 4 }}>📈 현재 자본</div>
-            <div style={{
-              fontSize: 18, fontWeight: 800, fontFamily: 'JetBrains Mono, monospace',
-              color: isProfit ? COLORS.green : COLORS.red,
-            }}>
-              {fmt(group.current_capital)}
-            </div>
-            <div style={{ fontSize: 11, color: isProfit ? COLORS.green : COLORS.red, marginTop: 2 }}>
-              {growthPct >= 0 ? '+' : ''}{growthPct.toFixed(2)}% ({group.growth_multiple || 1}배)
-            </div>
-          </div>
-          <div style={{ background: COLORS.bg, borderRadius: 8, padding: 12 }}>
-            <div style={{ fontSize: 10, color: COLORS.textDim, marginBottom: 4 }}>🎯 목표금액</div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: '#ffd700', fontFamily: 'JetBrains Mono, monospace' }}>
-              {fmt(group.goal_amount)}
-            </div>
-          </div>
-        </div>
-
-        {/* 진행률 바 (큰 버전) */}
-        <div style={{ marginBottom: 6 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: COLORS.textDim, marginBottom: 4 }}>
-            <span>목표 진행률</span>
-            <span style={{ color: progress >= 100 ? '#ffd700' : COLORS.accent, fontWeight: 700 }}>{progress.toFixed(2)}%</span>
-          </div>
-          <div style={{ background: 'rgba(100,140,200,0.1)', borderRadius: 8, height: 14, overflow: 'hidden' }}>
-            <div style={{
-              width: `${Math.min(progress, 100)}%`, height: '100%', borderRadius: 8,
-              background: progress >= 100
-                ? 'linear-gradient(90deg, #ffd700, #ffaa00)'
-                : `linear-gradient(90deg, ${COLORS.accent}, ${COLORS.green})`,
-              transition: 'width 0.8s ease',
-              boxShadow: `0 0 8px ${COLORS.accent}40`,
-            }} />
-          </div>
-        </div>
-
-        {/* 통계 행 */}
-        <div style={{ display: 'flex', gap: 20, fontSize: 11, color: COLORS.textDim }}>
-          <span>승률 {group.total_rounds > 0 ? Math.round(group.win_rounds / group.total_rounds * 100) : 0}%
-            ({group.win_rounds}승 {group.loss_rounds}패)</span>
-          {group.best_round_pct > 0 && <span style={{ color: COLORS.green }}>최고 +{group.best_round_pct}%</span>}
-          {group.worst_round_pct < 0 && <span style={{ color: COLORS.red }}>최저 {group.worst_round_pct}%</span>}
-          <span>누적 수익률 {group.total_return_pct >= 0 ? '+' : ''}{group.total_return_pct}%</span>
-        </div>
-      </div>
-
-      {/* 회차별 이력 테이블 */}
-      <div style={{
-        background: COLORS.card, border: `1px solid ${COLORS.cardBorder}`, borderRadius: 12,
-        padding: 16,
-      }}>
-        <h3 style={{ fontSize: 15, fontWeight: 700, color: COLORS.white, marginBottom: 12 }}>📋 회차별 이력</h3>
-
-        {(!rounds || rounds.length === 0) ? (
-          <div style={{ textAlign: 'center', padding: 30, color: COLORS.textDim, fontSize: 13 }}>
-            아직 실행된 회차가 없습니다. 패턴탐지기에서 종목을 선택하여 시작하세요.
-          </div>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-              <thead>
-                <tr style={{ borderBottom: `1px solid ${COLORS.cardBorder}` }}>
-                  {['회차','상태','시작 원금','최종 금액','수익률','종목수','승/패','시작일','종료일'].map(h => (
-                    <th key={h} style={{ padding: '8px 6px', textAlign: 'center', color: COLORS.textDim, fontWeight: 500, fontSize: 11 }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {rounds.map((r, i) => {
-                  const rPct = r.round_return_pct || r.total_return_pct || 0;
-                  const isActive = r.status === 'active';
-                  const isWin = rPct > 0;
-                  return (
-                    <tr key={r.id}
-                      onClick={() => onSelectPortfolio(r.id)}
-                      style={{ borderBottom: `1px solid ${COLORS.cardBorder}20`, cursor: 'pointer' }}
-                      onMouseEnter={e => e.currentTarget.style.background = COLORS.accent + '08'}
-                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                    >
-                      <td style={{ padding: '10px 6px', textAlign: 'center', fontWeight: 700, color: COLORS.white }}>
-                        {r.round_number || i + 1}
-                      </td>
-                      <td style={{ textAlign: 'center' }}>
-                        <span style={{
-                          fontSize: 10, padding: '2px 8px', borderRadius: 10,
-                          background: isActive ? COLORS.greenDim : isWin ? COLORS.greenDim : COLORS.redDim,
-                          color: isActive ? COLORS.orange : isWin ? COLORS.green : COLORS.red,
-                        }}>
-                          {isActive ? '진행중' : isWin ? '수익' : '손실'}
-                        </span>
-                      </td>
-                      <td style={{ textAlign: 'right', fontFamily: 'JetBrains Mono, monospace', color: COLORS.text }}>
-                        {fmt(r.start_capital || r.capital)}
-                      </td>
-                      <td style={{ textAlign: 'right', fontFamily: 'JetBrains Mono, monospace', fontWeight: 600,
-                        color: isActive ? COLORS.orange : isWin ? COLORS.green : COLORS.red }}>
-                        {fmt(r.end_capital || r.current_value)}
-                      </td>
-                      <td style={{ textAlign: 'center', fontWeight: 700, fontFamily: 'JetBrains Mono, monospace',
-                        color: rPct >= 0 ? COLORS.green : COLORS.red }}>
-                        {rPct >= 0 ? '+' : ''}{rPct.toFixed(1)}%
-                      </td>
-                      <td style={{ textAlign: 'center', color: COLORS.textDim }}>{r.stock_count || '-'}</td>
-                      <td style={{ textAlign: 'center', color: COLORS.textDim }}>
-                        {(r.win_count || 0)}승 {(r.loss_count || 0)}패
-                      </td>
-                      <td style={{ textAlign: 'center', color: COLORS.textDim, fontSize: 10 }}>
-                        {r.created_at ? toKST(r.created_at).slice(0, 10) : '-'}
-                      </td>
-                      <td style={{ textAlign: 'center', color: COLORS.textDim, fontSize: 10 }}>
-                        {r.closed_at ? toKST(r.closed_at).slice(0, 10) : (isActive ? '진행중' : '-')}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {/* 안내 */}
-        <div style={{ marginTop: 12, padding: 10, background: COLORS.bg, borderRadius: 8, fontSize: 11, color: COLORS.textDim, lineHeight: 1.6 }}>
-          💡 <b>다음 회차 시작 방법:</b> 패턴탐지기에서 종목을 선택 → 가상투자 등록 시 복리 그룹을 지정하면 자동으로 다음 회차로 연결됩니다.
-          <br/>모든 포지션이 청산되면 수익금이 자동으로 다음 회차 원금으로 이월됩니다.
-        </div>
-      </div>
-    </div>
-  );
-}

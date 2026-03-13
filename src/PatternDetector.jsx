@@ -11,6 +11,8 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import VirtualInvestTab from "./VirtualInvestTab";
+import { kisApi, getKisCredentials, loadKisCredentials, activateKisMode, refreshKisToken, setupAutoTradeAfterBuy } from "./KisTrading";
+import { supabase } from "./supabaseClient";
 
 const API_BASE = "https://web-production-139e9.up.railway.app";
 
@@ -90,12 +92,24 @@ export default function PatternDetector() {
   const [scanDate, setScanDate] = useState('');
   const [scanSource, setScanSource] = useState('');
   const [loadingPrev, setLoadingPrev] = useState(false);
+  const [scanToast, setScanToast] = useState(null);  // { message, type:'success'|'error' }
 
   // ━━━ 스캔 종목 차트 상태 ━━━
   const [scanChartCode, setScanChartCode] = useState(null);
   const [scanChartCandles, setScanChartCandles] = useState([]);
   const [scanChartLoading, setScanChartLoading] = useState(false);
   const [scanChartStock, setScanChartStock] = useState(null);
+
+  // ━━━ 개별종목추가 상태 ━━━
+  const [addStockKeyword, setAddStockKeyword] = useState('');
+  const [addStockResults, setAddStockResults] = useState([]);
+  const [addStockSearching, setAddStockSearching] = useState(false);
+  const [addStockPrices, setAddStockPrices] = useState({}); // { code: { price, change, change_pct } }
+  const [addStockPriceLoading, setAddStockPriceLoading] = useState({});
+  const [addStockChartCode, setAddStockChartCode] = useState(null);
+  const [addStockChartName, setAddStockChartName] = useState('');
+  const [addStockCandles, setAddStockCandles] = useState([]);
+  const [addStockChartLoading, setAddStockChartLoading] = useState(false);
 
   // ━━━ [v3.1] 폴링 인터벌 ref — 언마운트 시 정리용 ━━━
   const scanIntervalRef = useRef(null);
@@ -197,20 +211,16 @@ export default function PatternDetector() {
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState(0);
   const [selectedRecStocks, setSelectedRecStocks] = useState(new Set());  // 매수추천 선택 종목
+  const [filteredRecCodes, setFilteredRecCodes] = useState(new Set());  // 현재 필터 적용 후 보이는 종목 코드
   // ━━━ 가상투자 등록 모달 상태 ━━━
   const [showRegModal, setShowRegModal] = useState(false);
   const [regTitle, setRegTitle] = useState('');
-  const [regPreset, setRegPreset] = useState('smart');
+  const [regPreset, setRegPreset] = useState(() => {
+    try { return localStorage.getItem('kis_auto_trade_preset') || 'smart'; } catch { return 'smart'; }
+  });
   const [regCapital, setRegCapital] = useState(1000000);
   const [regLoading, setRegLoading] = useState(false);
   const [newRtSessionId, setNewRtSessionId] = useState(null);
-  // ★ 복리 그룹 상태
-  const [compoundGroups, setCompoundGroups] = useState([]);
-  const [selectedCompound, setSelectedCompound] = useState(null); // null=새 포트폴리오, {id,name,...}=복리 그룹
-  const [newCompoundName, setNewCompoundName] = useState('10억 도전');
-  const [newCompoundSeed, setNewCompoundSeed] = useState(100000);
-  const [newCompoundGoal, setNewCompoundGoal] = useState(1000000000);
-  const [regMode, setRegMode] = useState('portfolio'); // 'portfolio' | 'compound' | 'new-compound'
   const [regPatternId, setRegPatternId] = useState(null);   // 등록 시 선택한 패턴 ID
   const [regPatternName, setRegPatternName] = useState(''); // 등록 시 선택한 패턴명
   const [regActiveFilters, setRegActiveFilters] = useState([]);  // ★ 등록 모달에 표시할 적용된 필터 목록
@@ -231,6 +241,212 @@ export default function PatternDetector() {
   const [regSource, setRegSource] = useState('recommend'); // 'recommend' | 'patternScan'
   const [patternSortKey, setPatternSortKey] = useState('similarity'); // 정렬 키
   const [patternSortDir, setPatternSortDir] = useState('desc'); // 'asc' | 'desc'
+
+  // ━━━ 매수 후보 풀 상태 ━━━
+  const [buyCandidates, setBuyCandidates] = useState([]);
+  const [candidatesLoading, setCandidatesLoading] = useState(false);
+  const [candidateSettings, setCandidateSettings] = useState(null);
+  const [showCandidateSettings, setShowCandidateSettings] = useState(false);
+  const [showCandidatePanel, setShowCandidatePanel] = useState(false);
+
+  // ━━━ KIS 실전/모의 주문 모달 상태 ━━━
+  const [showKisOrderModal, setShowKisOrderModal] = useState(false);
+  const [kisOrderMode, setKisOrderMode] = useState('virtual'); // 'virtual' | 'real'
+  const [kisOrderCapital, setKisOrderCapital] = useState(1000000);
+  const [kisOrderType, setKisOrderType] = useState('01'); // '00'=지정가, '01'=시장가
+  const [kisOrderLoading, setKisOrderLoading] = useState(false);
+  const [kisOrderResults, setKisOrderResults] = useState(null);
+
+  // regPreset 변경 시 localStorage에 전략값 저장 (자동매매 동기화용)
+  useEffect(() => {
+    const presetDefs = {
+      aggressive:   { tp:10, sl:5, days:5, trailing:0, grace:0, activation:0 },
+      standard:     { tp:7,  sl:3, days:10, trailing:0, grace:0, activation:0 },
+      conservative: { tp:5,  sl:2, days:15, trailing:0, grace:0, activation:0 },
+      longterm:     { tp:15, sl:5, days:30, trailing:0, grace:0, activation:0 },
+      smart:        { tp:15, sl:12, days:30, trailing:5, grace:0, activation:15 },  // ★ 유예기간 보류
+    };
+    const p = presetDefs[regPreset] || presetDefs.smart;
+    localStorage.setItem('kis_auto_trade_preset', regPreset);
+    localStorage.setItem('kis_auto_trade_strategy', JSON.stringify({
+      tp: p.tp, sl: p.sl, days: p.days,
+      trailing: p.trailing || 0, grace: p.grace || 0, activation: p.activation || 15,
+    }));
+  }, [regPreset]);
+
+  // ━━━ ★ 매수 후보 풀 함수 (Supabase 직접 호출) ━━━
+  const fetchCandidates = useCallback(async () => {
+    setCandidatesLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('buy_candidates')
+        .select('*')
+        .eq('status', 'active')
+        .order('composite_score', { ascending: false })
+        .limit(50);
+      if (!error) setBuyCandidates(data || []);
+    } catch (e) { console.error('후보 목록 로드 실패:', e); }
+    setCandidatesLoading(false);
+  }, []);
+
+  const fetchCandidateSettings = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('candidate_settings')
+        .select('*')
+        .eq('id', 1)
+        .single();
+      if (!error && data) setCandidateSettings(data);
+      else setCandidateSettings({
+        auto_register: false, min_composite_score: 60, min_entry_score: 50,
+        required_entry_grades: ['auto_buy'], max_candidates: 10, expire_days: 3,
+        auto_buy_virtual: false, auto_buy_kis: false, capital_per_stock: 300000,
+        exclude_ma5_down: true, exclude_rsi_overbought: true, min_trading_value: 500000000,
+      });
+    } catch (e) { console.error('후보 설정 로드 실패:', e); }
+  }, []);
+
+  const saveCandidateSettings = useCallback(async (settings) => {
+    try {
+      const { error } = await supabase
+        .from('candidate_settings')
+        .upsert({ id: 1, ...settings, updated_at: new Date().toISOString() });
+      if (error) throw error;
+      setCandidateSettings(settings);
+      alert('설정이 저장되었습니다.');
+    } catch (e) { alert('설정 저장 실패: ' + e.message); }
+  }, []);
+
+  const registerCandidates = useCallback(async (candidates, source = 'manual') => {
+    try {
+      const expireDays = candidateSettings?.expire_days || 3;
+      const expiresAt = new Date(Date.now() + expireDays * 86400000).toISOString();
+
+      // 기존 active 후보 코드 조회 (중복 방지)
+      const { data: existing } = await supabase
+        .from('buy_candidates').select('code').eq('status', 'active');
+      const existingCodes = new Set((existing || []).map(r => r.code));
+
+      const toInsert = candidates
+        .filter(s => !existingCodes.has(s.code))
+        .map(s => ({
+          code: s.code,
+          name: s.name,
+          composite_score: s.composite_score || s.top_manip_score || 0,
+          manip_score: s.top_manip_score || 0,
+          entry_score: s.entry_signals?.entry_score || s.entry_score || 0,
+          pattern_match_pct: s.pattern_match_pct || s.similarity || null,
+          entry_grade: s.entry_signals?.entry_grade || s.entry_grade || null,
+          current_price: s.current_price != null ? s.current_price : null,
+          recommended_buy_price: s.current_price != null ? s.current_price : null,
+          source,
+          reason: [
+            s.top_manip_score >= 80 ? `세력${s.top_manip_score}` : '',
+            (s.entry_signals?.entry_score || s.entry_score || 0) >= 60 ? `진입${s.entry_signals?.entry_score || s.entry_score}` : '',
+            (s.similarity || s.pattern_match_pct) ? `유사${s.similarity || s.pattern_match_pct}%` : '',
+          ].filter(Boolean).join(', ') || null,
+          status: 'active',
+          expires_at: expiresAt,
+        }));
+
+      const skipped = candidates.length - toInsert.length;
+      if (toInsert.length > 0) {
+        const { error } = await supabase.from('buy_candidates').insert(toInsert);
+        if (error) throw error;
+      }
+      alert(`후보 등록 완료: ${toInsert.length}개 추가, ${skipped}개 중복`);
+      fetchCandidates();
+      return { success: true, inserted: toInsert.length, skipped };
+    } catch (e) {
+      alert('후보 등록 실패: ' + e.message);
+      return { success: false };
+    }
+  }, [candidateSettings, fetchCandidates]);
+
+  const autoRegisterFromScan = useCallback(async (stocks, source = 'scan') => {
+    try {
+      if (!candidateSettings) return { success: false };
+      const { min_composite_score = 60, min_entry_score = 50, max_candidates = 10,
+        expire_days = 3, required_entry_grades = ['auto_buy'] } = candidateSettings;
+      const expiresAt = new Date(Date.now() + expire_days * 86400000).toISOString();
+
+      // 현재 active 후보
+      const { data: existing } = await supabase
+        .from('buy_candidates').select('code').eq('status', 'active');
+      const existingCodes = new Set((existing || []).map(r => r.code));
+      const remainingSlots = Math.max(0, max_candidates - existingCodes.size);
+      if (remainingSlots === 0) return { success: true, inserted: 0 };
+
+      // 필터링
+      const filtered = stocks.filter(s => {
+        if (existingCodes.has(s.code)) return false;
+        const composite = s.composite_score || s.top_manip_score || 0;
+        if (composite < min_composite_score) return false;
+        const entryScore = s.entry_signals?.entry_score || 0;
+        if (entryScore < min_entry_score) return false;
+        const grade = s.entry_signals?.entry_grade || '';
+        if (grade && !required_entry_grades.includes(grade)) return false;
+        return true;
+      }).sort((a, b) => (b.composite_score || b.top_manip_score || 0) - (a.composite_score || a.top_manip_score || 0))
+        .slice(0, remainingSlots);
+
+      if (filtered.length === 0) return { success: true, inserted: 0 };
+
+      const toInsert = filtered.map(s => ({
+        code: s.code, name: s.name,
+        composite_score: s.composite_score || s.top_manip_score || 0,
+        manip_score: s.top_manip_score || 0,
+        entry_score: s.entry_signals?.entry_score || 0,
+        entry_grade: s.entry_signals?.entry_grade || null,
+        current_price: s.current_price || null,
+        source, status: 'active', expires_at: expiresAt,
+      }));
+
+      const { error } = await supabase.from('buy_candidates').insert(toInsert);
+      if (error) throw error;
+      console.log(`[자동등록] ${toInsert.length}개 후보 등록됨`);
+      fetchCandidates();
+      return { success: true, inserted: toInsert.length };
+    } catch (e) {
+      console.error('자동 등록 실패:', e);
+      return { success: false };
+    }
+  }, [candidateSettings, fetchCandidates]);
+
+  const deleteCandidates = useCallback(async (ids) => {
+    try {
+      for (const id of ids) {
+        await supabase.from('buy_candidates').delete().eq('id', id);
+      }
+      fetchCandidates();
+    } catch (e) { console.error('후보 삭제 실패:', e); }
+  }, [fetchCandidates]);
+
+  const updateCandidateStatus = useCallback(async (ids, status) => {
+    try {
+      for (const id of ids) {
+        await supabase.from('buy_candidates').update({ status }).eq('id', id);
+      }
+      fetchCandidates();
+    } catch (e) { console.error('후보 상태 변경 실패:', e); }
+  }, [fetchCandidates]);
+
+  // 후보 풀 초기 로드
+  useEffect(() => {
+    fetchCandidates();
+    fetchCandidateSettings();
+  }, [fetchCandidates, fetchCandidateSettings]);
+
+  // 스캔 완료 시 자동 후보 등록
+  const prevScanStocksRef = useRef(null);
+  useEffect(() => {
+    if (!scanResult?.stocks || !candidateSettings?.auto_register) return;
+    // 같은 스캔 결과에 대해 중복 실행 방지
+    const key = scanResult.stocks.length + '_' + (scanResult.scan_date || '');
+    if (prevScanStocksRef.current === key) return;
+    prevScanStocksRef.current = key;
+    autoRegisterFromScan(scanResult.stocks, 'scan');
+  }, [scanResult, candidateSettings, autoRegisterFromScan]);
 
   // ━━━ ★ 패턴 라이브러리 함수 ━━━
   const fetchSavedPatterns = useCallback(async () => {
@@ -328,11 +544,74 @@ export default function PatternDetector() {
     } catch (e) { console.error('이름 수정 실패:', e); }
   };
 
-  const runPatternScan = async () => {
+  // ★ 캐시된 스캔 결과 로드 (돋보기 클릭 시 사용)
+  const loadPatternScanCache = async (patternId) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/pattern/library/${patternId}/scan-cache`);
+      const data = await res.json();
+      if (data.success && data.cached && data.matches?.length > 0) {
+        return data;
+      }
+    } catch (e) { console.warn('캐시 로드 실패:', e); }
+    return null;
+  };
+
+  // ★ 돋보기 클릭: 캐시 우선 로드, 없으면 스캔 실행
+  const scanOrLoadPattern = async (patternId) => {
+    setSelectedPatternIds(new Set([patternId]));
+    setShowPatternScan(true);
+    setPageMode('scanner');
+    setPatternScanning(true);
+    setPatternScanResult(null);
+
+    // 1) 캐시 확인
+    const cached = await loadPatternScanCache(patternId);
+    if (cached) {
+      setPatternScanResult({ ...cached, fromCache: true });
+      setPatternScanning(false);
+      return;
+    }
+
+    // 2) 캐시 없으면 스캔 실행
+    try {
+      const res = await fetch(`${API_BASE}/api/pattern/library/scan`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pattern_ids: [patternId], min_similarity: patternMinSimilarity, market: scanMarket, limit: 50 }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setPatternScanResult(data);
+        setTimeout(() => fetchSavedPatterns(), 2000);
+      } else {
+        alert('스캔 실패: ' + (data.message || ''));
+      }
+    } catch (e) { alert('스캔 실패: ' + e.message); }
+    setPatternScanning(false);
+  };
+
+  const runPatternScan = async (forceRescan = false) => {
     const ids = [...selectedPatternIds];
     if (ids.length === 0) { alert('스캔할 패턴을 선택하세요'); return; }
     setPatternScanning(true);
     setPatternScanResult(null);
+
+    // 단일 패턴이고 forceRescan이 아니면 캐시 먼저 확인
+    if (!forceRescan && ids.length === 1) {
+      const cached = await loadPatternScanCache(ids[0]);
+      if (cached) {
+        setPatternScanResult({ ...cached, fromCache: true });
+        setPatternScanning(false);
+        return;
+      }
+    }
+
+    // forceRescan이면 캐시 삭제
+    if (forceRescan) {
+      for (const pid of ids) {
+        try { await fetch(`${API_BASE}/api/pattern/library/${pid}/scan-cache`, { method: 'DELETE' }); } catch (e) {}
+      }
+    }
+
     try {
       const res = await fetch(`${API_BASE}/api/pattern/library/scan`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -341,7 +620,6 @@ export default function PatternDetector() {
       const data = await res.json();
       if (data.success) {
         setPatternScanResult(data);
-        // use_count 갱신은 결과 렌더링 후 지연 호출 (연속 리렌더링 방지)
         setTimeout(() => fetchSavedPatterns(), 2000);
       } else {
         alert('스캔 실패: ' + (data.message || ''));
@@ -370,14 +648,9 @@ export default function PatternDetector() {
       setRegPatternName('');
     }
     setShowRegModal(true);
-    // 복리 그룹 목록 + 패턴 라이브러리 동시 로드
+    // 패턴 라이브러리 로드
     try {
-      const [compRes] = await Promise.all([
-        fetch(`${API_BASE}/api/virtual-portfolio/compound/list`),
-        savedPatterns.length === 0 ? fetchSavedPatterns() : Promise.resolve(),
-      ]);
-      const compData = await compRes.json();
-      if (compData.success) setCompoundGroups(compData.groups || []);
+      if (savedPatterns.length === 0) await fetchSavedPatterns();
     } catch(e) { console.error('모달 데이터 로드 실패:', e); }
   };
 
@@ -388,17 +661,17 @@ export default function PatternDetector() {
       selRecs = (patternScanResult?.matches || []).filter(r => selectedPatternStocks.has(r.code));
     } else {
       const recs = result?.recommendations || [];
-      selRecs = recs.filter(r => selectedRecStocks.has(r.code));
+      selRecs = recs.filter(r => selectedRecStocks.has(r.code) && filteredRecCodes.has(r.code));
     }
     if (selRecs.length === 0) return;
     setRegLoading(true);
     try {
       const presetDefs = {
-        aggressive:   { tp:10, sl:5, days:5, trailing:0, grace:0 },
-        standard:     { tp:7,  sl:3, days:10, trailing:0, grace:0 },
-        conservative: { tp:5,  sl:2, days:15, trailing:0, grace:0 },
-        longterm:     { tp:15, sl:5, days:30, trailing:0, grace:0 },
-        smart:        { tp:15, sl:12, days:30, trailing:5, grace:7 },
+        aggressive:   { tp:10, sl:5, days:5, trailing:0, grace:0, activation:0 },
+        standard:     { tp:7,  sl:3, days:10, trailing:0, grace:0, activation:0 },
+        conservative: { tp:5,  sl:2, days:15, trailing:0, grace:0, activation:0 },
+        longterm:     { tp:15, sl:5, days:30, trailing:0, grace:0, activation:0 },
+        smart:        { tp:15, sl:12, days:30, trailing:5, grace:0, activation:15 },  // ★ 유예기간 보류
       };
       const p = presetDefs[regPreset] || presetDefs.smart;
       const filtersPayload = regActiveFilters.map(f => ({ label: f.label, color: f.color }));
@@ -412,37 +685,8 @@ export default function PatternDetector() {
 
       let data;
 
-      if (regMode === 'new-compound') {
-        // ★ 새 복리 그룹 생성 + 1회차 등록
-        const res = await fetch(`${API_BASE}/api/virtual-portfolio/compound/create`, {
-          method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({
-            name: newCompoundName || '10억 도전',
-            seed_money: newCompoundSeed,
-            goal_amount: newCompoundGoal,
-            strategy: regPreset,
-            stocks: stocksList,
-            filters: filtersPayload,
-          }),
-        });
-        data = await res.json();
-
-      } else if (regMode === 'compound' && selectedCompound) {
-        // ★ 기존 복리 그룹에 다음 회차 등록
-        const res = await fetch(`${API_BASE}/api/virtual-portfolio/compound/${selectedCompound.id}/next-round`, {
-          method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({
-            stocks: stocksList,
-            preset: regPreset,
-            take_profit_pct: p.tp, stop_loss_pct: p.sl,
-            max_hold_days: p.days, trailing_stop_pct: p.trailing, grace_days: p.grace,
-            filters: filtersPayload,
-          }),
-        });
-        data = await res.json();
-
-      } else {
-        // ★ 기존 방식: 독립 포트폴리오
+      {
+        // 독립 포트폴리오 등록
         const body = {
           title: regTitle || 'Untitled',
           stocks: stocksList,
@@ -451,7 +695,7 @@ export default function PatternDetector() {
           strategy_type: regPreset,
           take_profit_pct: p.tp, stop_loss_pct: p.sl,
           max_hold_days: p.days, trailing_stop_pct: p.trailing, grace_days: p.grace,
-          profit_activation_pct: regPreset === 'smart' ? 15 : 0,
+          profit_activation_pct: p.activation ?? 15,
           filters: filtersPayload,
         };
         const res = await fetch(`${API_BASE}/api/virtual-invest/realtime/start`, {
@@ -485,6 +729,473 @@ export default function PatternDetector() {
     } catch(e) { alert('등록 실패: ' + e.message); }
     finally { setRegLoading(false); }
   };
+
+  // ━━━ KIS 주문 모달 열기 ━━━
+  const openKisOrderModal = (mode) => {
+    const hasStocks = selectedRecStocks.size > 0;
+    if (!hasStocks) return;
+    setKisOrderMode(mode);
+    setKisOrderResults(null);
+    setShowKisOrderModal(true);
+  };
+
+  // ━━━ KIS 주문 실행 (매수) ━━━
+  const executeKisOrders = async () => {
+    const recs = result?.recommendations || [];
+    // 필터링된 목록에서만 선택된 종목을 가져옴 (숨겨진 종목 제외)
+    const selStocks = recs.filter(r => selectedRecStocks.has(r.code) && filteredRecCodes.has(r.code));
+    if (selStocks.length === 0) return;
+
+    const isVirtual = kisOrderMode === 'virtual';
+    // 해당 모드의 크레덴셜 활성화
+    if (!activateKisMode(kisOrderMode)) {
+      // 토큰이 없으면 자동 갱신 시도
+      const refreshed = await refreshKisToken(kisOrderMode);
+      if (!refreshed) {
+        alert(`${isVirtual ? '모의투자' : '실전투자'} API가 연결되지 않았습니다.\n${isVirtual ? 'KIS 모의투자' : 'KIS 실전투자'} > API 설정에서 먼저 연결해주세요.`);
+        return;
+      }
+    }
+    // 계좌번호 유효성 검증
+    const activeCreds = await loadKisCredentials();
+    const acctNo = (activeCreds.account_no || "").replace(/-/g, "");
+    if (!acctNo || acctNo.length < 10) {
+      alert(`${isVirtual ? '모의투자' : '실전투자'} 계좌번호가 설정되지 않았습니다.\n${isVirtual ? 'KIS 모의투자' : 'KIS 실전투자'} > API 설정에서 계좌번호를 입력해주세요.\n\n현재 계좌번호: ${acctNo || '(없음)'}`);
+      return;
+    }
+    const confirmMsg = isVirtual
+      ? `🏦 모의투자 주문\n\n${selStocks.length}개 종목에 총 ${kisOrderCapital.toLocaleString()}원 매수합니다.\n(종목당 ${Math.floor(kisOrderCapital / selStocks.length).toLocaleString()}원)\n\n진행하시겠습니까?`
+      : `🔴 실전투자 주문\n\n⚠️ 실제 계좌에서 매수됩니다!\n${selStocks.length}개 종목에 총 ${kisOrderCapital.toLocaleString()}원\n\n정말 진행하시겠습니까?`;
+    if (!confirm(confirmMsg)) return;
+
+    setKisOrderLoading(true);
+    const perStock = Math.floor(kisOrderCapital / selStocks.length);
+    const results = [];
+
+    for (const stock of selStocks) {
+      const price = stock.current_price || 0;
+      if (price <= 0) {
+        results.push({ code: stock.code, name: stock.name, success: false, message: '현재가 없음' });
+        continue;
+      }
+      const qty = Math.floor(perStock / price);
+      if (qty <= 0) {
+        results.push({ code: stock.code, name: stock.name, success: false, message: '수량 부족 (1주 미만)' });
+        continue;
+      }
+
+      try {
+        // KIS API 주문 요청 (is_virtual 파라미터는 localStorage creds에서 자동 처리)
+        const orderParams = {
+          stock_code: stock.code,
+          qty: qty,
+          order_type: kisOrderType,
+        };
+        if (kisOrderType === '00') orderParams.price = price; // 지정가
+        const r = await kisApi("order/buy", {}, {
+          method: 'POST',
+          body: JSON.stringify(orderParams),
+        });
+        results.push({
+          code: stock.code, name: stock.name,
+          success: r.success, message: r.message || (r.success ? '주문 완료' : '주문 실패'),
+          order_no: r.order_no || '', qty, price,
+        });
+      } catch (e) {
+        results.push({ code: stock.code, name: stock.name, success: false, message: e.message });
+      }
+    }
+
+    setKisOrderResults(results);
+    setKisOrderLoading(false);
+
+    // 주문 성공 시 자동매매 규칙 생성 + 즉시 백그라운드 모니터링 시작
+    const successStocks = results.filter(r => r.success);
+    if (successStocks.length > 0) {
+      const presetDefs = {
+        aggressive:   { tp:10, sl:5, days:5, trailing:0, grace:0, activation:0 },
+        standard:     { tp:7,  sl:3, days:10, trailing:0, grace:0, activation:0 },
+        conservative: { tp:5,  sl:2, days:15, trailing:0, grace:0, activation:0 },
+        longterm:     { tp:15, sl:5, days:30, trailing:0, grace:0, activation:0 },
+        smart:        { tp:15, sl:12, days:30, trailing:5, grace:0, activation:15 },  // ★ 유예기간 보류
+      };
+      const p = presetDefs[regPreset] || presetDefs.smart;
+      localStorage.setItem(`kis_auto_trade_sync_${kisOrderMode}`, JSON.stringify({
+        tp: p.tp, sl: p.sl, days: p.days,
+        trailing: p.trailing || 0, grace: p.grace || 0, activation: p.activation || 15,
+        autostart: true, timestamp: Date.now(),
+      }));
+      // 매입 즉시 자동 손절/익절 모니터링 시작
+      setupAutoTradeAfterBuy(kisOrderMode, successStocks, p);
+    }
+  };
+
+  // ━━━ 개별종목추가 함수 ━━━
+  const searchAddStock = async () => {
+    if (!addStockKeyword.trim()) return;
+    setAddStockSearching(true);
+    setAddStockResults([]);
+    setAddStockPrices({});
+    try {
+      const resp = await fetch(`${API_BASE}/api/pattern/search`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keyword: addStockKeyword.trim() }),
+      });
+      const data = await resp.json();
+      const results = data.results || [];
+      setAddStockResults(results);
+      // ★ 검색 결과 나오면 자동으로 현재가 조회 (silent 모드)
+      results.forEach(stock => {
+        if (stock.code) addStockGetPrice(stock.code, true);
+      });
+    } catch (e) { alert('검색 실패: ' + e.message); }
+    finally { setAddStockSearching(false); }
+  };
+
+  const addStockGetPrice = async (code, silent = false) => {
+    setAddStockPriceLoading(prev => ({ ...prev, [code]: true }));
+    try {
+      const resp = await fetch(`${API_BASE}/api/stocks/quote/${code}`);
+      const d = await resp.json();
+      if (d.success && d.price) {
+        setAddStockPrices(prev => ({ ...prev, [code]: {
+          price: d.price, change: d.change || 0, change_pct: d.change_pct || 0,
+          high: d.high || 0, low: d.low || 0, open: d.open || 0, volume: d.volume || 0,
+        }}));
+      } else if (!silent) {
+        alert(`시세 조회 실패: ${d.error || '알 수 없는 오류'}`);
+      }
+    } catch (e) { console.error('시세조회 실패:', e); if (!silent) alert('시세 조회 실패: 서버 연결 오류'); }
+    finally { setAddStockPriceLoading(prev => ({ ...prev, [code]: false })); }
+  };
+
+  const addStockOpenChart = async (code, name) => {
+    setAddStockChartCode(code);
+    setAddStockChartName(name);
+    setAddStockChartLoading(true);
+    setAddStockCandles([]);
+    try {
+      const resp = await fetch(`${API_BASE}/api/virtual-invest/candles/${code}`);
+      const d = await resp.json();
+      setAddStockCandles(d.candles || []);
+      // 시세도 같이 조회
+      if (!addStockPrices[code]) addStockGetPrice(code);
+    } catch (e) { console.error('차트 로드 실패:', e); }
+    finally { setAddStockChartLoading(false); }
+  };
+
+  const addStockRegisterVirtual = async (stock) => {
+    const priceInfo = addStockPrices[stock.code];
+    const price = priceInfo?.price || 0;
+    const confirmMsg = `🏦 가상투자 등록\n\n${stock.name}(${stock.code})\n현재가: ${price ? price.toLocaleString() + '원' : '미조회'}\n\n등록하시겠습니까?`;
+    if (!window.confirm(confirmMsg)) return;
+    try {
+      const body = {
+        title: `개별추가_${stock.name}`,
+        stocks: [{ code: stock.code, name: stock.name, buy_price: price, current_price: price }],
+        capital: price > 0 ? price * 10 : 1000000,
+        preset: 'smart',
+        take_profit_pct: 15, stop_loss_pct: 12, max_hold_days: 30,
+        trailing_stop_pct: 5, grace_days: 0, profit_activation_pct: 15,  // ★ 유예기간 보류
+      };
+      const res = await fetch(`${API_BASE}/api/virtual-invest/realtime/start`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (data.error) alert('등록 실패: ' + data.error);
+      else alert(data.message || `${stock.name} 가상투자 등록 완료!`);
+    } catch (e) { alert('등록 실패: ' + e.message); }
+  };
+
+  const addStockRegisterCandidate = async (stock) => {
+    let priceInfo = addStockPrices[stock.code];
+    // 가격 미조회 시 먼저 시세 조회
+    if (!priceInfo?.price) {
+      try {
+        const resp = await fetch(`${API_BASE}/api/stocks/quote/${stock.code}`);
+        const d = await resp.json();
+        if (d.success && d.price) {
+          priceInfo = { price: d.price };
+          setAddStockPrices(prev => ({ ...prev, [stock.code]: { price: d.price, change: d.change || 0, change_pct: d.change_pct || 0 } }));
+        }
+      } catch (e) { /* ignore */ }
+    }
+    await registerCandidates([{
+      code: stock.code,
+      name: stock.name,
+      current_price: priceInfo?.price || 0,
+      composite_score: 0,
+      top_manip_score: 0,
+      entry_score: 0,
+    }], 'manual');
+  };
+
+  const addStockKisBuy = async (stock, mode) => {
+    const isVirtual = mode === 'virtual';
+    if (!activateKisMode(mode)) {
+      const refreshed = await refreshKisToken(mode);
+      if (!refreshed) {
+        alert(`${isVirtual ? '모의투자' : '실전투자'} API가 연결되지 않았습니다.\nKIS ${isVirtual ? '모의투자' : '실전투자'} > API 설정에서 먼저 연결해주세요.`);
+        return;
+      }
+    }
+    const creds = await loadKisCredentials();
+    const acctNo = (creds.account_no || "").replace(/-/g, "");
+    if (!acctNo || acctNo.length < 10) {
+      alert(`${isVirtual ? '모의투자' : '실전투자'} 계좌번호가 설정되지 않았습니다.`);
+      return;
+    }
+    const priceInfo = addStockPrices[stock.code];
+    const price = priceInfo?.price || 0;
+    if (price <= 0) { alert('현재가를 먼저 조회해주세요. (🔍 버튼)'); return; }
+
+    const capital = 1000000;
+    const qty = Math.floor(capital / price);
+    if (qty <= 0) { alert('1주 매수 불가 (금액 부족)'); return; }
+
+    const confirmMsg = isVirtual
+      ? `🏦 모의투자 매수\n\n${stock.name} ${qty}주 × ${price.toLocaleString()}원\n= ${(qty * price).toLocaleString()}원\n\n진행하시겠습니까?`
+      : `🔴 실전투자 매수\n\n⚠️ 실제 계좌에서 매수됩니다!\n${stock.name} ${qty}주 × ${price.toLocaleString()}원\n= ${(qty * price).toLocaleString()}원\n\n정말 진행하시겠습니까?`;
+    if (!window.confirm(confirmMsg)) return;
+
+    try {
+      const r = await kisApi("order/buy", {}, {
+        method: 'POST',
+        body: JSON.stringify({ stock_code: stock.code, qty, order_type: '01' }),
+      });
+      alert(r.success ? `${stock.name} 매수 완료! (${qty}주)` : `매수 실패: ${r.message}`);
+      if (r.success) {
+        setupAutoTradeAfterBuy(mode, [{ code: stock.code, name: stock.name, qty, price }],
+          { tp: 15, sl: 12, days: 30, trailing: 5, grace: 0, activation: 15 });  // ★ 유예기간 보류
+      }
+    } catch (e) { alert('매수 실패: ' + e.message); }
+  };
+
+  // ━━━ 스캔 히스토리 상태 ━━━
+  const [scanHistoryList, setScanHistoryList] = useState([]);
+  const [showScanHistory, setShowScanHistory] = useState(false);
+  const [loadingScanHistory, setLoadingScanHistory] = useState(false);
+
+  const loadScanHistoryList = useCallback(async () => {
+    setLoadingScanHistory(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/scanner/history`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      if (json.status === 'ok') {
+        setScanHistoryList(json.data || []);
+      } else {
+        throw new Error(json.detail || '히스토리 목록 로드 실패');
+      }
+    } catch (e) {
+      console.warn('[scan-history] API 실패, Supabase 직접 조회:', e.message);
+      try {
+        const { data, error } = await supabase
+          .from('surge_scan_sessions')
+          .select('id, scan_date, status, market, period_days, rise_pct, rise_window, min_volume_ratio, total_scanned, total_found, total_surges, high_manip_count, medium_manip_count')
+          .in('status', ['done', 'stopped'])
+          .order('id', { ascending: false })
+          .limit(20);
+        if (error) throw error;
+        setScanHistoryList(data || []);
+      } catch (e2) { console.error('[scan-history] Supabase 폴백도 실패:', e2); }
+    }
+    setLoadingScanHistory(false);
+  }, []);
+
+  // 스캔 결과를 Supabase에 직접 저장 (백엔드 미배포 대응)
+  // 스캔 결과를 Supabase에 저장 (백엔드가 세션만 만들고 종목 저장 실패하는 문제 대응)
+  const saveScanToHistory = useCallback(async (resultData) => {
+    if (!resultData || !resultData.stocks || resultData.stocks.length === 0) {
+      await loadScanHistoryList();
+      return;
+    }
+    try {
+      // 1) 최근 done/stopped 세션 확인
+      const { data: recentSessions } = await supabase
+        .from('surge_scan_sessions')
+        .select('id')
+        .in('status', ['done', 'stopped'])
+        .order('id', { ascending: false })
+        .limit(1);
+      let sessionId = null;
+      if (recentSessions && recentSessions.length > 0) {
+        const { data: stockCheck } = await supabase
+          .from('surge_scan_stocks')
+          .select('id')
+          .eq('session_id', recentSessions[0].id)
+          .limit(1);
+        if (stockCheck && stockCheck.length > 0) {
+          // 백엔드가 이미 종목까지 저장함 → 스킵
+          await loadScanHistoryList();
+          return;
+        }
+        // 세션은 있지만 종목이 없음 → 이 세션에 종목 저장
+        sessionId = recentSessions[0].id;
+      }
+      // 2) 세션이 없으면 새로 생성
+      if (!sessionId) {
+        const stats = resultData.stats || {};
+        const sessionRow = {
+          scan_date: resultData.scan_date || new Date().toISOString(),
+          market: resultData.market || 'ALL',
+          status: resultData.stopped ? 'stopped' : 'done',
+          total_scanned: stats.total_scanned || 0,
+          total_found: stats.total_found || 0,
+          total_surges: stats.total_surges || 0,
+          high_manip_count: stats.high_manip_count || 0,
+          medium_manip_count: stats.medium_manip_count || 0,
+        };
+        const { data: sessData, error: sessErr } = await supabase
+          .from('surge_scan_sessions').insert(sessionRow).select('id').single();
+        if (sessErr || !sessData) throw sessErr || new Error('세션 생성 실패');
+        sessionId = sessData.id;
+      }
+      // 3) 종목 데이터 50개씩 배치 저장
+      const stocks = resultData.stocks;
+      for (let i = 0; i < stocks.length; i += 50) {
+        const batch = stocks.slice(i, i + 50).map(s => ({
+          session_id: sessionId,
+          code: s.code || '',
+          name: s.name || '',
+          market: s.market || '',
+          current_price: parseInt(s.current_price || 0),
+          last_date: s.last_date || '',
+          surge_count: parseInt(s.surge_count || 0),
+          top_manip_score: s.top_manip_score || 0,
+          top_manip_level: s.top_manip_level || 'low',
+          top_manip_label: s.top_manip_label || '',
+          latest_rise_pct: s.latest_rise_pct || 0,
+          latest_surge_date: s.latest_surge_date || '',
+          latest_from_peak: s.latest_from_peak || 0,
+          surges_json: JSON.stringify(s.surges || []),
+        }));
+        const { error: stockErr } = await supabase.from('surge_scan_stocks').insert(batch);
+        if (stockErr) console.error('[scan-history] 종목 배치 저장 실패:', stockErr);
+      }
+      console.log(`[scan-history] 저장 완료: session_id=${sessionId}, ${stocks.length}개 종목`);
+    } catch (e) {
+      console.error('[scan-history] 저장 실패:', e);
+    }
+    await loadScanHistoryList();
+  }, [loadScanHistoryList]);
+
+  const loadScanHistoryDetail = useCallback(async (id) => {
+    try {
+      setScanSource('loading');
+      // 백엔드 API 시도
+      let session = null;
+      let stocks = [];
+      try {
+        const res = await fetch(`${API_BASE}/api/scanner/history/${id}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        if (json.status === 'ok' && json.stocks && json.stocks.length > 0) {
+          session = json.session;
+          stocks = json.stocks;
+        }
+      } catch (apiErr) {
+        console.warn('[scan-history] API 실패, Supabase 직접 조회:', apiErr.message);
+      }
+      // 백엔드 실패 시 Supabase 직접 조회
+      if (!session) {
+        const { data: sessData, error: sessErr } = await supabase
+          .from('surge_scan_sessions').select('*').eq('id', id).single();
+        if (sessErr || !sessData) { alert('해당 스캔 결과를 불러올 수 없습니다.'); setScanSource(''); return; }
+        session = sessData;
+        // 종목 데이터 페이지네이션 로드
+        let offset = 0;
+        const pageSize = 1000;
+        while (true) {
+          const { data: stockRows, error: stockErr } = await supabase
+            .from('surge_scan_stocks').select('*').eq('session_id', id)
+            .order('top_manip_score', { ascending: false })
+            .range(offset, offset + pageSize - 1);
+          if (stockErr || !stockRows || stockRows.length === 0) break;
+          // surges_json 파싱
+          stocks.push(...stockRows.map(r => ({
+            ...r,
+            surges: r.surges_json ? (typeof r.surges_json === 'string' ? JSON.parse(r.surges_json) : r.surges_json) : [],
+          })));
+          if (stockRows.length < pageSize) break;
+          offset += pageSize;
+        }
+        if (stocks.length === 0) { alert('해당 스캔 결과를 불러올 수 없습니다.'); setScanSource(''); return; }
+      }
+      const detail = {
+        status: 'done',
+        scan_date: session.scan_date,
+        market: session.market,
+        source: 'db',
+        stats: {
+          total_scanned: session.total_scanned,
+          total_found: session.total_found,
+          total_surges: session.total_surges,
+          high_manip_count: session.high_manip_count,
+          medium_manip_count: session.medium_manip_count,
+          entry_signal_count: 0,
+        },
+        stocks,
+      };
+      setScanResultWithCache(detail);
+      setScanDate(detail.scan_date || '');
+      setScanSource('db');
+      setShowScanHistory(false);
+      // ★ 성공 토스트
+      const dateStr = detail.scan_date || '';
+      const marketStr = session.market === 'ALL' ? '전체' : session.market;
+      setScanToast({ message: `${dateStr} ${marketStr} 스캔 기록 불러오기 완료 (${stocks.length}종목)`, type: 'success' });
+      setTimeout(() => setScanToast(null), 3000);
+    } catch (e) {
+      console.error('[scan-history] 상세 로드 실패:', e);
+      setScanToast({ message: '스캔 기록 로드 실패: ' + e.message, type: 'error' });
+      setTimeout(() => setScanToast(null), 4000);
+      setScanSource('');
+    }
+  }, [setScanResultWithCache]);
+
+  const [selectedHistoryIds, setSelectedHistoryIds] = useState(new Set());
+  const [deletingHistory, setDeletingHistory] = useState(false);
+
+  const toggleHistorySelect = (id, e) => {
+    e.stopPropagation();
+    setSelectedHistoryIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const deleteSelectedHistory = useCallback(async () => {
+    if (selectedHistoryIds.size === 0) return;
+    if (!confirm(`선택한 ${selectedHistoryIds.size}개의 스캔 기록을 삭제하시겠습니까?`)) return;
+    setDeletingHistory(true);
+    try {
+      const ids = [...selectedHistoryIds];
+      try {
+        const res = await fetch(`${API_BASE}/api/scanner/history/delete`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        if (json.status !== 'ok') throw new Error(json.detail || '삭제 실패');
+      } catch (apiErr) {
+        console.warn('[scan-history] 삭제 API 실패, Supabase 직접 삭제:', apiErr.message);
+        // 종목 데이터 먼저 삭제 후 세션 삭제
+        for (const sid of ids) {
+          await supabase.from('surge_scan_stocks').delete().eq('session_id', sid);
+        }
+        const { error } = await supabase.from('surge_scan_sessions').delete().in('id', ids);
+        if (error) throw error;
+      }
+      setSelectedHistoryIds(new Set());
+      await loadScanHistoryList();
+    } catch (e) { console.error('[scan-history] 삭제 실패:', e); }
+    setDeletingHistory(false);
+  }, [selectedHistoryIds, loadScanHistoryList]);
 
   // ━━━ 이전 분석 결과 상태 ━━━
   const [prevSessions, setPrevSessions] = useState([]);
@@ -560,14 +1271,31 @@ export default function PatternDetector() {
         if (!data.running) {
           clearInterval(scanIntervalRef.current);
           scanIntervalRef.current = null;
-          if (data.error) { setScanError(data.error); setScanning(false); }
+          if (data.error && !data.has_result) { setScanError(data.error); setScanning(false); }
           else if (data.has_result) {
             const resResp = await fetch(`${API_BASE}/api/scanner/result`);
             const resData = await resResp.json();
-            if (resData.status === 'done') { setScanResultWithCache(resData); setScanDate(resData.scan_date || new Date().toISOString()); setScanSource('memory'); }
+            if (resData.status === 'done') {
+              setScanResultWithCache(resData);
+              setScanDate(resData.scan_date || new Date().toISOString());
+              setScanSource('memory');
+              saveScanToHistory(resData);
+              if (resData.stopped) setScanMsg(`스캔 중지됨 — 부분 결과 ${resData.stocks?.length || 0}개 저장 완료`);
+            }
             else if (resData.status === 'error') setScanError(resData.error);
             setScanning(false);
           } else {
+            // ★ has_result=false 이지만 중지로 인한 것일 수 있음 → result 한번 더 확인
+            try {
+              const resResp = await fetch(`${API_BASE}/api/scanner/result`);
+              const resData = await resResp.json();
+              if (resData.status === 'done' && resData.stocks?.length > 0) {
+                setScanResultWithCache(resData);
+                setScanDate(resData.scan_date || new Date().toISOString());
+                setScanSource('memory');
+                saveScanToHistory(resData);
+              }
+            } catch (_e) { /* ignore */ }
             setScanning(false);
           }
         }
@@ -844,7 +1572,24 @@ export default function PatternDetector() {
   // ━━━ 렌더링 ━━━
   return (
     <div style={{ minHeight:'100vh', background:COLORS.bg, color:COLORS.text,
-      fontFamily:"'Pretendard',-apple-system,sans-serif", padding:'20px', maxWidth:1200, margin:'0 auto' }}>
+      fontFamily:"'Pretendard',-apple-system,sans-serif", padding:'20px', maxWidth:1200, margin:'0 auto', position:'relative' }}>
+
+      {/* ★ 토스트 알림 */}
+      {scanToast && (<>
+        <style>{`@keyframes pdToastIn{from{opacity:0;transform:translateX(-50%) translateY(-12px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}`}</style>
+        <div style={{
+          position:'fixed', top:24, left:'50%', transform:'translateX(-50%)', zIndex:9999,
+          background: scanToast.type === 'success' ? '#065f46' : '#991b1b',
+          border: `1px solid ${scanToast.type === 'success' ? '#10b981' : '#ef4444'}`,
+          color:'#fff', padding:'12px 24px', borderRadius:10,
+          fontSize:14, fontWeight:600, boxShadow:'0 4px 20px rgba(0,0,0,0.4)',
+          display:'flex', alignItems:'center', gap:8,
+          animation:'pdToastIn 0.3s ease-out',
+        }}>
+          <span>{scanToast.type === 'success' ? '\u2705' : '\u274c'}</span>
+          {scanToast.message}
+        </div>
+      </>)}
 
       {/* 헤더 */}
       <div style={{ marginBottom:20 }}>
@@ -864,6 +1609,7 @@ export default function PatternDetector() {
         {[
           { k:'scanner', l:'🚀 급상승 종목 발굴', c:COLORS.red, cd:COLORS.redDim },
           { k:'analyzer', l:'🔬 패턴 분석기', c:COLORS.accent, cd:COLORS.accentDim },
+          { k:'addstock', l:'➕ 개별종목추가', c:COLORS.green, cd:COLORS.greenDim },
         ].map(m => (
           <button key={m.k} onClick={() => setPageMode(m.k)} style={{
             flex:1, padding:'12px 0', fontSize:14, fontWeight:700, border:'none', borderRadius:10,
@@ -879,17 +1625,16 @@ export default function PatternDetector() {
           <div style={{ fontSize:15, fontWeight:700, marginBottom:16, color:COLORS.red }}>
             🚀 전종목 급상승 스캐너
           </div>
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(140px, 1fr))',
-            gap:14, marginBottom:16 }}>
-            <FilterGroup label="시장 선택" options={[{v:'ALL',l:'전체'},{v:'KOSPI',l:'KOSPI'},{v:'KOSDAQ',l:'KOSDAQ'}]}
+          <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:16 }}>
+            <FilterRow label="시장 선택" options={[{v:'ALL',l:'전체'},{v:'KOSPI',l:'KOSPI'},{v:'KOSDAQ',l:'KOSDAQ'}]}
               value={scanMarket} setter={setScanMarket} color={COLORS.red} disabled={scanning} />
-            <FilterGroup label="조회 기간" options={[{v:180,l:'6개월'},{v:365,l:'1년'},{v:600,l:'2년'}]}
+            <FilterRow label="조회 기간" options={[{v:3,l:'3일'},{v:5,l:'5일'},{v:10,l:'10일'},{v:15,l:'15일'},{v:30,l:'30일'},{v:180,l:'6개월'},{v:365,l:'1년'},{v:600,l:'2년'}]}
               value={scanPeriod} setter={setScanPeriod} color={COLORS.red} disabled={scanning} />
-            <FilterGroup label="급상승 기준" options={[{v:20,l:'+20%'},{v:30,l:'+30%'},{v:50,l:'+50%'},{v:100,l:'+100%'}]}
+            <FilterRow label="급상승 기준" options={[{v:5,l:'+5%'},{v:10,l:'+10%'},{v:15,l:'+15%'},{v:20,l:'+20%'},{v:30,l:'+30%'},{v:50,l:'+50%'},{v:100,l:'+100%'}]}
               value={scanRisePct} setter={setScanRisePct} color={COLORS.red} disabled={scanning} />
-            <FilterGroup label="상승 기간" options={[{v:3,l:'3일'},{v:5,l:'5일'},{v:10,l:'10일'}]}
+            <FilterRow label="상승 기간" options={[{v:3,l:'3일'},{v:5,l:'5일'},{v:10,l:'10일'}]}
               value={scanRiseWindow} setter={setScanRiseWindow} color={COLORS.red} disabled={scanning} />
-            <FilterGroup label="최소 거래량 배율" options={[{v:1.5,l:'1.5배'},{v:2.0,l:'2배'},{v:3.0,l:'3배'},{v:5.0,l:'5배'}]}
+            <FilterRow label="거래량 배율" options={[{v:1.5,l:'1.5배'},{v:2.0,l:'2배'},{v:3.0,l:'3배'},{v:5.0,l:'5배'}]}
               value={scanVolRatio} setter={setScanVolRatio} color={COLORS.red} disabled={scanning} />
           </div>
           <div style={{ display:'flex', gap:10 }}>
@@ -903,10 +1648,87 @@ export default function PatternDetector() {
                 borderRadius:10, border:`2px solid ${COLORS.red}`, cursor:'pointer',
                 background:'transparent', color:COLORS.red }}>⏹ 스캔 중지</button>
             )}
+            <button onClick={() => { setShowScanHistory(!showScanHistory); if (!showScanHistory) loadScanHistoryList(); }}
+              style={{ padding:'10px 18px', fontSize:13, fontWeight:600, borderRadius:10, cursor:'pointer',
+                border:`1px solid ${showScanHistory ? '#4ade80' : '#22c55e'}`,
+                background: showScanHistory ? 'rgba(74,222,128,0.15)' : 'rgba(34,197,94,0.08)',
+                color: showScanHistory ? '#4ade80' : '#22c55e' }}>
+              📋 이전 기록</button>
             <div style={{ fontSize:12, color:COLORS.textDim, alignSelf:'center' }}>
               {scanMarket==='ALL'?'전체':scanMarket} 종목 | {scanRiseWindow}일 내 +{scanRisePct}% 이상 | 거래량 {scanVolRatio}배↑
             </div>
           </div>
+
+          {showScanHistory && (
+            <div style={{ background:COLORS.card, border:`1px solid ${COLORS.cardBorder}`, borderRadius:10, padding:14, marginTop:12 }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
+                <div style={{ fontSize:13, fontWeight:600, color:COLORS.text }}>스캔 히스토리 (최근 20개)</div>
+                {selectedHistoryIds.size > 0 && (
+                  <button onClick={deleteSelectedHistory} disabled={deletingHistory}
+                    style={{ padding:'5px 14px', fontSize:11, fontWeight:600, borderRadius:6, border:`1px solid ${COLORS.red}`,
+                      background:'rgba(239,68,68,0.1)', color:COLORS.red, cursor:deletingHistory?'wait':'pointer' }}>
+                    {deletingHistory ? '삭제 중...' : `선택 삭제 (${selectedHistoryIds.size})`}
+                  </button>
+                )}
+              </div>
+              {loadingScanHistory ? (
+                <div style={{ textAlign:'center', padding:16, color:COLORS.textDim, fontSize:12 }}>불러오는 중...</div>
+              ) : scanHistoryList.length === 0 ? (
+                <div style={{ textAlign:'center', padding:16, color:COLORS.textDim, fontSize:12 }}>저장된 스캔 기록이 없습니다.</div>
+              ) : (
+                <div style={{ maxHeight:300, overflowY:'auto' }}>
+                  <table style={{ width:'100%', fontSize:12, borderCollapse:'collapse' }}>
+                    <thead>
+                      <tr style={{ borderBottom:`1px solid ${COLORS.cardBorder}`, color:COLORS.textDim }}>
+                        <th style={{ padding:'6px 8px', textAlign:'center', width:32 }}>
+                          <div onClick={() => {
+                            if (selectedHistoryIds.size === scanHistoryList.length) setSelectedHistoryIds(new Set());
+                            else setSelectedHistoryIds(new Set(scanHistoryList.map(h => h.id)));
+                          }} style={{ width:16, height:16, borderRadius:3, border:`2px solid ${selectedHistoryIds.size===scanHistoryList.length?COLORS.accent:COLORS.cardBorder}`, background:selectedHistoryIds.size===scanHistoryList.length?COLORS.accent:'transparent', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', margin:'0 auto', fontSize:10, color:COLORS.white, fontWeight:700 }}>
+                            {selectedHistoryIds.size === scanHistoryList.length && '✓'}
+                          </div>
+                        </th>
+                        <th style={{ padding:'6px 8px', textAlign:'left' }}>스캔일시</th>
+                        <th style={{ padding:'6px 8px', textAlign:'center' }}>시장</th>
+                        <th style={{ padding:'6px 8px', textAlign:'center' }}>조회기간</th>
+                        <th style={{ padding:'6px 8px', textAlign:'center' }}>급상승기준</th>
+                        <th style={{ padding:'6px 8px', textAlign:'center' }}>상승기간</th>
+                        <th style={{ padding:'6px 8px', textAlign:'center' }}>거래량배율</th>
+                        <th style={{ padding:'6px 8px', textAlign:'center' }}></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {scanHistoryList.map(h => {
+                        const sel = selectedHistoryIds.has(h.id);
+                        const periodLabel = h.period_days >= 730 ? '2년' : h.period_days >= 365 ? '1년' : '6개월';
+                        return (
+                        <tr key={h.id} style={{ borderBottom:`1px solid ${COLORS.cardBorder}`, cursor:'pointer', background:sel?'rgba(59,130,246,0.06)':'transparent' }}
+                          onClick={() => loadScanHistoryDetail(h.id)}
+                          onMouseEnter={e => { if(!sel) e.currentTarget.style.background='rgba(59,130,246,0.04)'; }}
+                          onMouseLeave={e => { if(!sel) e.currentTarget.style.background='transparent'; }}>
+                          <td style={{ padding:'6px 8px', textAlign:'center' }}>
+                            <div onClick={(e) => toggleHistorySelect(h.id, e)}
+                              style={{ width:16, height:16, borderRadius:3, border:`2px solid ${sel?COLORS.accent:COLORS.cardBorder}`, background:sel?COLORS.accent:'transparent', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', margin:'0 auto', fontSize:10, color:COLORS.white, fontWeight:700 }}>
+                              {sel && '✓'}
+                            </div>
+                          </td>
+                          <td style={{ padding:'6px 8px' }}>{(() => { try { const d = new Date(h.scan_date); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; } catch { return h.scan_date; } })()}</td>
+                          <td style={{ padding:'6px 8px', textAlign:'center' }}>{h.market==='ALL'?'전체':h.market}</td>
+                          <td style={{ padding:'6px 8px', textAlign:'center' }}>{periodLabel}</td>
+                          <td style={{ padding:'6px 8px', textAlign:'center', color:COLORS.green, fontWeight:600 }}>+{h.rise_pct}%</td>
+                          <td style={{ padding:'6px 8px', textAlign:'center' }}>{h.rise_window}일</td>
+                          <td style={{ padding:'6px 8px', textAlign:'center' }}>{h.min_volume_ratio}배</td>
+                          <td style={{ padding:'6px 8px', textAlign:'center' }}>
+                            <span style={{ fontSize:10, color:COLORS.accent, fontWeight:600 }}>불러오기</span>
+                          </td>
+                        </tr>);
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {scanning && <ProgressBar progress={scanProgress} msg={scanMsg} color={COLORS.red} />}
@@ -957,7 +1779,7 @@ export default function PatternDetector() {
                   <input type="range" min={40} max={90} step={5} value={patternMinSimilarity}
                     onChange={e => setPatternMinSimilarity(Number(e.target.value))}
                     style={{ flex:1, maxWidth:200, accentColor:'#8b5cf6' }} />
-                  <button onClick={runPatternScan} disabled={patternScanning || selectedPatternIds.size === 0}
+                  <button onClick={() => runPatternScan(false)} disabled={patternScanning || selectedPatternIds.size === 0}
                     style={{ padding:'8px 20px', fontSize:13, fontWeight:700, borderRadius:8, cursor:'pointer',
                       border:'none', background: patternScanning ? '#555' : 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
                       color:'#fff', opacity: selectedPatternIds.size === 0 ? 0.4 : 1 }}>
@@ -967,8 +1789,21 @@ export default function PatternDetector() {
                 {/* 패턴 스캔 결과 */}
                 {patternScanResult && (
                   <div style={{ marginTop:8 }}>
-                    <div style={{ fontSize:12, fontWeight:600, color:'#8b5cf6', marginBottom:8 }}>
-                      📊 매칭 결과: {patternScanResult.total_scanned?.toLocaleString()}개 스캔 → {patternScanResult.matches?.length || 0}개 발견
+                    <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8, flexWrap:'wrap' }}>
+                      <div style={{ fontSize:12, fontWeight:600, color:'#8b5cf6' }}>
+                        📊 매칭 결과: {patternScanResult.total_scanned?.toLocaleString()}개 스캔 → {patternScanResult.matches?.length || 0}개 발견
+                      </div>
+                      {patternScanResult.fromCache && (
+                        <span style={{ fontSize:10, padding:'2px 8px', borderRadius:10,
+                          background:'rgba(34,197,94,0.12)', border:'1px solid rgba(34,197,94,0.3)', color:'#22c55e' }}>
+                          저장된 결과{patternScanResult.scanned_at ? ` (${new Date(patternScanResult.scanned_at).toLocaleDateString('ko-KR')})` : ''}
+                        </span>
+                      )}
+                      <button onClick={() => runPatternScan(true)} disabled={patternScanning}
+                        style={{ padding:'3px 10px', fontSize:10, fontWeight:600, borderRadius:6, cursor:'pointer',
+                          border:'1px solid rgba(251,146,60,0.4)', background:'rgba(251,146,60,0.1)', color:'#fb923c' }}>
+                        🔄 재스캔
+                      </button>
                     </div>
                     {patternScanResult.patterns_used?.map((pu, i) => (
                       <span key={i} style={{ fontSize:10, padding:'2px 8px', borderRadius:10, marginRight:6,
@@ -1007,7 +1842,147 @@ export default function PatternDetector() {
           filteredScanResults={filteredScanResults}
           scanDate={scanDate} scanSource={scanSource} onReload={reloadScanFromDB}
           scanChartCode={scanChartCode} scanChartCandles={scanChartCandles}
-          scanChartLoading={scanChartLoading} fetchScanChart={fetchScanChart} />}
+          scanChartLoading={scanChartLoading} fetchScanChart={fetchScanChart}
+          scanHistoryList={scanHistoryList} showScanHistory={showScanHistory}
+          setShowScanHistory={setShowScanHistory} loadingScanHistory={loadingScanHistory}
+          loadScanHistoryList={loadScanHistoryList} loadScanHistoryDetail={loadScanHistoryDetail}
+          registerCandidates={registerCandidates} />}
+
+        {/* ━━━ 매수 후보 풀 패널 ━━━ */}
+        <div style={{ background:COLORS.card, border:`1px solid ${COLORS.cardBorder}`, borderRadius:12, padding:14, marginBottom:16, marginTop:8 }}>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', cursor:'pointer' }}
+            onClick={() => { setShowCandidatePanel(!showCandidatePanel); if (!showCandidatePanel) fetchCandidates(); }}>
+            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              <span style={{ fontSize:18 }}>📋</span>
+              <span style={{ fontSize:14, fontWeight:700, color:COLORS.text }}>매수 후보 풀</span>
+              <span style={{ fontSize:12, color:'#f59e0b', fontWeight:600 }}>
+                ({buyCandidates.length}개 대기중)
+              </span>
+            </div>
+            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              <button onClick={(e) => { e.stopPropagation(); setShowCandidateSettings(!showCandidateSettings); }}
+                style={{ padding:'4px 10px', fontSize:11, borderRadius:6, cursor:'pointer',
+                  border:`1px solid ${COLORS.cardBorder}`, background:'transparent', color:COLORS.textDim }}>
+                ⚙️ 설정
+              </button>
+              <button onClick={(e) => { e.stopPropagation(); fetchCandidates(); }}
+                style={{ padding:'4px 10px', fontSize:11, borderRadius:6, cursor:'pointer',
+                  border:`1px solid ${COLORS.cardBorder}`, background:'transparent', color:COLORS.textDim }}>
+                🔄
+              </button>
+              <span style={{ fontSize:12, color:COLORS.textDim }}>{showCandidatePanel ? '▲' : '▼'}</span>
+            </div>
+          </div>
+
+          {/* 설정 패널 */}
+          {showCandidateSettings && candidateSettings && (
+            <div style={{ marginTop:12, padding:12, background:'rgba(245,158,11,0.05)', border:'1px solid rgba(245,158,11,0.2)', borderRadius:8 }}>
+              <div style={{ fontSize:13, fontWeight:700, color:'#f59e0b', marginBottom:10 }}>⚙️ 자동 등록 설정</div>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, fontSize:12 }}>
+                <label style={{ display:'flex', alignItems:'center', gap:6, color:COLORS.text }}>
+                  <input type="checkbox" checked={candidateSettings.auto_register || false}
+                    onChange={e => setCandidateSettings({...candidateSettings, auto_register: e.target.checked})} />
+                  스캔 완료 시 자동 등록
+                </label>
+                <label style={{ display:'flex', alignItems:'center', gap:6, color:COLORS.text }}>
+                  최소 종합점수:
+                  <input type="number" value={candidateSettings.min_composite_score || 60} min={0} max={100}
+                    onChange={e => setCandidateSettings({...candidateSettings, min_composite_score: Number(e.target.value)})}
+                    style={{ width:50, padding:'2px 4px', borderRadius:4, border:`1px solid ${COLORS.cardBorder}`, background:COLORS.bg, color:COLORS.text, fontSize:12 }} />
+                </label>
+                <label style={{ display:'flex', alignItems:'center', gap:6, color:COLORS.text }}>
+                  최소 진입점수:
+                  <input type="number" value={candidateSettings.min_entry_score || 50} min={0} max={100}
+                    onChange={e => setCandidateSettings({...candidateSettings, min_entry_score: Number(e.target.value)})}
+                    style={{ width:50, padding:'2px 4px', borderRadius:4, border:`1px solid ${COLORS.cardBorder}`, background:COLORS.bg, color:COLORS.text, fontSize:12 }} />
+                </label>
+                <label style={{ display:'flex', alignItems:'center', gap:6, color:COLORS.text }}>
+                  최대 후보 수:
+                  <input type="number" value={candidateSettings.max_candidates || 10} min={1} max={50}
+                    onChange={e => setCandidateSettings({...candidateSettings, max_candidates: Number(e.target.value)})}
+                    style={{ width:50, padding:'2px 4px', borderRadius:4, border:`1px solid ${COLORS.cardBorder}`, background:COLORS.bg, color:COLORS.text, fontSize:12 }} />
+                </label>
+                <label style={{ display:'flex', alignItems:'center', gap:6, color:COLORS.text }}>
+                  유효기간(일):
+                  <input type="number" value={candidateSettings.expire_days || 3} min={1} max={30}
+                    onChange={e => setCandidateSettings({...candidateSettings, expire_days: Number(e.target.value)})}
+                    style={{ width:50, padding:'2px 4px', borderRadius:4, border:`1px solid ${COLORS.cardBorder}`, background:COLORS.bg, color:COLORS.text, fontSize:12 }} />
+                </label>
+                <label style={{ display:'flex', alignItems:'center', gap:6, color:COLORS.text }}>
+                  <input type="checkbox" checked={candidateSettings.exclude_ma5_down || false}
+                    onChange={e => setCandidateSettings({...candidateSettings, exclude_ma5_down: e.target.checked})} />
+                  MA5 하향 제외
+                </label>
+                <label style={{ display:'flex', alignItems:'center', gap:6, color:COLORS.text }}>
+                  <input type="checkbox" checked={candidateSettings.exclude_rsi_overbought || false}
+                    onChange={e => setCandidateSettings({...candidateSettings, exclude_rsi_overbought: e.target.checked})} />
+                  RSI 과매수 제외
+                </label>
+                <label style={{ display:'flex', alignItems:'center', gap:6, color:COLORS.text }}>
+                  종목당 투자금:
+                  <input type="number" value={candidateSettings.capital_per_stock || 300000} step={100000}
+                    onChange={e => setCandidateSettings({...candidateSettings, capital_per_stock: Number(e.target.value)})}
+                    style={{ width:80, padding:'2px 4px', borderRadius:4, border:`1px solid ${COLORS.cardBorder}`, background:COLORS.bg, color:COLORS.text, fontSize:12 }} />
+                </label>
+              </div>
+              <div style={{ marginTop:10, display:'flex', gap:8, justifyContent:'flex-end' }}>
+                <button onClick={() => setShowCandidateSettings(false)}
+                  style={{ padding:'5px 14px', fontSize:12, borderRadius:6, cursor:'pointer', border:`1px solid ${COLORS.cardBorder}`, background:'transparent', color:COLORS.textDim }}>닫기</button>
+                <button onClick={() => saveCandidateSettings(candidateSettings)}
+                  style={{ padding:'5px 14px', fontSize:12, fontWeight:600, borderRadius:6, cursor:'pointer', border:'none', background:'#f59e0b', color:'#000' }}>저장</button>
+              </div>
+            </div>
+          )}
+
+          {/* 후보 목록 */}
+          {showCandidatePanel && (
+            <div style={{ marginTop:12 }}>
+              {candidatesLoading ? (
+                <div style={{ textAlign:'center', padding:20, color:COLORS.textDim, fontSize:13 }}>로딩 중...</div>
+              ) : buyCandidates.length === 0 ? (
+                <div style={{ textAlign:'center', padding:20, color:COLORS.textDim, fontSize:13 }}>
+                  등록된 후보가 없습니다.<br/>
+                  <span style={{ fontSize:11 }}>스캔 결과에서 종목을 선택 후 "📋 후보등록" 버튼을 클릭하세요.</span>
+                </div>
+              ) : (
+                <div>
+                  {buyCandidates.map((c, i) => {
+                    const daysLeft = c.expires_at ? Math.max(0, Math.ceil((new Date(c.expires_at) - new Date()) / 86400000)) : 0;
+                    const scoreColor = c.composite_score >= 80 ? COLORS.red : c.composite_score >= 60 ? '#f59e0b' : COLORS.textDim;
+                    return (
+                      <div key={c.id} style={{
+                        display:'grid', gridTemplateColumns:'1fr 70px 60px 60px 50px 70px',
+                        padding:'8px 10px', fontSize:12, alignItems:'center',
+                        borderBottom: i < buyCandidates.length - 1 ? `1px solid ${COLORS.cardBorder}` : 'none',
+                        background: daysLeft <= 1 ? 'rgba(220,38,38,0.05)' : 'transparent',
+                      }}>
+                        <div>
+                          <span style={{ fontWeight:600, color:COLORS.text }}>{c.name}</span>
+                          <span style={{ color:COLORS.textDim, marginLeft:4, fontSize:10 }}>{c.code}</span>
+                          {c.source && <span style={{ marginLeft:6, fontSize:9, padding:'1px 4px', borderRadius:3, background:'rgba(245,158,11,0.15)', color:'#f59e0b' }}>{c.source}</span>}
+                        </div>
+                        <div style={{ textAlign:'right', color:COLORS.text }}>{c.current_price?.toLocaleString() || '-'}</div>
+                        <div style={{ textAlign:'center', color:scoreColor, fontWeight:600 }}>{c.composite_score || '-'}</div>
+                        <div style={{ textAlign:'center', color:COLORS.textDim }}>{c.entry_score || '-'}</div>
+                        <div style={{ textAlign:'center', color: daysLeft <= 1 ? COLORS.red : COLORS.textDim, fontSize:11 }}>D-{daysLeft}</div>
+                        <div style={{ textAlign:'right' }}>
+                          <button onClick={() => deleteCandidates([c.id])}
+                            style={{ padding:'3px 8px', fontSize:10, borderRadius:4, cursor:'pointer',
+                              border:`1px solid ${COLORS.cardBorder}`, background:'transparent', color:COLORS.textDim }}>삭제</button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {/* 헤더 */}
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 70px 60px 60px 50px 70px',
+                    padding:'6px 10px', fontSize:10, color:COLORS.textDim, fontWeight:600, borderBottom:`1px solid ${COLORS.cardBorder}`, order:-1 }}>
+                    <span>종목</span><span style={{textAlign:'right'}}>현재가</span><span style={{textAlign:'center'}}>종합</span><span style={{textAlign:'center'}}>진입</span><span style={{textAlign:'center'}}>잔여</span><span></span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
         {!scanResult && !scanning && !loadingPrev && (
           <div style={{ background:COLORS.card, border:`1px solid ${COLORS.cardBorder}`,
@@ -1266,9 +2241,9 @@ export default function PatternDetector() {
           </div>
           {activeTab===0 && <TabSummary result={result} saveClusterPattern={saveClusterPattern} savingPattern={savingPattern} />}
           {activeTab===1 && <TabChart result={result} />}
-          {activeTab===2 && <TabRecommend result={result} selectedRecStocks={selectedRecStocks} setSelectedRecStocks={setSelectedRecStocks} onRegister={openRegModal} />}
+          {activeTab===2 && <TabRecommend result={result} selectedRecStocks={selectedRecStocks} setSelectedRecStocks={setSelectedRecStocks} setFilteredRecCodes={setFilteredRecCodes} onRegister={openRegModal} onKisOrder={openKisOrderModal} />}
           {activeTab===3 && <VirtualInvestTab recommendations={result.recommendations || []} backtestRecommendations={result.backtest_recommendations || []} selectedRecStocks={selectedRecStocks} setSelectedRecStocks={setSelectedRecStocks} newRtSessionId={newRtSessionId} setNewRtSessionId={setNewRtSessionId} />}
-          {activeTab===4 && <TabPatternLibrary patterns={savedPatterns} loading={savedPatternsLoading} onRefresh={fetchSavedPatterns} onDelete={deletePattern} onToggleActive={togglePatternActive} editingId={editingPatternId} editingName={editingPatternName} setEditingId={setEditingPatternId} setEditingName={setEditingPatternName} onSaveName={savePatternName} onScanWithPattern={(id) => { setSelectedPatternIds(new Set([id])); setShowPatternScan(true); setPageMode('scanner'); }} />}
+          {activeTab===4 && <TabPatternLibrary patterns={savedPatterns} loading={savedPatternsLoading} onRefresh={fetchSavedPatterns} onDelete={deletePattern} onToggleActive={togglePatternActive} editingId={editingPatternId} editingName={editingPatternName} setEditingId={setEditingPatternId} setEditingName={setEditingPatternName} onSaveName={savePatternName} onScanWithPattern={(id) => scanOrLoadPattern(id)} />}
         </>)}
 
         {!result && !analyzing && (
@@ -1287,6 +2262,191 @@ export default function PatternDetector() {
         )}
       </div>)}
 
+      {/* ━━━ 페이지 3: 개별종목추가 ━━━ */}
+      {pageMode === 'addstock' && (<div>
+        <div style={{ background:COLORS.card, border:`1px solid ${COLORS.cardBorder}`,
+          borderRadius:12, padding:20, marginBottom:16 }}>
+          <div style={{ fontSize:15, fontWeight:700, marginBottom:4, color:COLORS.green }}>
+            ➕ 개별종목 추가
+          </div>
+          <div style={{ fontSize:12, color:COLORS.textDim, marginBottom:16 }}>
+            종목명 또는 종목코드로 검색하여 바로 투자 등록
+          </div>
+
+          {/* 검색창 */}
+          <div style={{ display:'flex', gap:8, marginBottom:16 }}>
+            <input
+              type="text"
+              value={addStockKeyword}
+              onChange={e => setAddStockKeyword(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && searchAddStock()}
+              placeholder="종목명 또는 종목코드 입력..."
+              style={{
+                flex:1, padding:'12px 16px', fontSize:14, borderRadius:10,
+                border:`1px solid ${COLORS.cardBorder}`, background:'#0d1117',
+                color:COLORS.text, outline:'none', fontFamily:'inherit',
+              }}
+            />
+            <button onClick={searchAddStock} disabled={addStockSearching || !addStockKeyword.trim()}
+              style={{
+                padding:'12px 24px', fontSize:14, fontWeight:700, borderRadius:10,
+                border:'none', cursor: addStockSearching ? 'default' : 'pointer',
+                background: addStockSearching ? '#374151' : `linear-gradient(135deg, ${COLORS.green}, #059669)`,
+                color: COLORS.white, fontFamily:'inherit',
+              }}>
+              {addStockSearching ? '⏳ 검색 중...' : '🔍 검색'}
+            </button>
+          </div>
+
+          {/* 검색 결과 */}
+          {addStockResults.length > 0 && (
+            <div>
+              <div style={{ fontSize:13, fontWeight:600, color:COLORS.text, marginBottom:10 }}>
+                검색결과 ({addStockResults.length}건)
+              </div>
+              <div style={{ overflowX:'auto' }}>
+                <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+                  <thead>
+                    <tr style={{ borderBottom:`1px solid ${COLORS.cardBorder}` }}>
+                      <th style={{ textAlign:'left', padding:'8px 6px', color:COLORS.textDim, fontWeight:500 }}>종목명</th>
+                      <th style={{ textAlign:'left', padding:'8px 6px', color:COLORS.textDim, fontWeight:500 }}>코드</th>
+                      <th style={{ textAlign:'left', padding:'8px 6px', color:COLORS.textDim, fontWeight:500 }}>시장</th>
+                      <th style={{ textAlign:'right', padding:'8px 6px', color:COLORS.textDim, fontWeight:500 }}>현재가</th>
+                      <th style={{ textAlign:'right', padding:'8px 6px', color:COLORS.textDim, fontWeight:500 }}>등락</th>
+                      <th style={{ textAlign:'center', padding:'8px 6px', color:COLORS.textDim, fontWeight:500 }}>액션</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {addStockResults.map(stock => {
+                      const pi = addStockPrices[stock.code];
+                      const priceLoading = addStockPriceLoading[stock.code];
+                      return (
+                        <tr key={stock.code} style={{ borderBottom:`1px solid ${COLORS.cardBorder}22` }}>
+                          <td style={{ padding:'10px 6px', fontWeight:600 }}>
+                            <span onClick={() => addStockOpenChart(stock.code, stock.name)}
+                              style={{ color: addStockChartCode === stock.code ? COLORS.green : COLORS.text,
+                                cursor:'pointer', textDecoration: addStockChartCode === stock.code ? 'underline' : 'none',
+                                borderBottom: addStockChartCode === stock.code ? `2px solid ${COLORS.green}` : 'none',
+                              }}>{stock.name}</span>
+                          </td>
+                          <td style={{ padding:'10px 6px', color:COLORS.gray, fontFamily:'monospace', fontSize:11 }}>{stock.code}</td>
+                          <td style={{ padding:'10px 6px' }}>
+                            <span style={{ fontSize:10, padding:'2px 6px', borderRadius:4,
+                              background: stock.market === 'KOSPI' ? 'rgba(59,130,246,0.15)' : 'rgba(168,85,247,0.15)',
+                              color: stock.market === 'KOSPI' ? '#3b82f6' : '#a855f7' }}>
+                              {stock.market || '-'}
+                            </span>
+                          </td>
+                          <td style={{ padding:'10px 6px', textAlign:'right', fontFamily:'monospace', color: COLORS.text }}>
+                            {priceLoading ? <span style={{ color:COLORS.gray }}>⏳</span>
+                              : pi?.price ? pi.price.toLocaleString() + '원' : <span style={{ color:COLORS.gray }}>-</span>}
+                          </td>
+                          <td style={{ padding:'10px 6px', textAlign:'right', fontFamily:'monospace' }}>
+                            {pi?.change_pct ? (
+                              <span style={{ color: pi.change_pct > 0 ? COLORS.red : pi.change_pct < 0 ? '#3b82f6' : COLORS.gray }}>
+                                {pi.change_pct > 0 ? '+' : ''}{pi.change_pct.toFixed(2)}%
+                              </span>
+                            ) : <span style={{ color:COLORS.gray }}>-</span>}
+                          </td>
+                          <td style={{ padding:'6px 4px', textAlign:'center' }}>
+                            <div style={{ display:'flex', gap:4, justifyContent:'center', flexWrap:'wrap' }}>
+                              <button onClick={() => addStockGetPrice(stock.code)}
+                                disabled={priceLoading}
+                                title="현재가 조회"
+                                style={{ padding:'4px 8px', fontSize:11, borderRadius:6, border:`1px solid ${COLORS.accent}`,
+                                  background:COLORS.accentDim, color:COLORS.accent, cursor:'pointer', fontFamily:'inherit', fontWeight:600 }}>
+                                🔍 시세
+                              </button>
+                              <button onClick={() => addStockRegisterVirtual(stock)}
+                                title="가상투자 등록"
+                                style={{ padding:'4px 8px', fontSize:11, borderRadius:6, border:`1px solid ${COLORS.yellow}`,
+                                  background:COLORS.yellowDim, color:COLORS.yellow, cursor:'pointer', fontFamily:'inherit', fontWeight:600 }}>
+                                💰 가상투자
+                              </button>
+                              <button onClick={() => addStockRegisterCandidate(stock)}
+                                title="예비 후보 등록"
+                                style={{ padding:'4px 8px', fontSize:11, borderRadius:6, border:`1px solid ${COLORS.purple}`,
+                                  background:COLORS.purpleDim, color:COLORS.purple, cursor:'pointer', fontFamily:'inherit', fontWeight:600 }}>
+                                🎯 후보등록
+                              </button>
+                              <button onClick={() => addStockKisBuy(stock, 'virtual')}
+                                title="KIS 모의투자 매수"
+                                style={{ padding:'4px 8px', fontSize:11, borderRadius:6, border:`1px solid ${COLORS.accent}`,
+                                  background:COLORS.accentDim, color:COLORS.accent, cursor:'pointer', fontFamily:'inherit', fontWeight:600 }}>
+                                🏦 모의투자
+                              </button>
+                              <button onClick={() => addStockKisBuy(stock, 'real')}
+                                title="KIS 실전투자 매수"
+                                style={{ padding:'4px 8px', fontSize:11, borderRadius:6, border:`1px solid ${COLORS.red}`,
+                                  background:COLORS.redDim, color:COLORS.red, cursor:'pointer', fontFamily:'inherit', fontWeight:600 }}>
+                                🔴 실전투자
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* 차트 영역 */}
+          {addStockChartCode && (
+            <div style={{ marginTop:16, background:'rgba(8,15,30,0.5)', borderRadius:12, padding:16,
+              border:`1px solid ${COLORS.cardBorder}` }}>
+              {addStockChartLoading ? (
+                <div style={{ textAlign:'center', padding:40, color:COLORS.accent }}>
+                  <div style={{ fontSize:16, marginBottom:8 }}>📊 차트 로딩 중...</div>
+                  <div style={{ fontSize:12, color:COLORS.gray }}>{addStockChartName} ({addStockChartCode})</div>
+                </div>
+              ) : addStockCandles.length >= 5 ? (
+                <AddStockChart
+                  candles={addStockCandles}
+                  stockName={addStockChartName}
+                  stockCode={addStockChartCode}
+                  priceInfo={addStockPrices[addStockChartCode]}
+                />
+              ) : (
+                <div style={{ textAlign:'center', padding:20, color:COLORS.gray, fontSize:13 }}>
+                  차트 데이터가 부족합니다
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 검색 결과 없음 */}
+          {addStockResults.length === 0 && !addStockSearching && addStockKeyword.trim() && (
+            <div style={{ textAlign:'center', padding:20, color:COLORS.gray, fontSize:13 }}>
+              검색 결과가 없습니다
+            </div>
+          )}
+
+          {/* 초기 안내 */}
+          {addStockResults.length === 0 && !addStockSearching && !addStockKeyword.trim() && (
+            <div style={{ textAlign:'center', padding:40 }}>
+              <div style={{ fontSize:40, marginBottom:12 }}>🔍</div>
+              <div style={{ fontSize:14, color:COLORS.textDim, marginBottom:8 }}>종목을 검색하여 바로 투자 등록하세요</div>
+              <div style={{ fontSize:12, color:COLORS.gray }}>
+                검색 후 각 종목별로 가상투자, 후보등록, KIS 모의/실전투자를 바로 실행할 수 있습니다
+              </div>
+            </div>
+          )}
+
+          {/* 사용 안내 */}
+          <div style={{ marginTop:16, padding:12, borderRadius:8, background:'rgba(16,185,129,0.06)',
+            border:'1px solid rgba(16,185,129,0.15)', fontSize:11, color:COLORS.gray, lineHeight:1.6 }}>
+            💡 <b style={{ color:COLORS.green }}>사용 안내</b><br/>
+            • <b>🔍 시세</b>: 현재가/등락률 조회 (장중에만 실시간)<br/>
+            • <b>💰 가상투자</b>: 가상 포트폴리오에 등록 (수익률 추적)<br/>
+            • <b>🎯 후보등록</b>: 예비 매수 후보로 저장<br/>
+            • <b>🏦 모의투자</b>: KIS 모의계좌로 실제 주문 (100만원 기준)<br/>
+            • <b>🔴 실전투자</b>: KIS 실계좌로 실제 주문 (100만원 기준)
+          </div>
+        </div>
+      </div>)}
+
       {/* ━━━ 가상투자 등록 모달 / Virtual Invest Registration Modal ━━━ */}
       {showRegModal && (
         <div style={{
@@ -1303,108 +2463,8 @@ export default function PatternDetector() {
               💰 가상투자 등록
             </div>
 
-            {/* ★ 등록 대상 선택: 포트폴리오 vs 복리 그룹 */}
-            <div style={{ marginBottom:16 }}>
-              <div style={{ fontSize:12, color:'#9ca3af', marginBottom:8 }}>등록 대상</div>
-              <div style={{ display:'flex', gap:6 }}>
-                {[
-                  { key:'portfolio', label:'📋 포트폴리오', desc:'1회성 추적' },
-                  { key:'compound', label:'🔄 기존 복리그룹', desc:`${compoundGroups.filter(g=>g.status==='active').length}개`, hide: compoundGroups.filter(g=>g.status==='active').length === 0 },
-                  { key:'new-compound', label:'✨ 새 복리그룹', desc:'시드→목표' },
-                ].filter(m => !m.hide).map(m => (
-                  <button key={m.key} onClick={() => setRegMode(m.key)} style={{
-                    flex:1, padding:'10px 6px', borderRadius:8, cursor:'pointer', textAlign:'center',
-                    border: regMode===m.key ? '2px solid #ffd54f' : '1px solid #1e293b',
-                    background: regMode===m.key ? 'rgba(255,213,79,0.12)' : 'transparent',
-                    color: regMode===m.key ? '#ffd54f' : '#9ca3af', fontSize:11, fontFamily:'inherit',
-                  }}>
-                    <div style={{ fontWeight:600, marginBottom:2 }}>{m.label}</div>
-                    <div style={{ fontSize:10, opacity:0.7 }}>{m.desc}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* ★ 기존 복리 그룹 선택 (compound 모드) */}
-            {regMode === 'compound' && (
-              <div style={{ marginBottom:16 }}>
-                <div style={{ fontSize:12, color:'#9ca3af', marginBottom:6 }}>복리 그룹 선택</div>
-                <div style={{ display:'flex', flexDirection:'column', gap:6, maxHeight:140, overflowY:'auto' }}>
-                  {compoundGroups.filter(g => g.status === 'active').map(g => (
-                    <button key={g.id} onClick={() => setSelectedCompound(g)} style={{
-                      padding:'10px 12px', borderRadius:8, cursor:'pointer', textAlign:'left',
-                      border: selectedCompound?.id === g.id ? '2px solid #ff9800' : '1px solid #1e293b',
-                      background: selectedCompound?.id === g.id ? 'rgba(255,152,0,0.12)' : '#0d1321',
-                      color:'#e5e7eb', fontSize:12, fontFamily:'inherit',
-                    }}>
-                      <div style={{ display:'flex', justifyContent:'space-between' }}>
-                        <span style={{ fontWeight:600 }}>🔄 {g.name}</span>
-                        <span style={{ color:'#ffd54f', fontSize:11 }}>{g.current_round}회차</span>
-                      </div>
-                      <div style={{ fontSize:10, color:'#9ca3af', marginTop:4 }}>
-                        현재 원금: <span style={{ color: g.current_capital >= g.seed_money ? '#4cff8b' : '#ff5252' }}>
-                          {Number(g.current_capital).toLocaleString()}원
-                        </span>
-                        {' · '}목표: {Number(g.goal_amount).toLocaleString()}원
-                        {' · '}진행률: {(g.goal_progress || 0).toFixed(1)}%
-                      </div>
-                    </button>
-                  ))}
-                </div>
-                {selectedCompound && (
-                  <div style={{ marginTop:8, padding:8, borderRadius:6, background:'rgba(255,152,0,0.08)',
-                    border:'1px solid rgba(255,152,0,0.2)', fontSize:11, color:'#ff9800' }}>
-                    💡 {selectedCompound.name} {selectedCompound.current_round}회차에 투자금
-                    <b> {Number(selectedCompound.current_capital).toLocaleString()}원</b>으로 등록됩니다
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* ★ 새 복리 그룹 설정 (new-compound 모드) */}
-            {regMode === 'new-compound' && (
-              <div style={{ marginBottom:16 }}>
-                <div style={{ fontSize:12, color:'#9ca3af', marginBottom:6 }}>새 복리 그룹 설정</div>
-                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8 }}>
-                  <div>
-                    <div style={{ fontSize:10, color:'#556677', marginBottom:3 }}>그룹명</div>
-                    <input value={newCompoundName} onChange={e => setNewCompoundName(e.target.value)}
-                      style={{ width:'100%', padding:'7px 10px', fontSize:12, fontFamily:'inherit',
-                        background:'#0d1321', border:'1px solid #1e293b', borderRadius:6, color:'#e5e7eb', outline:'none' }} />
-                  </div>
-                  <div>
-                    <div style={{ fontSize:10, color:'#556677', marginBottom:3 }}>시드머니</div>
-                    <select value={newCompoundSeed} onChange={e => setNewCompoundSeed(Number(e.target.value))}
-                      style={{ width:'100%', padding:'7px 10px', fontSize:12, fontFamily:'inherit',
-                        background:'#0d1321', border:'1px solid #1e293b', borderRadius:6, color:'#e5e7eb', outline:'none' }}>
-                      <option value={100000}>10만원</option>
-                      <option value={500000}>50만원</option>
-                      <option value={1000000}>100만원</option>
-                      <option value={5000000}>500만원</option>
-                      <option value={10000000}>1000만원</option>
-                    </select>
-                  </div>
-                  <div>
-                    <div style={{ fontSize:10, color:'#556677', marginBottom:3 }}>목표금액</div>
-                    <select value={newCompoundGoal} onChange={e => setNewCompoundGoal(Number(e.target.value))}
-                      style={{ width:'100%', padding:'7px 10px', fontSize:12, fontFamily:'inherit',
-                        background:'#0d1321', border:'1px solid #1e293b', borderRadius:6, color:'#e5e7eb', outline:'none' }}>
-                      <option value={10000000}>1천만원</option>
-                      <option value={100000000}>1억원</option>
-                      <option value={1000000000}>10억원</option>
-                      <option value={10000000000}>100억원</option>
-                    </select>
-                  </div>
-                </div>
-                <div style={{ marginTop:6, fontSize:10, color:'#ffd54f' }}>
-                  💡 {Number(newCompoundSeed).toLocaleString()}원 → {Number(newCompoundGoal).toLocaleString()}원
-                  ({newCompoundSeed > 0 ? Math.round(newCompoundGoal / newCompoundSeed).toLocaleString() : 0}배 목표)
-                </div>
-              </div>
-            )}
-
-            {/* 제목 입력 (포트폴리오 모드만) */}
-            {regMode === 'portfolio' && (
+            {/* 포트폴리오 제목 입력 */}
+            {(
               <div style={{ marginBottom:16 }}>
                 <div style={{ fontSize:12, color:'#9ca3af', marginBottom:6 }}>포트폴리오 제목</div>
                 <input value={regTitle} onChange={e => setRegTitle(e.target.value)}
@@ -1476,22 +2536,20 @@ export default function PatternDetector() {
               </div>
             </div>
 
-            {/* 투자금 (포트폴리오 모드만) */}
-            {regMode === 'portfolio' && (
-              <div style={{ marginBottom:20 }}>
-                <div style={{ fontSize:12, color:'#9ca3af', marginBottom:6 }}>투자금액</div>
-                <div style={{ display:'flex', gap:8 }}>
-                  {[500000, 1000000, 3000000, 5000000].map(v => (
-                    <button key={v} onClick={() => setRegCapital(v)} style={{
-                      flex:1, padding:'8px 4px', borderRadius:6, cursor:'pointer', fontSize:12, fontFamily:'inherit',
-                      border: regCapital===v ? '1px solid #4fc3f7' : '1px solid #1e293b',
-                      background: regCapital===v ? 'rgba(79,195,247,0.15)' : 'transparent',
-                      color: regCapital===v ? '#4fc3f7' : '#9ca3af',
-                    }}>{(v/10000).toFixed(0)}만</button>
-                  ))}
-                </div>
+            {/* 투자금액 */}
+            <div style={{ marginBottom:20 }}>
+              <div style={{ fontSize:12, color:'#9ca3af', marginBottom:6 }}>투자금액</div>
+              <div style={{ display:'flex', gap:8 }}>
+                {[500000, 1000000, 3000000, 5000000].map(v => (
+                  <button key={v} onClick={() => setRegCapital(v)} style={{
+                    flex:1, padding:'8px 4px', borderRadius:6, cursor:'pointer', fontSize:12, fontFamily:'inherit',
+                    border: regCapital===v ? '1px solid #4fc3f7' : '1px solid #1e293b',
+                    background: regCapital===v ? 'rgba(79,195,247,0.15)' : 'transparent',
+                    color: regCapital===v ? '#4fc3f7' : '#9ca3af',
+                  }}>{(v/10000).toFixed(0)}만</button>
+                ))}
               </div>
-            )}
+            </div>
 
             {/* ★ 적용된 필터 표시 */}
             {regActiveFilters.length > 0 && (
@@ -1550,17 +2608,152 @@ export default function PatternDetector() {
                   background:'transparent', border:'1px solid #374151', color:'#9ca3af',
                 }}>취소</button>
               <button onClick={doRegisterVirtual}
-                disabled={regLoading || !regPatternName || (regMode === 'compound' && !selectedCompound)}
+                disabled={regLoading || !regPatternName}
                 style={{
                   padding:'10px 28px', borderRadius:8, cursor:'pointer', fontSize:14, fontWeight:700, fontFamily:'inherit',
-                  background: regLoading || !regPatternName ? '#374151' : regMode === 'portfolio' ? '#10b981' : '#ff9800',
+                  background: regLoading || !regPatternName ? '#374151' : '#10b981',
                   border:'none', color: regLoading || !regPatternName ? '#6b7280' : 'white',
-                  opacity: (!regPatternName || (regMode === 'compound' && !selectedCompound)) ? 0.5 : 1,
-                }}>{regLoading ? '⏳ 등록 중...' :
-                    regMode === 'new-compound' ? '🔄 복리 그룹 생성 + 등록' :
-                    regMode === 'compound' ? `🔄 ${selectedCompound?.current_round || '?'}회차 등록` :
-                    '✅ 등록하기'}</button>
+                  opacity: !regPatternName ? 0.5 : 1,
+                }}>{regLoading ? '⏳ 등록 중...' : '✅ 등록하기'}</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ━━━ KIS 주문 모달 (모의투자 / 실전투자) ━━━ */}
+      {showKisOrderModal && (
+        <div style={{
+          position:'fixed', top:0, left:0, right:0, bottom:0,
+          background:'rgba(0,0,0,0.7)', zIndex:9999,
+          display:'flex', alignItems:'center', justifyContent:'center',
+        }} onClick={() => !kisOrderLoading && setShowKisOrderModal(false)}>
+          <div style={{
+            background:'#1a2234', border:`2px solid ${kisOrderMode === 'real' ? '#dc2626' : '#1a6fff'}`,
+            borderRadius:16, padding:28, width:520, maxWidth:'92vw',
+            boxShadow:'0 20px 60px rgba(0,0,0,0.5)',
+          }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize:18, fontWeight:700, marginBottom:6, color: kisOrderMode === 'real' ? '#ef4444' : '#60a5fa' }}>
+              {kisOrderMode === 'real' ? '🔴 실전투자 주문' : '🏦 모의투자 주문'}
+            </div>
+            {kisOrderMode === 'real' && (
+              <div style={{ marginBottom:14, padding:10, borderRadius:8, background:'rgba(220,38,38,0.1)', border:'1px solid rgba(220,38,38,0.3)', fontSize:12, color:'#ef4444' }}>
+                ⚠️ 실제 계좌에서 매수됩니다. 신중하게 확인 후 주문하세요.
+              </div>
+            )}
+
+            {/* API 미연결 안내 */}
+            {(() => {
+              const creds = getKisCredentials(kisOrderMode);
+              return !creds.access_token ? (
+                <div style={{ marginBottom:14, padding:12, borderRadius:8, background:'rgba(245,158,11,0.1)', border:'1px solid rgba(245,158,11,0.3)', fontSize:12, color:'#f59e0b' }}>
+                  ⚠️ {kisOrderMode === 'virtual' ? '모의투자' : '실전투자'} API가 아직 연결되지 않았습니다.<br/>
+                  <span style={{ fontSize:11 }}>{kisOrderMode === 'virtual' ? 'KIS 모의투자' : 'KIS 실전투자'} 메뉴 → API 설정에서 먼저 연결해주세요. 아래 종목 정보는 미리 확인할 수 있습니다.</span>
+                </div>
+              ) : null;
+            })()}
+
+            {!kisOrderResults ? (<>
+              {/* 투자금액 */}
+              <div style={{ marginBottom:14 }}>
+                <div style={{ fontSize:12, color:'#9ca3af', marginBottom:6 }}>투자금액</div>
+                <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+                  {[100000, 500000, 1000000, 3000000, 5000000, 10000000].map(v => (
+                    <button key={v} onClick={() => setKisOrderCapital(v)} style={{
+                      padding:'7px 12px', borderRadius:6, cursor:'pointer', fontSize:11, fontFamily:'inherit',
+                      border: kisOrderCapital===v ? '1px solid #60a5fa' : '1px solid #1e293b',
+                      background: kisOrderCapital===v ? 'rgba(96,165,250,0.15)' : 'transparent',
+                      color: kisOrderCapital===v ? '#60a5fa' : '#9ca3af',
+                    }}>{(v/10000).toLocaleString()}만</button>
+                  ))}
+                </div>
+                <input type="number" value={kisOrderCapital} onChange={e => setKisOrderCapital(Number(e.target.value))}
+                  style={{ width:'100%', marginTop:8, padding:'8px 12px', fontSize:13, fontFamily:'monospace',
+                    background:'#0d1321', border:'1px solid #1e293b', borderRadius:6, color:'#e5e7eb', outline:'none' }} />
+              </div>
+
+              {/* 주문 유형 */}
+              <div style={{ marginBottom:14 }}>
+                <div style={{ fontSize:12, color:'#9ca3af', marginBottom:6 }}>주문 유형</div>
+                <div style={{ display:'flex', gap:8 }}>
+                  {[{ key:'01', label:'시장가', desc:'즉시 체결' }, { key:'00', label:'지정가', desc:'현재가 기준' }].map(t => (
+                    <button key={t.key} onClick={() => setKisOrderType(t.key)} style={{
+                      flex:1, padding:'10px', borderRadius:8, cursor:'pointer', textAlign:'center',
+                      border: kisOrderType===t.key ? '2px solid #60a5fa' : '1px solid #1e293b',
+                      background: kisOrderType===t.key ? 'rgba(96,165,250,0.12)' : 'transparent',
+                      color: kisOrderType===t.key ? '#60a5fa' : '#9ca3af', fontSize:12, fontFamily:'inherit',
+                    }}>
+                      <div style={{ fontWeight:600 }}>{t.label}</div>
+                      <div style={{ fontSize:10, opacity:0.7 }}>{t.desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 선택 종목 + 예상 수량 */}
+              <div style={{ marginBottom:16, padding:10, borderRadius:8, background:'rgba(96,165,250,0.06)', border:'1px solid rgba(96,165,250,0.15)' }}>
+                {(() => {
+                  const visibleSelected = (result?.recommendations || []).filter(r => selectedRecStocks.has(r.code) && filteredRecCodes.has(r.code));
+                  const cnt = visibleSelected.length;
+                  return (<>
+                <div style={{ fontSize:11, color:'#60a5fa', marginBottom:6 }}>📋 주문 종목 ({cnt}개) · 종목당 {Math.floor(kisOrderCapital / Math.max(cnt, 1)).toLocaleString()}원</div>
+                {visibleSelected.map(r => {
+                  const perStock = Math.floor(kisOrderCapital / cnt);
+                  const qty = r.current_price > 0 ? Math.floor(perStock / r.current_price) : 0;
+                  return (
+                    <div key={r.code} style={{ display:'flex', justifyContent:'space-between', padding:'4px 0', fontSize:12 }}>
+                      <span style={{ color:'#e5e7eb' }}>{r.name} <span style={{ color:'#6b7280' }}>{r.code}</span></span>
+                      <span style={{ color:'#9ca3af', fontFamily:'monospace' }}>{r.current_price?.toLocaleString()}원 × {qty}주 = {(qty * (r.current_price || 0)).toLocaleString()}원</span>
+                    </div>
+                  );
+                })}
+                </>); })()}
+              </div>
+
+              {/* 버튼 */}
+              <div style={{ display:'flex', gap:10, justifyContent:'flex-end' }}>
+                <button onClick={() => setShowKisOrderModal(false)} disabled={kisOrderLoading}
+                  style={{ padding:'10px 20px', borderRadius:8, cursor:'pointer', fontSize:13, fontFamily:'inherit',
+                    background:'transparent', border:'1px solid #374151', color:'#9ca3af' }}>취소</button>
+                <button onClick={executeKisOrders} disabled={kisOrderLoading}
+                  style={{
+                    padding:'10px 28px', borderRadius:8, cursor:'pointer', fontSize:14, fontWeight:700, fontFamily:'inherit',
+                    background: kisOrderLoading ? '#374151' : kisOrderMode === 'real' ? '#dc2626' : '#1a6fff',
+                    border:'none', color:'white',
+                  }}>{kisOrderLoading ? '⏳ 주문 중...' : `${kisOrderMode === 'real' ? '🔴 실전' : '🏦 모의'} 매수 주문 실행`}</button>
+              </div>
+            </>) : (
+              /* 주문 결과 */
+              <div>
+                <div style={{ fontSize:14, fontWeight:600, color:'#e5e7eb', marginBottom:12 }}>📋 주문 결과</div>
+                {kisOrderResults.map((r, i) => (
+                  <div key={i} style={{
+                    display:'flex', justifyContent:'space-between', padding:'8px 10px', marginBottom:4, borderRadius:6,
+                    background: r.success ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)',
+                    border: `1px solid ${r.success ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'}`,
+                  }}>
+                    <span style={{ color: r.success ? '#10b981' : '#ef4444', fontSize:12 }}>
+                      {r.success ? '✅' : '❌'} {r.name} ({r.code})
+                    </span>
+                    <span style={{ color:'#9ca3af', fontSize:11 }}>
+                      {r.success ? `${r.qty}주 · 주문번호: ${r.order_no}` : r.message}
+                    </span>
+                  </div>
+                ))}
+                {kisOrderResults.some(r => r.success) && (
+                  <div style={{ marginTop:12, padding:10, borderRadius:8, background:'rgba(76,255,139,0.08)', border:'1px solid rgba(76,255,139,0.2)', fontSize:11, color:'#4cff8b' }}>
+                    🤖 자동 손절/익절 모니터링이 백그라운드에서 시작되었습니다 (30초 간격)
+                  </div>
+                )}
+                <div style={{ marginTop:8, padding:10, borderRadius:8, background:'rgba(255,213,79,0.08)', border:'1px solid rgba(255,213,79,0.2)', fontSize:11, color:'#ffd54f' }}>
+                  💡 체결 확인은 {kisOrderMode === 'virtual' ? 'KIS 모의투자' : 'KIS 실전투자'} {'>'} 주문내역에서 확인하세요.
+                </div>
+                <div style={{ display:'flex', justifyContent:'flex-end', marginTop:12 }}>
+                  <button onClick={() => { setShowKisOrderModal(false); setSelectedRecStocks(new Set()); }}
+                    style={{ padding:'10px 24px', borderRadius:8, cursor:'pointer', fontSize:13, fontWeight:600, fontFamily:'inherit',
+                      background:'#1a6fff', border:'none', color:'white' }}>확인</button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1568,9 +2761,194 @@ export default function PatternDetector() {
   );
 }
 
+// ━━━ 개별종목추가 기본차트 (영웅문 스타일) ━━━
+function AddStockChart({ candles, stockName, stockCode, priceInfo }) {
+  if (!candles || candles.length < 5) return null;
+
+  const fDate = (d) => { const s = (d||'').replace(/-/g,''); return s.length>=8 ? `${s.slice(4,6)}/${s.slice(6,8)}` : d||'-'; };
+
+  const MAX_CANDLES = 90;
+  const raw = candles.length > MAX_CANDLES ? candles.slice(candles.length - MAX_CANDLES) : [...candles];
+  const offsetIdx = candles.length > MAX_CANDLES ? candles.length - MAX_CANDLES : 0;
+
+  const vis = raw.map(c => {
+    const cl = c.close || 0;
+    if (cl <= 0) return c;
+    return { ...c, open: c.open>0?c.open:cl, high: c.high>0?Math.max(c.high,cl):cl, low: c.low>0?Math.min(c.low,cl):cl, volume: c.volume||0 };
+  });
+  if (vis.length < 5) return null;
+
+  const W = 780, H_CHART = 280, H_VOL = 55, GAP = 20;
+  const PAD = { t: 28, b: 40, l: 62, r: 80 };
+  const TOTAL_H = PAD.t + H_CHART + GAP + H_VOL + PAD.b;
+  const plotW = W - PAD.l - PAD.r;
+  const cw = plotW / vis.length;
+
+  const allP = vis.flatMap(c => [c.high, c.low]).filter(p => p > 0);
+  const pMin = Math.min(...allP), pMax = Math.max(...allP);
+  const pPad = (pMax - pMin) * 0.08 || 100;
+  const pLow = pMin - pPad, pHigh = pMax + pPad, pRange = pHigh - pLow || 1;
+  const maxVol = Math.max(...vis.map(c => c.volume || 0), 1);
+
+  const toX = (i) => PAD.l + i * cw;
+  const toY = (p) => PAD.t + (1 - (p - pLow) / pRange) * H_CHART;
+  const volBase = PAD.t + H_CHART + GAP + H_VOL;
+
+  const calcMA = (period) => {
+    return vis.map((_, i) => {
+      const gi = offsetIdx + i;
+      if (gi < period - 1) return null;
+      let sum = 0;
+      for (let j = 0; j < period; j++) sum += candles[gi - j].close;
+      return sum / period;
+    });
+  };
+  const ma5 = calcMA(5);
+  const ma20 = calcMA(20);
+
+  const lastPrice = vis[vis.length - 1].close;
+  const firstPrice = vis[0].open || vis[0].close;
+  const totalChange = lastPrice - firstPrice;
+  const totalChangePct = firstPrice > 0 ? ((totalChange / firstPrice) * 100).toFixed(2) : 0;
+  const profitColor = totalChange >= 0 ? '#FF0000' : '#0050FF';
+
+  const svg = [];
+
+  // 배경
+  svg.push(<rect key="bg" x={0} y={0} width={W} height={TOTAL_H} fill="rgba(8,15,30,0.95)" rx={8} />);
+
+  // 가격 눈금 (6단계)
+  for (let i = 0; i <= 5; i++) {
+    const p = pLow + pRange * (i / 5);
+    const y = toY(p);
+    svg.push(<line key={`pg-${i}`} x1={PAD.l} y1={y} x2={W-PAD.r} y2={y} stroke="rgba(50,70,100,0.25)" strokeDasharray="3,3" />);
+    svg.push(<text key={`pl-${i}`} x={PAD.l-8} y={y+4} fill="#c8d0e0" fontSize={11}
+      fontFamily="JetBrains Mono, monospace" textAnchor="end" fontWeight={500}>{Math.round(p).toLocaleString()}</text>);
+  }
+
+  // X축 날짜
+  const dateStep = Math.max(1, Math.floor(vis.length / 14));
+  vis.forEach((c, i) => {
+    if (i % dateStep === 0) {
+      svg.push(<text key={`dt-${i}`} x={toX(i)+cw/2} y={TOTAL_H-6}
+        fill="#c0c8d8" fontSize={9} fontFamily="JetBrains Mono, monospace" textAnchor="middle">{fDate(c.date)}</text>);
+    }
+  });
+
+  // 거래량 구분선 + 라벨
+  svg.push(<line key="vol-sep" x1={PAD.l} y1={PAD.t+H_CHART+GAP/2} x2={W-PAD.r} y2={PAD.t+H_CHART+GAP/2}
+    stroke="rgba(50,70,100,0.3)" />);
+  svg.push(<text key="vol-lbl" x={PAD.l-8} y={volBase-H_VOL+12} fill="#556677" fontSize={9} fontFamily="monospace" textAnchor="end">VOL</text>);
+
+  // 거래량 바
+  vis.forEach((c, i) => {
+    const isUp = c.close >= c.open;
+    const color = isUp ? '#FF0000' : '#0050FF';
+    const vol = c.volume || 0;
+    const barH = vol > 0 ? Math.max((vol / maxVol) * H_VOL, 2) : (c.close > 0 ? 2 : 0);
+    svg.push(<rect key={`vol-${i}`} x={toX(i)+1} y={volBase-barH}
+      width={Math.max(cw-2,2)} height={barH} fill={color} opacity={0.75} rx={1} />);
+  });
+
+  // 캔들스틱
+  vis.forEach((c, i) => {
+    const x = toX(i);
+    const isUp = c.close >= c.open;
+    const color = isUp ? '#FF0000' : '#0050FF';
+    const bodyTop = toY(Math.max(c.open, c.close));
+    const bodyBot = toY(Math.min(c.open, c.close));
+    const bodyH = Math.max(bodyBot - bodyTop, 3);
+    const cx = x + cw / 2;
+    svg.push(
+      <g key={`c-${i}`}>
+        <line x1={cx} y1={toY(c.high)} x2={cx} y2={toY(c.low)} stroke={color} strokeWidth={1} />
+        <rect x={x+2} y={bodyTop} width={Math.max(cw-4,3)} height={bodyH} fill={color} rx={1} />
+      </g>
+    );
+  });
+
+  // MA5
+  let ma5d = '';
+  ma5.forEach((v, i) => { if (v !== null) ma5d += (ma5d ? 'L' : 'M') + `${toX(i)+cw/2},${toY(v)} `; });
+  if (ma5d) svg.push(<path key="ma5" d={ma5d} fill="none" stroke="#ffcc00" strokeWidth={1.5} opacity={0.8} />);
+
+  // MA20
+  let ma20d = '';
+  ma20.forEach((v, i) => { if (v !== null) ma20d += (ma20d ? 'L' : 'M') + `${toX(i)+cw/2},${toY(v)} `; });
+  if (ma20d) svg.push(<path key="ma20" d={ma20d} fill="none" stroke="#ff6699" strokeWidth={1.5} opacity={0.7} />);
+
+  // 현재가 수평선 + 우측 태그
+  if (lastPrice > 0 && lastPrice >= pLow && lastPrice <= pHigh) {
+    const curY = toY(lastPrice);
+    svg.push(<line key="cur-line" x1={PAD.l} y1={curY} x2={W-PAD.r} y2={curY}
+      stroke={profitColor} strokeWidth={1} strokeDasharray="5,3" opacity={0.5} />);
+    svg.push(<rect key="cur-bg" x={W-PAD.r+2} y={curY-10} width={PAD.r-6} height={20}
+      fill={profitColor} rx={3} />);
+    svg.push(<text key="cur-txt" x={W-PAD.r/2+1} y={curY+4} fill="white" fontSize={10}
+      fontFamily="JetBrains Mono, monospace" textAnchor="middle" fontWeight={600}>{Math.round(lastPrice).toLocaleString()}</text>);
+  }
+
+  const pi = priceInfo || {};
+
+  return (
+    <div>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8, flexWrap:'wrap', gap:6 }}>
+        <div style={{ fontSize:14, fontWeight:700 }}>
+          <span style={{ color:'#e0e6f0' }}>📊 {stockName}</span>
+          <span style={{ color:'#6688aa', fontSize:11, marginLeft:8 }}>({stockCode})</span>
+          <span style={{ color: profitColor, fontSize:12, marginLeft:12, fontWeight:700 }}>
+            {lastPrice?.toLocaleString()}원 ({totalChange >= 0 ? '+' : ''}{totalChangePct}%)
+          </span>
+        </div>
+        <div style={{ display:'flex', gap:12, fontSize:11, flexWrap:'wrap' }}>
+          <span><span style={{ color:'#FF0000' }}>■</span> 양봉</span>
+          <span><span style={{ color:'#0050FF' }}>■</span> 음봉</span>
+          <span style={{ color:'#ffcc00' }}>── MA5</span>
+          <span style={{ color:'#ff6699' }}>── MA20</span>
+        </div>
+      </div>
+
+      <svg width={W} height={TOTAL_H} style={{ display:'block', maxWidth:'100%' }}>
+        {svg}
+      </svg>
+
+      <div style={{
+        display:'flex', justifyContent:'space-between', marginTop:10, padding:'8px 14px',
+        background:'rgba(15,22,42,0.6)', borderRadius:8, fontSize:11,
+        fontFamily:'JetBrains Mono, monospace', border:'1px solid rgba(50,70,100,0.2)',
+      }}>
+        <span><span style={{ color:'#556677' }}>현재가 </span><span style={{ color: profitColor }}>{(pi.price || lastPrice)?.toLocaleString()}</span></span>
+        <span><span style={{ color:'#556677' }}>전일대비 </span><span style={{ color: (pi.change||0)>=0?'#FF0000':'#0050FF' }}>{(pi.change||0)>=0?'+':''}{(pi.change||0).toLocaleString()}</span></span>
+        <span><span style={{ color:'#556677' }}>등락률 </span><span style={{ color: (pi.change_pct||0)>=0?'#FF0000':'#0050FF' }}>{(pi.change_pct||0)>=0?'+':''}{(pi.change_pct||0).toFixed(2)}%</span></span>
+        <span><span style={{ color:'#556677' }}>시가 </span><span style={{ color:'#c8d0e0' }}>{(pi.open||vis[vis.length-1].open)?.toLocaleString()}</span></span>
+        <span><span style={{ color:'#556677' }}>고가 </span><span style={{ color:'#FFD600' }}>{(pi.high||vis[vis.length-1].high)?.toLocaleString()}</span></span>
+        <span><span style={{ color:'#556677' }}>저가 </span><span style={{ color:'#4fc3f7' }}>{(pi.low||vis[vis.length-1].low)?.toLocaleString()}</span></span>
+      </div>
+    </div>
+  );
+}
+
 function tagStyle(c) { return { fontSize:10, padding:'2px 8px', borderRadius:10, background:`${c}20`, color:c, fontWeight:500 }; }
 
 // ━━━ 공통 컴포넌트 ━━━
+function FilterRow({ label, options, value, setter, color, disabled }) {
+  return (<div style={{ display:'flex', alignItems:'center', gap:8 }}>
+    <span style={{ fontSize:12, color:COLORS.textDim, fontWeight:600, whiteSpace:'nowrap', minWidth:68, textAlign:'right' }}>{label}</span>
+    <div style={{ display:'flex', gap:3, flexWrap:'wrap' }}>
+      {options.map(opt => {
+        const active = String(value) === String(opt.v);
+        return (<button key={opt.v} onClick={() => setter(opt.v)} disabled={disabled} style={{
+          padding:'5px 10px', fontSize:12, borderRadius:6, cursor:disabled?'default':'pointer',
+          border: active ? `1.5px solid ${color}` : `1px solid ${COLORS.cardBorder}`,
+          background: active ? `${color}22` : 'transparent',
+          color: active ? color : COLORS.textDim, fontWeight: active ? 700 : 400,
+          transition:'all 0.15s',
+        }}>{opt.l}</button>);
+      })}
+    </div>
+  </div>);
+}
+
 function FilterGroup({ label, options, value, setter, color, disabled }) {
   return (<div>
     <div style={{ fontSize:11, color:COLORS.textDim, marginBottom:6 }}>{label}</div>
@@ -1827,7 +3205,7 @@ const PatternScanMatchTable = React.memo(function PatternScanMatchTable({
   );
 });
 
-function ScanResultView({ scanResult, scanSortKey, setScanSortKey, scanSortDir, setScanSortDir, scanFilterLevel, setScanFilterLevel, selectedScanStocks, toggleScanStock, selectAllVisible, setSelectedScanStocks, sendToAnalyzer, filteredScanResults, scanDate, scanSource, onReload, scanChartCode, scanChartCandles, scanChartLoading, fetchScanChart }) {
+function ScanResultView({ scanResult, scanSortKey, setScanSortKey, scanSortDir, setScanSortDir, scanFilterLevel, setScanFilterLevel, selectedScanStocks, toggleScanStock, selectAllVisible, setSelectedScanStocks, sendToAnalyzer, filteredScanResults, scanDate, scanSource, onReload, scanChartCode, scanChartCandles, scanChartLoading, fetchScanChart, scanHistoryList, showScanHistory, setShowScanHistory, loadingScanHistory, loadScanHistoryList, loadScanHistoryDetail, registerCandidates }) {
   const handleSort = (key) => {
     if (scanSortKey === key) { setScanSortDir(prev => prev === 'desc' ? 'asc' : 'desc'); }
     else { setScanSortKey(key); setScanSortDir('desc'); }
@@ -1849,7 +3227,9 @@ function ScanResultView({ scanResult, scanSortKey, setScanSortKey, scanSortDir, 
         {scanSource==='loading' ? '⏳ DB에서 불러오는 중...' : scanSource==='db' ? '💾 DB에서 복원된 결과' : '✅ 방금 스캔한 결과'}
         <span style={{ marginLeft:8, fontSize:10, color:COLORS.textDim }}>클릭하면 DB에서 다시 불러옵니다</span>
       </span>
-      <span style={{ fontSize:12, color:COLORS.textDim }}>마지막 스캔: <b style={{ color:COLORS.text }}>{fmtDate(scanDate)}</b>{scanResult.market && <span> · {scanResult.market==='ALL'?'전체':scanResult.market}</span>}</span>
+      <span style={{ display:'flex', alignItems:'center', gap:8 }}>
+        <span style={{ fontSize:12, color:COLORS.textDim }}>마지막 스캔: <b style={{ color:COLORS.text }}>{fmtDate(scanDate)}</b>{scanResult.market && <span> · {scanResult.market==='ALL'?'전체':scanResult.market}</span>}</span>
+      </span>
     </div>)}
     <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(130px, 1fr))', gap:12, marginBottom:16 }}>
       {[
@@ -1877,6 +3257,12 @@ function ScanResultView({ scanResult, scanSortKey, setScanSortKey, scanSortDir, 
       <div style={{ marginLeft:'auto', display:'flex', gap:8 }}>
         <button onClick={selectAllVisible} style={{ padding:'5px 12px', fontSize:11, borderRadius:6, cursor:'pointer', border:`1px solid ${COLORS.cardBorder}`, background:'transparent', color:COLORS.textDim }}>전체선택</button>
         <button onClick={() => setSelectedScanStocks(new Set())} style={{ padding:'5px 12px', fontSize:11, borderRadius:6, cursor:'pointer', border:`1px solid ${COLORS.cardBorder}`, background:'transparent', color:COLORS.textDim }}>선택해제</button>
+        <button onClick={() => {
+          if (selectedScanStocks.size === 0) return;
+          const scanStocks = scanResult?.stocks || [];
+          const selected = scanStocks.filter(s => selectedScanStocks.has(s.code));
+          registerCandidates(selected, 'scan');
+        }} disabled={selectedScanStocks.size===0} style={{ padding:'6px 16px', fontSize:12, fontWeight:700, borderRadius:8, border:'none', cursor:selectedScanStocks.size>0?'pointer':'default', background:selectedScanStocks.size>0?'#f59e0b':'#374151', color:selectedScanStocks.size>0?'#000':COLORS.textDim }}>📋 후보등록 ({selectedScanStocks.size})</button>
         <button onClick={sendToAnalyzer} disabled={selectedScanStocks.size===0} style={{ padding:'6px 16px', fontSize:12, fontWeight:700, borderRadius:8, border:'none', cursor:selectedScanStocks.size>0?'pointer':'default', background:selectedScanStocks.size>0?COLORS.accent:'#374151', color:selectedScanStocks.size>0?COLORS.white:COLORS.textDim }}>🔬 선택 종목 패턴분석 ({selectedScanStocks.size})</button>
       </div>
     </div>
@@ -2012,7 +3398,7 @@ function TabChart({ result }) {
   </div>);
 }
 
-function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegister }) {
+function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, setFilteredRecCodes, onRegister, onKisOrder }) {
   const [recSortKey, setRecSortKey] = useState('composite_score');
   const [recSortDir, setRecSortDir] = useState('desc');
   const [recFilter, setRecFilter] = useState('all');
@@ -2024,7 +3410,13 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
   const [requireMa5Above, setRequireMa5Above] = useState(true);
   const [excludeGcExpired, setExcludeGcExpired] = useState(true);  // ★ v9: GC 5일 경과 제외
   const [filterHyunmu, setFilterHyunmu] = useState(false);  // ★ 현무 (양음양 +-+) 필터
-  const [candleFilters, setCandleFilters] = useState({});  // code -> { ma5Declining, hyunmu }
+  const [filterVolumeConfirm, setFilterVolumeConfirm] = useState(false);  // ★ 거래량 동반
+  const [excludeRsiOverbought, setExcludeRsiOverbought] = useState(false);  // ★ RSI 과매수 제외
+  const [excludeUpperWick, setExcludeUpperWick] = useState(false);  // ★ 윗꼬리 경고 제외
+  const [filterBollingerLow, setFilterBollingerLow] = useState(false);  // ★ 볼린저 하단
+  const [filterBullishDays, setFilterBullishDays] = useState(false);  // ★ 연속 양봉
+  const [filterMinTradingValue, setFilterMinTradingValue] = useState(false);  // ★ 거래대금 필터
+  const [candleFilters, setCandleFilters] = useState({});  // code -> { ma5Declining, hyunmu, ... }
   const [candleLoading, setCandleLoading] = useState(false);
   const candleFetchedRef = useRef(false);
   const rawRecs = result.recommendations||[];
@@ -2032,9 +3424,15 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
   const scannedCount = result.scanned_candidates || rawRecs.length;
   const analyzedCodes = result.analyzed_codes || [];
 
-  // ★ 일봉 기반 필터 계산 (MA5 하향 + 현무 패턴)
+  // ★ 일봉 기반 필터 계산 (MA5 하향 + 현무 패턴 + 6종 추가 필터)
   const computeCandleFilters = useCallback((candles) => {
-    const res = { ma5Declining: false, hyunmu: false };
+    const res = {
+      ma5Declining: false, hyunmu: false,
+      volumeConfirm: false, rsiOverbought: false, rsiValue: 0,
+      upperWickWarning: false, bollingerLow: false,
+      bullishDays: false, bullishCount: 0,
+      minTradingValue: false, avgTradingValue: 0,
+    };
     if (!candles || candles.length < 5) return res;
 
     // --- MA5 하향 계산: 5일 이동평균이 직전 최고점 대비 하향 ---
@@ -2064,6 +3462,64 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
         break;
       }
     }
+
+    // --- ★ 거래량 동반: 최근 3일 평균 거래량 > 20일 평균 × 1.5 ---
+    if (candles.length >= 20) {
+      const vol20 = candles.slice(-20).reduce((s, c) => s + (c.volume || 0), 0) / 20;
+      const vol3 = candles.slice(-3).reduce((s, c) => s + (c.volume || 0), 0) / 3;
+      res.volumeConfirm = vol20 > 0 && vol3 > vol20 * 1.5;
+    }
+
+    // --- ★ RSI(14) 계산 ---
+    if (candles.length >= 15) {
+      const changes = [];
+      for (let i = 1; i < candles.length; i++) changes.push(candles[i].close - candles[i - 1].close);
+      const period = 14;
+      let avgGain = 0, avgLoss = 0;
+      for (let i = 0; i < period; i++) {
+        if (changes[i] > 0) avgGain += changes[i]; else avgLoss += Math.abs(changes[i]);
+      }
+      avgGain /= period; avgLoss /= period;
+      for (let i = period; i < changes.length; i++) {
+        avgGain = (avgGain * (period - 1) + (changes[i] > 0 ? changes[i] : 0)) / period;
+        avgLoss = (avgLoss * (period - 1) + (changes[i] < 0 ? Math.abs(changes[i]) : 0)) / period;
+      }
+      const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+      res.rsiValue = Math.round(100 - (100 / (1 + rs)));
+      res.rsiOverbought = res.rsiValue >= 75;
+    }
+
+    // --- ★ 윗꼬리 경고: 최근 3일 내 (고가-종가)/(고가-저가) > 0.6 ---
+    const last3 = candles.slice(-3);
+    for (const c of last3) {
+      const range = c.high - c.low;
+      if (range > 0 && (c.high - c.close) / range > 0.6) {
+        res.upperWickWarning = true;
+        break;
+      }
+    }
+
+    // --- ★ 볼린저밴드(20, 2σ): 현재가가 중간밴드 이하 ---
+    if (candles.length >= 20) {
+      const closes20 = candles.slice(-20).map(c => c.close);
+      const mean = closes20.reduce((s, v) => s + v, 0) / 20;
+      const std = Math.sqrt(closes20.reduce((s, v) => s + (v - mean) ** 2, 0) / 20);
+      const currentClose = candles[candles.length - 1].close;
+      res.bollingerLow = currentClose <= mean;  // 중간밴드(MA20) 이하
+    }
+
+    // --- ★ 연속 양봉: 최근 5일 중 양봉(종가>시가) 3일 이상 ---
+    const last5 = candles.slice(-5);
+    const bullCount = last5.filter(c => c.close > c.open).length;
+    res.bullishCount = bullCount;
+    res.bullishDays = bullCount >= 3;
+
+    // --- ★ 거래대금: 최근 5일 평균 (종가×거래량) > 5억원 ---
+    const last5tv = candles.slice(-5);
+    const avgTV = last5tv.reduce((s, c) => s + (c.close * (c.volume || 0)), 0) / last5tv.length;
+    res.avgTradingValue = avgTV;
+    res.minTradingValue = avgTV >= 500000000;  // 5억원
+
     return res;
   }, []);
 
@@ -2077,10 +3533,10 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
         const res = await fetch(`${API_BASE}/api/virtual-invest/candles/${rec.code}?count=60`);
         const data = await res.json();
         return { code: rec.code, ...computeCandleFilters(data.candles || []) };
-      } catch { return { code: rec.code, ma5Declining: false, hyunmu: false }; }
+      } catch { return { code: rec.code, ma5Declining: false, hyunmu: false, volumeConfirm: false, rsiOverbought: false, rsiValue: 0, upperWickWarning: false, bollingerLow: false, bullishDays: false, bullishCount: 0, minTradingValue: false, avgTradingValue: 0 }; }
     })).then(results => {
       const map = {};
-      results.forEach(r => { map[r.code] = { ma5Declining: r.ma5Declining, hyunmu: r.hyunmu }; });
+      results.forEach(r => { const { code, ...rest } = r; map[code] = rest; });
       setCandleFilters(map);
       setCandleLoading(false);
     });
@@ -2095,6 +3551,12 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
   if (requireMa5Above) recs = recs.filter(r => r.ma5_above_ma20 !== false);
   if (excludeGcExpired) recs = recs.filter(r => !(r.gc_days >= 5));  // ★ v9: GC 5일 경과 제외
   if (filterHyunmu) recs = recs.filter(r => candleFilters[r.code]?.hyunmu);
+  if (filterVolumeConfirm) recs = recs.filter(r => candleFilters[r.code]?.volumeConfirm);
+  if (excludeRsiOverbought) recs = recs.filter(r => !candleFilters[r.code]?.rsiOverbought);
+  if (excludeUpperWick) recs = recs.filter(r => !candleFilters[r.code]?.upperWickWarning);
+  if (filterBollingerLow) recs = recs.filter(r => candleFilters[r.code]?.bollingerLow);
+  if (filterBullishDays) recs = recs.filter(r => candleFilters[r.code]?.bullishDays);
+  if (filterMinTradingValue) recs = recs.filter(r => candleFilters[r.code]?.minTradingValue);
   if (recFilter === 'early') recs = recs.filter(r => r.early_entry);
   else if (recFilter === 'auto_buy') recs = recs.filter(r => r.entry_grade === 'auto_buy');
   else if (recFilter === 'watch') recs = recs.filter(r => r.entry_grade === 'watch' || r.entry_grade === 'auto_buy');
@@ -2118,11 +3580,15 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
     });
   };
 
+  // 필터 적용 후 보이는 종목 코드를 부모에 동기화
+  const filteredCodes = useMemo(() => new Set(recs.map(r => r.code)), [recs]);
+  useEffect(() => { if (setFilteredRecCodes) setFilteredRecCodes(filteredCodes); }, [filteredCodes, setFilteredRecCodes]);
+
   const toggleAll = () => {
-    if (selectedRecStocks.size === rawRecs.length) {
+    if (selectedRecStocks.size === recs.length && recs.every(r => selectedRecStocks.has(r.code))) {
       setSelectedRecStocks(new Set());
     } else {
-      setSelectedRecStocks(new Set(rawRecs.map(r => r.code)));
+      setSelectedRecStocks(new Set(recs.map(r => r.code)));
     }
   };
 
@@ -2148,6 +3614,30 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
     if (filterHyunmu) {
       const cnt = rawRecs.filter(r => candleFilters[r.code]?.hyunmu).length;
       filters.push({ label: `🐢 현무 (${cnt}개)`, color: '#4fc3f7' });
+    }
+    if (filterVolumeConfirm) {
+      const cnt = rawRecs.filter(r => candleFilters[r.code]?.volumeConfirm).length;
+      filters.push({ label: `📊 거래량 동반 (${cnt}개)`, color: '#22d3ee' });
+    }
+    if (excludeRsiOverbought) {
+      const cnt = rawRecs.filter(r => candleFilters[r.code]?.rsiOverbought).length;
+      filters.push({ label: `🌡️ RSI 과매수 제외 (-${cnt})`, color: '#f43f5e' });
+    }
+    if (excludeUpperWick) {
+      const cnt = rawRecs.filter(r => candleFilters[r.code]?.upperWickWarning).length;
+      filters.push({ label: `📌 윗꼬리 제외 (-${cnt})`, color: '#fb923c' });
+    }
+    if (filterBollingerLow) {
+      const cnt = rawRecs.filter(r => candleFilters[r.code]?.bollingerLow).length;
+      filters.push({ label: `📉 볼린저 하단 (${cnt}개)`, color: '#818cf8' });
+    }
+    if (filterBullishDays) {
+      const cnt = rawRecs.filter(r => candleFilters[r.code]?.bullishDays).length;
+      filters.push({ label: `🟩 연속 양봉 (${cnt}개)`, color: '#34d399' });
+    }
+    if (filterMinTradingValue) {
+      const cnt = rawRecs.filter(r => candleFilters[r.code]?.minTradingValue).length;
+      filters.push({ label: `💰 거래대금 5억+ (${cnt}개)`, color: '#fbbf24' });
     }
     return filters;
   };
@@ -2249,6 +3739,56 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
             <span style={{ color:'#4fc3f7', fontWeight:600 }}>({rawRecs.filter(r => candleFilters[r.code]?.hyunmu).length})</span>
           )}
         </label>
+        <label style={{ display:'flex', alignItems:'center', gap:4, marginLeft:10, cursor:'pointer', fontSize:11, color: filterVolumeConfirm ? '#22d3ee' : COLORS.textDim }}>
+          <input type="checkbox" checked={filterVolumeConfirm} onChange={e => setFilterVolumeConfirm(e.target.checked)} style={{ accentColor:'#22d3ee' }} />
+          📊 거래량 동반
+          {candleLoading && <span style={{ color:'#22d3ee', fontSize:9 }}>(계산중)</span>}
+          {!candleLoading && Object.keys(candleFilters).length > 0 && (
+            <span style={{ color:'#22d3ee', fontWeight:600 }}>({rawRecs.filter(r => candleFilters[r.code]?.volumeConfirm).length})</span>
+          )}
+        </label>
+        <label style={{ display:'flex', alignItems:'center', gap:4, marginLeft:10, cursor:'pointer', fontSize:11, color: excludeRsiOverbought ? '#f43f5e' : COLORS.textDim }}>
+          <input type="checkbox" checked={excludeRsiOverbought} onChange={e => setExcludeRsiOverbought(e.target.checked)} style={{ accentColor:'#f43f5e' }} />
+          🌡️ RSI 과매수 제외
+          {candleLoading && <span style={{ color:'#f43f5e', fontSize:9 }}>(계산중)</span>}
+          {excludeRsiOverbought && !candleLoading && (() => {
+            const cnt = rawRecs.filter(r => candleFilters[r.code]?.rsiOverbought).length;
+            return cnt > 0 ? <span style={{ color:'#ef4444', fontWeight:600 }}>(-{cnt})</span> : null;
+          })()}
+        </label>
+        <label style={{ display:'flex', alignItems:'center', gap:4, marginLeft:10, cursor:'pointer', fontSize:11, color: excludeUpperWick ? '#fb923c' : COLORS.textDim }}>
+          <input type="checkbox" checked={excludeUpperWick} onChange={e => setExcludeUpperWick(e.target.checked)} style={{ accentColor:'#fb923c' }} />
+          📌 윗꼬리 제외
+          {candleLoading && <span style={{ color:'#fb923c', fontSize:9 }}>(계산중)</span>}
+          {excludeUpperWick && !candleLoading && (() => {
+            const cnt = rawRecs.filter(r => candleFilters[r.code]?.upperWickWarning).length;
+            return cnt > 0 ? <span style={{ color:'#ef4444', fontWeight:600 }}>(-{cnt})</span> : null;
+          })()}
+        </label>
+        <label style={{ display:'flex', alignItems:'center', gap:4, marginLeft:10, cursor:'pointer', fontSize:11, color: filterBollingerLow ? '#818cf8' : COLORS.textDim }}>
+          <input type="checkbox" checked={filterBollingerLow} onChange={e => setFilterBollingerLow(e.target.checked)} style={{ accentColor:'#818cf8' }} />
+          📉 볼린저 하단
+          {candleLoading && <span style={{ color:'#818cf8', fontSize:9 }}>(계산중)</span>}
+          {!candleLoading && Object.keys(candleFilters).length > 0 && (
+            <span style={{ color:'#818cf8', fontWeight:600 }}>({rawRecs.filter(r => candleFilters[r.code]?.bollingerLow).length})</span>
+          )}
+        </label>
+        <label style={{ display:'flex', alignItems:'center', gap:4, marginLeft:10, cursor:'pointer', fontSize:11, color: filterBullishDays ? '#34d399' : COLORS.textDim }}>
+          <input type="checkbox" checked={filterBullishDays} onChange={e => setFilterBullishDays(e.target.checked)} style={{ accentColor:'#34d399' }} />
+          🟩 연속 양봉
+          {candleLoading && <span style={{ color:'#34d399', fontSize:9 }}>(계산중)</span>}
+          {!candleLoading && Object.keys(candleFilters).length > 0 && (
+            <span style={{ color:'#34d399', fontWeight:600 }}>({rawRecs.filter(r => candleFilters[r.code]?.bullishDays).length})</span>
+          )}
+        </label>
+        <label style={{ display:'flex', alignItems:'center', gap:4, marginLeft:10, cursor:'pointer', fontSize:11, color: filterMinTradingValue ? '#fbbf24' : COLORS.textDim }}>
+          <input type="checkbox" checked={filterMinTradingValue} onChange={e => setFilterMinTradingValue(e.target.checked)} style={{ accentColor:'#fbbf24' }} />
+          💰 거래대금 5억+
+          {candleLoading && <span style={{ color:'#fbbf24', fontSize:9 }}>(계산중)</span>}
+          {!candleLoading && Object.keys(candleFilters).length > 0 && (
+            <span style={{ color:'#fbbf24', fontWeight:600 }}>({rawRecs.filter(r => candleFilters[r.code]?.minTradingValue).length})</span>
+          )}
+        </label>
         <span style={{ fontSize:11, color:COLORS.textDim, marginLeft:12 }}>정렬:</span>
         {[{v:'composite_score',l:'종합점수'},{v:'early_score',l:'⚡조기진입'},{v:'entry_score',l:'진입점수'},{v:'similarity',l:'유사도'}].map(s => {
           const active = recSortKey===s.v;
@@ -2283,17 +3823,42 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
               : '종목을 선택하여 가상투자에 등록하세요'}
           </span>
         </div>
-        <button
-          onClick={handleRegister}
-          disabled={selectedRecStocks.size === 0}
-          style={{
-            padding:'8px 20px', fontSize:13, fontWeight:600, borderRadius:8,
-            border:'none', cursor: selectedRecStocks.size > 0 ? 'pointer' : 'default',
-            background: selectedRecStocks.size > 0 ? COLORS.green : '#374151',
-            color: selectedRecStocks.size > 0 ? COLORS.white : COLORS.textDim,
-            transition:'all 0.2s',
-          }}
-        >💰 가상투자 등록 ({selectedRecStocks.size})</button>
+        <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+          <button
+            onClick={handleRegister}
+            disabled={selectedRecStocks.size === 0}
+            style={{
+              padding:'8px 20px', fontSize:13, fontWeight:600, borderRadius:8,
+              border:'none', cursor: selectedRecStocks.size > 0 ? 'pointer' : 'default',
+              background: selectedRecStocks.size > 0 ? COLORS.green : '#374151',
+              color: selectedRecStocks.size > 0 ? COLORS.white : COLORS.textDim,
+              transition:'all 0.2s',
+            }}
+          >💰 가상투자 등록 ({selectedRecStocks.size})</button>
+          <button onClick={() => {
+            if (selectedRecStocks.size === 0) return;
+            const recs2 = result?.recommendations || [];
+            const selected2 = recs2.filter(r => selectedRecStocks.has(r.code));
+            registerCandidates(selected2, 'pattern_match');
+          }} disabled={selectedRecStocks.size === 0}
+            style={{ padding:'8px 16px', fontSize:12, fontWeight:600, borderRadius:8, border:'none',
+              cursor: selectedRecStocks.size > 0 ? 'pointer' : 'default',
+              background: selectedRecStocks.size > 0 ? '#f59e0b' : '#374151',
+              color: selectedRecStocks.size > 0 ? '#000' : COLORS.textDim,
+            }}>📋 후보등록</button>
+          <button onClick={() => onKisOrder('virtual')} disabled={selectedRecStocks.size === 0}
+            style={{ padding:'8px 16px', fontSize:12, fontWeight:600, borderRadius:8, border:'none',
+              cursor: selectedRecStocks.size > 0 ? 'pointer' : 'default',
+              background: selectedRecStocks.size > 0 ? '#1a6fff' : '#374151',
+              color: selectedRecStocks.size > 0 ? 'white' : COLORS.textDim,
+            }}>🏦 모의투자</button>
+          <button onClick={() => onKisOrder('real')} disabled={selectedRecStocks.size === 0}
+            style={{ padding:'8px 16px', fontSize:12, fontWeight:600, borderRadius:8, border:'none',
+              cursor: selectedRecStocks.size > 0 ? 'pointer' : 'default',
+              background: selectedRecStocks.size > 0 ? '#dc2626' : '#374151',
+              color: selectedRecStocks.size > 0 ? 'white' : COLORS.textDim,
+            }}>🔴 실전투자</button>
+        </div>
       </div>
     )}
 
@@ -2406,10 +3971,20 @@ function TabRecommend({ result, selectedRecStocks, setSelectedRecStocks, onRegis
             return `${r.name}(${g.text.split(' ')[1]||'보류'})`;
           }).join(', ')}
         </div>
-        <button onClick={handleRegister} style={{
-          padding:'10px 24px', fontSize:14, fontWeight:700, borderRadius:8,
-          border:'none', cursor:'pointer', background:COLORS.green, color:COLORS.white,
-        }}>💰 가상투자 등록 →</button>
+        <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+          <button onClick={handleRegister} style={{
+            padding:'10px 24px', fontSize:14, fontWeight:700, borderRadius:8,
+            border:'none', cursor:'pointer', background:COLORS.green, color:COLORS.white,
+          }}>💰 가상투자 등록 →</button>
+          <button onClick={() => onKisOrder('virtual')} style={{
+            padding:'10px 18px', fontSize:13, fontWeight:700, borderRadius:8,
+            border:'none', cursor:'pointer', background:'#1a6fff', color:'white',
+          }}>🏦 모의투자</button>
+          <button onClick={() => onKisOrder('real')} style={{
+            padding:'10px 18px', fontSize:13, fontWeight:700, borderRadius:8,
+            border:'none', cursor:'pointer', background:'#dc2626', color:'white',
+          }}>🔴 실전투자</button>
+        </div>
       </div>
     )}
 
