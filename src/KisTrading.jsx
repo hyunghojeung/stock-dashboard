@@ -1400,7 +1400,7 @@ function OrderPanel() {
     setChartLoading(false);
   };
 
-  // ★ 후보종목 클릭 → 종목코드 자동 입력 + 시세 + 호가 조회
+  // ★ 후보종목 클릭 → 종목코드 자동 입력 + 시세 + 호가 + 차트 자동 조회
   const selectCandidate = (c) => {
     setStockCode(c.code);
     setSide("buy");
@@ -1408,6 +1408,10 @@ function OrderPanel() {
     setAskingData(null);
     setResult(null);
     fetchQuote(c.code);
+    // 차트 자동 로드 (같은 종목이 아닐 때만)
+    if (chartCode?.code !== c.code) {
+      openCandChart(c);
+    }
   };
 
   const fetchBuyable = async () => {
