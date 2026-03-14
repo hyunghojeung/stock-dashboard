@@ -1658,10 +1658,10 @@ function OrderPanel() {
         </div>
       </div>
 
-      {/* ★ 호가창 (우측) */}
-      <div style={{ ...S.panel, flex: "0 0 280px", minWidth: 260 }}>
+      {/* ★ 호가창 (우측) - 좌우 2열 배치 */}
+      <div style={{ ...S.panel, flex: "0 0 420px", minWidth: 380 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-          <div style={S.title}>호가{askingData && quoteData ? ` — ${quoteData.name}` : ''}</div>
+          <div style={S.title}>호가 (매도/매수){askingData && quoteData ? ` — ${quoteData.name}` : ''}</div>
           {stockCode && (
             <button onClick={() => fetchAsking()} disabled={askingLoading}
               style={{ ...S.btn(), padding: "3px 8px", fontSize: 10 }}>
@@ -1675,51 +1675,41 @@ function OrderPanel() {
           </div>
         ) : (
           <div>
-            {/* 매도호가 (위) + 매수호가 (아래) 세로 배치 */}
-            <div style={{ marginBottom: 4 }}>
-              <div style={{ color: "#4488ff", fontSize: 10, fontWeight: 600, marginBottom: 4, textAlign: "center" }}>매도호가</div>
-              {[...askingData.asks].reverse().map((a, i) => a.price > 0 && (
-                <div key={`ask-${i}`} onClick={() => { setPrice(String(a.price)); setOrderType("00"); }}
-                  style={{ display: "flex", justifyContent: "space-between", padding: "3px 8px", cursor: "pointer",
-                    background: `rgba(68,136,255,${0.04 + (a.qty / (askingData.total_ask_qty || 1)) * 0.25})`,
-                    borderRadius: 3, marginBottom: 1, transition: "background 0.1s",
-                  }}>
-                  <span style={{ color: "#4488ff", fontFamily: "monospace", fontSize: 11 }}>{fmt(a.price)}</span>
-                  <span style={{ color: "#6688aa", fontFamily: "monospace", fontSize: 11 }}>{fmt(a.qty)}</span>
-                </div>
-              ))}
-            </div>
-            {/* 현재가 표시줄 */}
-            {quoteData && (
-              <div style={{ padding: "6px 8px", margin: "4px 0", background: "rgba(255,255,255,0.05)",
-                borderRadius: 4, textAlign: "center", borderTop: "1px solid rgba(100,140,200,0.15)",
-                borderBottom: "1px solid rgba(100,140,200,0.15)" }}>
-                <span style={{ color: clr(quoteData.change), fontSize: 14, fontWeight: 700, fontFamily: "monospace" }}>
-                  {fmt(quoteData.price)}
-                </span>
-                <span style={{ color: clr(quoteData.change), fontSize: 11, marginLeft: 6 }}>
-                  {fmtPct(quoteData.change_rate)}
-                </span>
+            <div style={{ display: "flex", gap: 12 }}>
+              {/* 매도호가 (좌측) */}
+              <div style={{ flex: 1 }}>
+                <div style={{ color: "#4488ff", fontSize: 11, fontWeight: 600, marginBottom: 6, textAlign: "center" }}>매도호가</div>
+                {[...askingData.asks].reverse().map((a, i) => a.price > 0 && (
+                  <div key={`ask-${i}`} onClick={() => { setPrice(String(a.price)); setOrderType("00"); }}
+                    style={{ display: "flex", justifyContent: "space-between", padding: "4px 8px", cursor: "pointer",
+                      background: `rgba(68,136,255,${0.05 + (a.qty / (askingData.total_ask_qty || 1)) * 0.3})`,
+                      borderRadius: 4, marginBottom: 2, transition: "background 0.1s",
+                    }}>
+                    <span style={{ color: "#4488ff", fontFamily: "monospace", fontSize: 12 }}>{fmt(a.price)}</span>
+                    <span style={{ color: "#6688aa", fontFamily: "monospace", fontSize: 12 }}>{fmt(a.qty)}</span>
+                  </div>
+                ))}
               </div>
-            )}
-            <div>
-              <div style={{ color: "#ff4444", fontSize: 10, fontWeight: 600, marginBottom: 4, textAlign: "center" }}>매수호가</div>
-              {askingData.bids.map((b, i) => b.price > 0 && (
-                <div key={`bid-${i}`} onClick={() => { setPrice(String(b.price)); setOrderType("00"); }}
-                  style={{ display: "flex", justifyContent: "space-between", padding: "3px 8px", cursor: "pointer",
-                    background: `rgba(255,68,68,${0.04 + (b.qty / (askingData.total_bid_qty || 1)) * 0.25})`,
-                    borderRadius: 3, marginBottom: 1, transition: "background 0.1s",
-                  }}>
-                  <span style={{ color: "#ff4444", fontFamily: "monospace", fontSize: 11 }}>{fmt(b.price)}</span>
-                  <span style={{ color: "#6688aa", fontFamily: "monospace", fontSize: 11 }}>{fmt(b.qty)}</span>
-                </div>
-              ))}
+              {/* 매수호가 (우측) */}
+              <div style={{ flex: 1 }}>
+                <div style={{ color: "#ff4444", fontSize: 11, fontWeight: 600, marginBottom: 6, textAlign: "center" }}>매수호가</div>
+                {askingData.bids.map((b, i) => b.price > 0 && (
+                  <div key={`bid-${i}`} onClick={() => { setPrice(String(b.price)); setOrderType("00"); }}
+                    style={{ display: "flex", justifyContent: "space-between", padding: "4px 8px", cursor: "pointer",
+                      background: `rgba(255,68,68,${0.05 + (b.qty / (askingData.total_bid_qty || 1)) * 0.3})`,
+                      borderRadius: 4, marginBottom: 2, transition: "background 0.1s",
+                    }}>
+                    <span style={{ color: "#ff4444", fontFamily: "monospace", fontSize: 12 }}>{fmt(b.price)}</span>
+                    <span style={{ color: "#6688aa", fontFamily: "monospace", fontSize: 12 }}>{fmt(b.qty)}</span>
+                  </div>
+                ))}
+              </div>
             </div>
             {/* 총 잔량 요약 */}
-            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, padding: "6px 8px",
-              borderTop: "1px solid rgba(100,140,200,0.1)", fontSize: 10 }}>
-              <span style={{ color: "#4488ff" }}>매도 {fmt(askingData.total_ask_qty)}</span>
-              <span style={{ color: "#ff4444" }}>매수 {fmt(askingData.total_bid_qty)}</span>
+            <div style={{ display: "flex", justifyContent: "space-around", marginTop: 10, padding: "6px 8px",
+              borderTop: "1px solid rgba(100,140,200,0.1)", fontSize: 11 }}>
+              <span style={{ color: "#4488ff" }}>총 매도잔량: {fmt(askingData.total_ask_qty)}</span>
+              <span style={{ color: "#ff4444" }}>총 매수잔량: {fmt(askingData.total_bid_qty)}</span>
             </div>
           </div>
         )}
