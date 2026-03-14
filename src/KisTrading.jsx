@@ -2458,6 +2458,24 @@ function FinancePanel() {
 
   const [error, setError] = useState(null);
 
+  // KIS 재무정보 영문 키 → 한국어 컬럼명 매핑
+  const COL_NAMES = {
+    // 공통
+    stac_yymm: '결산년월',
+    // 손익계산서
+    sale_account: '매출액', sale_cost: '매출원가', sale_totl_prfi: '매출총이익',
+    depr_cost: '감가상각비', sell_mang: '판관비', bsop_prti: '영업이익',
+    bsop_non_ernn: '영업외수익', thtr_ntin: '당기순이익',
+    // 성장성비율
+    grs: '매출성장률', bsop_prfi_inrt: '영업이익증가율',
+    equt_inrt: '자기자본증가율', totl_aset_inrt: '총자산증가율',
+    // 재무비율
+    bsop_prfi_rate: '영업이익률', ntin_rate: '순이익률',
+    roe_val: 'ROE', eps: 'EPS', bps: 'BPS', per: 'PER', pbr: 'PBR',
+    debt_rate: '부채비율', rsrv_rate: '유보율', crnt_rate: '유동비율',
+  };
+  const toKr = (key) => COL_NAMES[key] || key;
+
   const search = async (overrideCode) => {
     const raw = (overrideCode || code || "").trim();
     if (!raw) return;
@@ -2499,7 +2517,7 @@ function FinancePanel() {
               <div style={S.title}>재무비율</div>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
-                  <tr>{Object.keys(data.financial_ratio[0] || {}).slice(0, 8).map(k => <th key={k} style={{ ...S.th, fontSize: 10 }}>{k}</th>)}</tr>
+                  <tr>{Object.keys(data.financial_ratio[0] || {}).slice(0, 8).map(k => <th key={k} style={{ ...S.th, fontSize: 10 }}>{toKr(k)}</th>)}</tr>
                 </thead>
                 <tbody>
                   {data.financial_ratio.slice(0, 5).map((row, i) => (
@@ -2518,7 +2536,7 @@ function FinancePanel() {
               <div style={S.title}>손익계산서</div>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
-                  <tr>{Object.keys(data.income_statement[0] || {}).slice(0, 8).map(k => <th key={k} style={{ ...S.th, fontSize: 10 }}>{k}</th>)}</tr>
+                  <tr>{Object.keys(data.income_statement[0] || {}).slice(0, 8).map(k => <th key={k} style={{ ...S.th, fontSize: 10 }}>{toKr(k)}</th>)}</tr>
                 </thead>
                 <tbody>
                   {data.income_statement.slice(0, 5).map((row, i) => (
@@ -2537,7 +2555,7 @@ function FinancePanel() {
               <div style={S.title}>성장성비율</div>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
-                  <tr>{Object.keys(data.growth_ratio[0] || {}).slice(0, 8).map(k => <th key={k} style={{ ...S.th, fontSize: 10 }}>{k}</th>)}</tr>
+                  <tr>{Object.keys(data.growth_ratio[0] || {}).slice(0, 8).map(k => <th key={k} style={{ ...S.th, fontSize: 10 }}>{toKr(k)}</th>)}</tr>
                 </thead>
                 <tbody>
                   {data.growth_ratio.slice(0, 5).map((row, i) => (
