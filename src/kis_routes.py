@@ -622,3 +622,27 @@ async def strategy_auto_invest(
     if "error" in result:
         raise HTTPException(500, result["error"])
     return result
+
+
+@router.get("/server-logs")
+async def get_server_logs(
+    account_type: str = Query("all", description="all / virtual / real"),
+    limit: int = Query(50, ge=1, le=200),
+):
+    """서버 자동매매 실행 로그 조회"""
+    supabase = _get_supabase()
+    if not supabase:
+        raise HTTPException(500, "DB 연결 실패")
+
+    try:
+        query = supabase.table("server_auto_trade_logs").select("*")
+        if account_type != "all":
+            query = query.eq("account_type", account_type)
+        result = query.order("created_at", desc=True).limit(limit).execute()
+        return {"logs": result.data or [], "count": len(result.data or [])}
+    except Exception as e:
+        # 테이블이 아직 생성되지 않은 경우 빈 결과 반환
+        error_str = str(e)
+        if "server_auto_trade_logs" in error_str and ("does not exist" in error_str or "42P01" in error_str):
+            return {"logs": [], "count": 0, "notice": "server_auto_trade_logs 테이블이 아직 생성되지 않았습니다. Supabase SQL Editor에서 migrations/002_server_auto_trade_logs.sql을 실행해주세요."}
+        raise HTTPException(500, f"서버 로그 조회 실패: {e}")

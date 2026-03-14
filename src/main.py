@@ -74,12 +74,14 @@ async def lifespan(app: FastAPI):
                     await update_realtime(s["session_id"], supabase)
 
                 # 2. KIS 전략 체크 (모의 + 실전)
-                from kis_strategy_executor import check_and_execute_kis_positions
+                from kis_strategy_executor import check_and_execute_kis_positions, save_server_log
+                save_server_log(supabase, "scheduler", f"⏰ 서버 스케줄러 전략 체크 시작 ({now.strftime('%H:%M:%S')})")
                 for acc_type in ["virtual", "real"]:
                     try:
                         await check_and_execute_kis_positions(supabase, acc_type)
                     except Exception as ex2:
                         print(f"[전략체크] {acc_type} 오류: {ex2}")
+                        save_server_log(supabase, "error", f"스케줄러 전략 체크 오류 ({acc_type}): {ex2}", acc_type)
 
             except Exception as ex:
                 print(f"[전략체크] 오류: {ex}")
