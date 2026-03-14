@@ -1331,6 +1331,9 @@ function OrderPanel() {
   const [chartCode, setChartCode] = useState(null);   // { code, name }
   const [chartCandles, setChartCandles] = useState(null);
   const [chartLoading, setChartLoading] = useState(false);
+  // ★ 호가 데이터
+  const [askingData, setAskingData] = useState(null);
+  const [askingLoading, setAskingLoading] = useState(false);
 
   const loadCandidates = useCallback(async () => {
     setCandLoading(true);
@@ -1357,6 +1360,18 @@ function OrderPanel() {
 
   useEffect(() => { loadCandidates(); }, [loadCandidates]);
 
+  // ★ 호가 조회
+  const fetchAsking = async (code) => {
+    const target = code || stockCode;
+    if (target.length < 6) return;
+    setAskingLoading(true);
+    try {
+      const r = await kisApi("asking", { code: target });
+      if (r?.success) setAskingData(r);
+    } catch (e) { console.error('호가 조회 실패:', e); }
+    setAskingLoading(false);
+  };
+
   const fetchQuote = async (code) => {
     const target = code || stockCode;
     if (target.length < 6) return;
@@ -1365,6 +1380,8 @@ function OrderPanel() {
       setQuoteData(r);
       if (!price) setPrice(String(r.price));
     }
+    // 호가도 동시 조회
+    fetchAsking(target);
   };
 
   // ★ 후보종목 차트 열기
@@ -1383,11 +1400,12 @@ function OrderPanel() {
     setChartLoading(false);
   };
 
-  // ★ 후보종목 클릭 → 종목코드 자동 입력 + 시세 조회
+  // ★ 후보종목 클릭 → 종목코드 자동 입력 + 시세 + 호가 조회
   const selectCandidate = (c) => {
     setStockCode(c.code);
     setSide("buy");
     setQuoteData(null);
+    setAskingData(null);
     setResult(null);
     fetchQuote(c.code);
   };
@@ -1640,33 +1658,62 @@ function OrderPanel() {
         </div>
       </div>
 
-      {/* Quick Quote (우측) */}
-      {quoteData && (
-        <div style={{ ...S.panel, flex: "1 1 300px" }}>
-          <div style={S.title}>{quoteData.name} <span style={{ color: "#64b5f6", fontFamily: "monospace", fontSize: 12, fontWeight: 400 }}>{stockCode}</span> 상세</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-            {[
-              ["현재가", `${fmt(quoteData.price)}원`, clr(quoteData.change)],
-              ["전일대비", `${fmtWon(quoteData.change)} (${fmtPct(quoteData.change_rate)})`, clr(quoteData.change)],
-              ["시가", `${fmt(quoteData.open)}원`, "#e0e6f0"],
-              ["고가", `${fmt(quoteData.high)}원`, "#ff4444"],
-              ["저가", `${fmt(quoteData.low)}원`, "#4488ff"],
-              ["거래량", `${fmt(quoteData.volume)}주`, "#e0e6f0"],
-              ["PER", quoteData.per?.toFixed(2) || "—", "#ffd54f"],
-              ["PBR", quoteData.pbr?.toFixed(2) || "—", "#ffd54f"],
-              ["시가총액", `${fmt(quoteData.market_cap)}억`, "#64b5f6"],
-              ["52주 고가", `${fmt(quoteData["52w_high"])}원`, "#ff4444"],
-              ["52주 저가", `${fmt(quoteData["52w_low"])}원`, "#4488ff"],
-              ["EPS", fmt(Math.round(quoteData.eps || 0)), "#e0e6f0"],
-            ].map(([label, value, color]) => (
-              <div key={label} style={{ padding: "6px 0" }}>
-                <div style={{ color: "#556677", fontSize: 10 }}>{label}</div>
-                <div style={{ color, fontSize: 13, fontFamily: "monospace", fontWeight: 600 }}>{value}</div>
-              </div>
-            ))}
-          </div>
+      {/* ★ 호가창 (우측) - 좌우 2열 배치 */}
+      <div style={{ ...S.panel, flex: "0 0 420px", minWidth: 380 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          <div style={S.title}>호가 (매도/매수){askingData && quoteData ? ` — ${quoteData.name}` : ''}</div>
+          {stockCode && (
+            <button onClick={() => fetchAsking()} disabled={askingLoading}
+              style={{ ...S.btn(), padding: "3px 8px", fontSize: 10 }}>
+              {askingLoading ? "..." : "새로고침"}
+            </button>
+          )}
         </div>
-      )}
+        {!askingData ? (
+          <div style={{ textAlign: "center", padding: 40, color: "#556677", fontSize: 12 }}>
+            {stockCode ? (askingLoading ? "호가 조회 중..." : "종목을 조회하면 호가가 표시됩니다") : "후보종목을 선택하세요"}
+          </div>
+        ) : (
+          <div>
+            <div style={{ display: "flex", gap: 12 }}>
+              {/* 매도호가 (좌측) */}
+              <div style={{ flex: 1 }}>
+                <div style={{ color: "#4488ff", fontSize: 11, fontWeight: 600, marginBottom: 6, textAlign: "center" }}>매도호가</div>
+                {[...askingData.asks].reverse().map((a, i) => a.price > 0 && (
+                  <div key={`ask-${i}`} onClick={() => { setPrice(String(a.price)); setOrderType("00"); }}
+                    style={{ display: "flex", justifyContent: "space-between", padding: "4px 8px", cursor: "pointer",
+                      background: `rgba(68,136,255,${0.05 + (a.qty / (askingData.total_ask_qty || 1)) * 0.3})`,
+                      borderRadius: 4, marginBottom: 2, transition: "background 0.1s",
+                    }}>
+                    <span style={{ color: "#4488ff", fontFamily: "monospace", fontSize: 12 }}>{fmt(a.price)}</span>
+                    <span style={{ color: "#6688aa", fontFamily: "monospace", fontSize: 12 }}>{fmt(a.qty)}</span>
+                  </div>
+                ))}
+              </div>
+              {/* 매수호가 (우측) */}
+              <div style={{ flex: 1 }}>
+                <div style={{ color: "#ff4444", fontSize: 11, fontWeight: 600, marginBottom: 6, textAlign: "center" }}>매수호가</div>
+                {askingData.bids.map((b, i) => b.price > 0 && (
+                  <div key={`bid-${i}`} onClick={() => { setPrice(String(b.price)); setOrderType("00"); }}
+                    style={{ display: "flex", justifyContent: "space-between", padding: "4px 8px", cursor: "pointer",
+                      background: `rgba(255,68,68,${0.05 + (b.qty / (askingData.total_bid_qty || 1)) * 0.3})`,
+                      borderRadius: 4, marginBottom: 2, transition: "background 0.1s",
+                    }}>
+                    <span style={{ color: "#ff4444", fontFamily: "monospace", fontSize: 12 }}>{fmt(b.price)}</span>
+                    <span style={{ color: "#6688aa", fontFamily: "monospace", fontSize: 12 }}>{fmt(b.qty)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            {/* 총 잔량 요약 */}
+            <div style={{ display: "flex", justifyContent: "space-around", marginTop: 10, padding: "6px 8px",
+              borderTop: "1px solid rgba(100,140,200,0.1)", fontSize: 11 }}>
+              <span style={{ color: "#4488ff" }}>총 매도잔량: {fmt(askingData.total_ask_qty)}</span>
+              <span style={{ color: "#ff4444" }}>총 매수잔량: {fmt(askingData.total_bid_qty)}</span>
+            </div>
+          </div>
+        )}
+      </div>
       </div>{/* 상단 flex 닫기 */}
 
       {/* ★ 하단: 후보종목 차트 (기본 차트 스킬 사양) */}
