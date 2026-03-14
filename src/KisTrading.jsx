@@ -2823,6 +2823,27 @@ function AutoTradePanel({ mode = "virtual" }) {
   const checkRef = useRef(null);
   const [intervalSec, setIntervalSec] = useState(30);
 
+  // 서버 로그 관련 상태
+  const [logTab, setLogTab] = useState("client"); // "client" | "server"
+  const [serverLogs, setServerLogs] = useState([]);
+  const [serverLogLoading, setServerLogLoading] = useState(false);
+
+  // 서버 로그 조회
+  const loadServerLogs = useCallback(async () => {
+    setServerLogLoading(true);
+    try {
+      const activeMode = getKisActiveMode();
+      const accountType = activeMode === "real" ? "real" : "virtual";
+      const r = await fetch(`${BACKEND_API}/api/kis/server-logs?account_type=${accountType}&limit=100`);
+      const data = await r.json();
+      if (data?.logs) setServerLogs(data.logs);
+    } catch (e) {
+      console.error("서버 로그 조회 실패:", e);
+    } finally {
+      setServerLogLoading(false);
+    }
+  }, []);
+
   // 로그 추가
   const addLog = useCallback((msg) => {
     setLogs(prev => [{ time: new Date().toLocaleTimeString('ko-KR'), msg }, ...prev].slice(0, 50));
@@ -2987,26 +3008,88 @@ function AutoTradePanel({ mode = "virtual" }) {
         </div>
       </div>
 
-      {/* 실행 로그 */}
+      {/* 실행 로그 (클라이언트/서버 탭) */}
       <div style={S.panel}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#e0e6f0' }}>
-            실행 로그 {monitoring && <span style={{ color: '#4cff8b', fontSize: 11 }}>● 모니터링 중</span>}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button onClick={() => setLogTab("client")} style={{
+              padding: '4px 12px', borderRadius: 6, border: 'none', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+              background: logTab === "client" ? 'rgba(100,140,200,0.3)' : 'transparent',
+              color: logTab === "client" ? '#e0e6f0' : '#556677',
+            }}>
+              브라우저 로그 {monitoring && <span style={{ color: '#4cff8b', fontSize: 10 }}>●</span>}
+            </button>
+            <button onClick={() => { setLogTab("server"); loadServerLogs(); }} style={{
+              padding: '4px 12px', borderRadius: 6, border: 'none', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+              background: logTab === "server" ? 'rgba(0,200,120,0.2)' : 'transparent',
+              color: logTab === "server" ? '#00c878' : '#556677',
+            }}>
+              서버 로그 (Railway)
+            </button>
           </div>
-          <button onClick={() => setLogs([])} style={{ ...S.btn('#333', '#444'), padding: '4px 10px', fontSize: 10 }}>지우기</button>
+          <div style={{ display: 'flex', gap: 4 }}>
+            {logTab === "server" && (
+              <button onClick={loadServerLogs} style={{ ...S.btn('#1a3a2e', '#1a5a3e'), padding: '4px 10px', fontSize: 10 }}>
+                {serverLogLoading ? '로딩...' : '새로고침'}
+              </button>
+            )}
+            {logTab === "client" && (
+              <button onClick={() => setLogs([])} style={{ ...S.btn('#333', '#444'), padding: '4px 10px', fontSize: 10 }}>지우기</button>
+            )}
+          </div>
         </div>
         <div style={{
-          maxHeight: 200, overflowY: 'auto', background: 'rgba(10,18,40,0.6)', borderRadius: 8, padding: 10,
+          maxHeight: 300, overflowY: 'auto', background: 'rgba(10,18,40,0.6)', borderRadius: 8, padding: 10,
           fontFamily: "'JetBrains Mono', monospace", fontSize: 11,
         }}>
-          {logs.length === 0
-            ? <div style={{ color: '#556677', textAlign: 'center', padding: 20 }}>모니터링을 시작하면 로그가 표시됩니다</div>
-            : logs.map((l, i) => (
-              <div key={i} style={{ color: l.msg.includes('✅') ? '#4cff8b' : l.msg.includes('❌') ? '#ff4c4c' : l.msg.includes('🔔') ? '#ffd54f' : '#8899aa', marginBottom: 2 }}>
-                <span style={{ color: '#556677' }}>[{l.time}]</span> {l.msg}
-              </div>
-            ))
-          }
+          {logTab === "client" ? (
+            /* 브라우저 로그 */
+            logs.length === 0
+              ? <div style={{ color: '#556677', textAlign: 'center', padding: 20 }}>모니터링을 시작하면 로그가 표시됩니다</div>
+              : logs.map((l, i) => (
+                <div key={i} style={{ color: l.msg.includes('✅') ? '#4cff8b' : l.msg.includes('❌') ? '#ff4c4c' : l.msg.includes('🔔') ? '#ffd54f' : '#8899aa', marginBottom: 2 }}>
+                  <span style={{ color: '#556677' }}>[{l.time}]</span> {l.msg}
+                </div>
+              ))
+          ) : (
+            /* 서버 로그 */
+            serverLogLoading
+              ? <div style={{ color: '#556677', textAlign: 'center', padding: 20 }}>서버 로그 조회 중...</div>
+              : serverLogs.length === 0
+                ? <div style={{ color: '#556677', textAlign: 'center', padding: 20 }}>
+                    서버 로그가 없습니다. 장중(월-금 9시~15시)에 10분 간격으로 서버가 자동 체크하며 로그가 기록됩니다.
+                  </div>
+                : serverLogs.map((log, i) => {
+                    const time = new Date(log.created_at).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                    const typeColors = {
+                      scheduler: '#7b93db', check: '#8899aa', sell: '#4cff8b',
+                      buy: '#ffd54f', error: '#ff4c4c', warning: '#ffaa33', info: '#6688aa',
+                    };
+                    const typeLabels = {
+                      scheduler: '⏰', check: '🔍', sell: '✅', buy: '🛒',
+                      error: '❌', warning: '⚠️', info: 'ℹ️',
+                    };
+                    const color = typeColors[log.log_type] || '#8899aa';
+                    const icon = typeLabels[log.log_type] || '📋';
+                    return (
+                      <div key={log.id || i} style={{ color, marginBottom: 3, lineHeight: 1.5 }}>
+                        <span style={{ color: '#556677' }}>[{time}]</span>{' '}
+                        <span style={{ fontSize: 10, padding: '1px 4px', borderRadius: 3, background: `${color}22`, color, fontWeight: 600 }}>
+                          {icon} {log.log_type}
+                        </span>{' '}
+                        <span style={{ color: log.account_type === 'real' ? '#ff6b6b' : '#4a9' , fontSize: 9, fontWeight: 600 }}>
+                          [{log.account_type === 'real' ? '실전' : '모의'}]
+                        </span>{' '}
+                        {log.message}
+                        {log.details && log.details.profit_pct !== undefined && (
+                          <span style={{ color: log.details.profit_pct >= 0 ? '#4cff8b' : '#ff4c4c', marginLeft: 4 }}>
+                            ({log.details.profit_pct >= 0 ? '+' : ''}{log.details.profit_pct}%)
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })
+          )}
         </div>
       </div>
 

@@ -29,6 +29,24 @@ from kis_api import get_kis_client
 
 logger = logging.getLogger(__name__)
 
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 서버 자동매매 로그 DB 저장
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+def save_server_log(supabase, log_type: str, message: str, account_type: str = "virtual", details: dict = None):
+    """서버 자동매매 실행 로그를 DB에 저장"""
+    try:
+        supabase.table("server_auto_trade_logs").insert({
+            "log_type": log_type,
+            "account_type": account_type,
+            "message": message,
+            "details": details or {},
+        }).execute()
+    except Exception as e:
+        logger.error(f"[서버로그] DB 저장 실패: {e}")
+
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # KIS 포지션 전략 관리 등록
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -135,6 +153,7 @@ async def check_and_execute_kis_positions(
     """
     client = get_kis_client()
     if not client.is_configured:
+        save_server_log(supabase, "warning", "KIS API 미설정 — 전략 체크 건너뜀", account_type)
         return {"error": "KIS API 미설정"}
 
     try:
@@ -145,6 +164,7 @@ async def check_and_execute_kis_positions(
         positions = managed.data or []
 
         if not positions:
+            save_server_log(supabase, "info", f"전략 체크 실행 — 관리 포지션 0건 (건너뜀)", account_type)
             return {"account_type": account_type, "checked": 0, "results": []}
 
         results = []
@@ -233,20 +253,28 @@ async def check_and_execute_kis_positions(
                                 update_data["sell_date"] = datetime.now().strftime("%Y-%m-%d")
                                 update_data["sell_reason"] = signal.reason
 
-                                logger.info(
-                                    f"[KIS전략] 매도 실행: {pos.get('stock_name')}({code}) "
-                                    f"{signal.action} — {signal.reason} / 수익률 {pct:.1f}%"
-                                )
+                                sell_msg = f"✅ 매도 실행: {pos.get('stock_name')}({code}) [{signal.action}] {signal.reason} / 수익률 {pct:+.1f}%"
+                                logger.info(f"[KIS전략] {sell_msg}")
+                                save_server_log(supabase, "sell", sell_msg, account_type, {
+                                    "stock_code": code, "stock_name": pos.get("stock_name"),
+                                    "signal": signal.action, "reason": signal.reason,
+                                    "profit_pct": round(pct, 2), "sell_price": current_price,
+                                    "qty": qty, "order_no": result_entry.get("order_no", ""),
+                                })
                             else:
-                                logger.warning(
-                                    f"[KIS전략] 매도 주문 실패: {pos.get('stock_name')}({code}) "
-                                    f"— {order_result.get('msg1', '')}"
-                                )
+                                fail_msg = f"❌ 매도 주문 실패: {pos.get('stock_name')}({code}) — {order_result.get('msg1', '')}"
+                                logger.warning(f"[KIS전략] {fail_msg}")
+                                save_server_log(supabase, "error", fail_msg, account_type, {
+                                    "stock_code": code, "stock_name": pos.get("stock_name"),
+                                    "msg": order_result.get("msg1", ""),
+                                })
 
                         except Exception as order_err:
                             result_entry["order_success"] = False
                             result_entry["error"] = str(order_err)
-                            logger.error(f"[KIS전략] 주문 오류: {code} — {order_err}")
+                            err_msg = f"❌ 주문 오류: {pos.get('stock_name')}({code}) — {order_err}"
+                            logger.error(f"[KIS전략] {err_msg}")
+                            save_server_log(supabase, "error", err_msg, account_type)
                     else:
                         result_entry["order_success"] = None
                         result_entry["note"] = "auto_sell=False, 신호만 반환"
@@ -259,10 +287,24 @@ async def check_and_execute_kis_positions(
 
             except Exception as pos_err:
                 logger.error(f"[KIS전략] 포지션 처리 오류: {code} — {pos_err}")
+                save_server_log(supabase, "error", f"포지션 처리 오류: {code} — {pos_err}", account_type)
                 results.append({
                     "stock_code": code,
                     "error": str(pos_err),
                 })
+
+        # 체크 완료 요약 로그
+        signal_count = len(results)
+        hold_names = [f"{p.get('stock_name','')}" for p in positions]
+        summary = f"전략 체크 완료: {len(positions)}종목 체크, 매도신호 {signal_count}건"
+        if signal_count == 0 and positions:
+            summary += f" — 전종목 유지 ({', '.join(hold_names[:5])})"
+        save_server_log(supabase, "check", summary, account_type, {
+            "checked": len(positions), "signals": signal_count,
+            "positions": [{"code": p.get("stock_code"), "name": p.get("stock_name"),
+                          "profit_pct": round(((int(p.get("current_price", 0)) - float(p.get("buy_price", 1))) / float(p.get("buy_price", 1))) * 100, 2) if float(p.get("buy_price", 1)) > 0 else 0}
+                         for p in positions],
+        })
 
         # ★ 매도가 발생했으면 자동으로 예비후보 매수 실행
         auto_buy_result = None
@@ -270,9 +312,14 @@ async def check_and_execute_kis_positions(
         if sold_count > 0 and auto_sell:
             try:
                 auto_buy_result = await auto_invest_from_candidates(supabase, account_type)
-                logger.info(f"[자동투자] 매도 {sold_count}건 → 자동매수 결과: {auto_buy_result.get('action', 'unknown')}")
+                buy_msg = f"자동매수: 매도 {sold_count}건 → {auto_buy_result.get('action', 'unknown')}"
+                if auto_buy_result.get("stock_name"):
+                    buy_msg += f" ({auto_buy_result['stock_name']} {auto_buy_result.get('qty', 0)}주)"
+                logger.info(f"[자동투자] {buy_msg}")
+                save_server_log(supabase, "buy", buy_msg, account_type, auto_buy_result)
             except Exception as auto_err:
                 logger.error(f"[자동투자] 자동매수 오류: {auto_err}")
+                save_server_log(supabase, "error", f"자동매수 오류: {auto_err}", account_type)
                 auto_buy_result = {"error": str(auto_err)}
 
         return {
@@ -285,6 +332,7 @@ async def check_and_execute_kis_positions(
 
     except Exception as e:
         logger.error(f"[KIS전략] 전체 오류: {e}")
+        save_server_log(supabase, "error", f"전략 체크 전체 오류: {e}", account_type)
         return {"error": str(e)}
 
 
