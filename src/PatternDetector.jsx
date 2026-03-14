@@ -702,6 +702,14 @@ export default function PatternDetector() {
           method:'POST', headers:{'Content-Type':'application/json'},
           body: JSON.stringify(body),
         });
+        if (!res.ok) {
+          const errBody = await res.json().catch(() => ({}));
+          const errMsg = errBody.detail
+            ? (Array.isArray(errBody.detail) ? errBody.detail.map(d => d.msg || d).join(', ') : errBody.detail)
+            : `HTTP ${res.status}`;
+          alert('등록 실패: ' + errMsg);
+          return;
+        }
         data = await res.json();
       }
 
@@ -902,6 +910,14 @@ export default function PatternDetector() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        const errMsg = errBody.detail
+          ? (Array.isArray(errBody.detail) ? errBody.detail.map(d => d.msg || d).join(', ') : errBody.detail)
+          : `HTTP ${res.status}`;
+        alert('등록 실패: ' + errMsg);
+        return;
+      }
       const data = await res.json();
       if (data.error) alert('등록 실패: ' + data.error);
       else alert(data.message || `${stock.name} 가상투자 등록 완료!`);

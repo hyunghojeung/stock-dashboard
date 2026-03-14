@@ -86,6 +86,8 @@ class RealtimeStartRequest(BaseModel):
     # ★ 스마트형 전략 지원
     strategy_type: str = ""
     profit_activation_pct: float = 0.0
+    # ★ 프론트에서 전달하는 필터 정보 (선택적)
+    filters: Optional[List[Dict]] = None
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
