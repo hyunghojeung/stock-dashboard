@@ -157,7 +157,11 @@ export default function SurgeSimulator() {
 
   const startPolling = () => {
     if (pollRef.current) clearInterval(pollRef.current);
+    // 중복 요청 방지 플래그
+    let isPolling = false;
     pollRef.current = setInterval(async () => {
+      if (isPolling) return;
+      isPolling = true;
       try {
         const res = await fetch(`${API_BASE}/api/simulation/progress`);
         const data = await res.json();
@@ -185,6 +189,8 @@ export default function SurgeSimulator() {
         }
       } catch (e) {
         console.error('폴링 오류:', e);
+      } finally {
+        isPolling = false;
       }
     }, 1500);
   };

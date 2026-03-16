@@ -7,7 +7,7 @@
  * 매수추천 종목을 등록 → 날짜별 포트폴리오 관리 → 실시간 수익 추적
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 
 const API_BASE = "https://web-production-139e9.up.railway.app";
 
@@ -248,18 +248,17 @@ export default function VirtualPortfolioTracker({ readOnly = false }) {
     }
     const activeIds = portfolios.filter(p => ids.includes(p.id) && p.status === 'active').map(p => p.id);
     if (activeIds.length === 0) { alert('갱신할 활성 포트폴리오가 없습니다.'); return; }
-    // 진행 상태를 반환하는 콜백 사용
-    let completed = 0;
+    // 병렬로 모든 포트폴리오 가격 갱신 (순차 처리 대비 N배 빠름)
     const total = activeIds.length;
-    for (const id of activeIds) {
-      try {
-        await fetch(`${API_BASE}/api/virtual-portfolio/update-prices/${id}`, { method: 'POST' });
-        completed++;
-      } catch (e) {
-        console.error(`포트폴리오 #${id} 갱신 실패:`, e);
-        completed++;
-      }
-    }
+    const results = await Promise.allSettled(
+      activeIds.map(id =>
+        fetch(`${API_BASE}/api/virtual-portfolio/update-prices/${id}`, { method: 'POST' })
+      )
+    );
+    const completed = results.filter(r => r.status === 'fulfilled').length;
+    results.forEach((r, i) => {
+      if (r.status === 'rejected') console.error(`포트폴리오 #${activeIds[i]} 갱신 실패:`, r.reason);
+    });
     await loadList();
     return { completed, total };
   };
@@ -648,14 +647,17 @@ function PortfolioDetail({ detail, updating, onUpdate, onClose, onDelete, onRena
   const [chartLoading, setChartLoading] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [tempName, setTempName] = useState('');
+  // 렌더링 최적화: 포지션 통계를 useMemo로 캐싱
+  const { holdCount, winCount, lossCount, winRate, daysSince, isActive } = useMemo(() => {
+    if (!pf) return { holdCount: 0, winCount: 0, lossCount: 0, winRate: 0, daysSince: 1, isActive: false };
+    const hc = positions.filter(p => p.status === 'holding').length;
+    const wc = pf.win_count || 0;
+    const lc = pf.loss_count || 0;
+    const wr = (wc + lc) > 0 ? Math.round((wc / (wc + lc)) * 100) : 0;
+    const ds = pf.created_at ? Math.max(1, Math.round((Date.now() - new Date(pf.created_at).getTime()) / 86400000)) : 1;
+    return { holdCount: hc, winCount: wc, lossCount: lc, winRate: wr, daysSince: ds, isActive: pf.status === 'active' };
+  }, [pf, positions]);
   if (!pf) return null;
-
-  const isActive = pf.status === 'active';
-  const holdCount = positions.filter(p => p.status === 'holding').length;
-  const winCount = pf.win_count || 0;
-  const lossCount = pf.loss_count || 0;
-  const winRate = (winCount + lossCount) > 0 ? Math.round((winCount / (winCount + lossCount)) * 100) : 0;
-  const daysSince = pf.created_at ? Math.max(1, Math.round((Date.now() - new Date(pf.created_at).getTime()) / 86400000)) : 1;
 
   const handleStockClick = async (pos) => {
     if (selectedCode === pos.code) { setSelectedCode(null); setChartData(null); return; }

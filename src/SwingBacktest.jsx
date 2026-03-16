@@ -597,18 +597,26 @@ export default function SwingBacktest() {
 
   useEffect(() => {
     if (!running) return;
+    // 중복 요청 방지 플래그
+    let isPolling = false;
     pollRef.current = setInterval(async () => {
-      const prog = await api("/api/swing/progress");
-      if (prog) {
-        setProgress(prog);
-        if (prog.status === "done") {
-          setRunning(false);
-          const data = await api("/api/swing/result");
-          if (data && !data.error) setResult(data);
+      if (isPolling) return;
+      isPolling = true;
+      try {
+        const prog = await api("/api/swing/progress");
+        if (prog) {
+          setProgress(prog);
+          if (prog.status === "done") {
+            setRunning(false);
+            const data = await api("/api/swing/result");
+            if (data && !data.error) setResult(data);
+          }
+          if (prog.status === "error") {
+            setRunning(false);
+          }
         }
-        if (prog.status === "error") {
-          setRunning(false);
-        }
+      } finally {
+        isPolling = false;
       }
     }, 2000);
     return () => clearInterval(pollRef.current);
