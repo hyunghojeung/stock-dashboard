@@ -528,8 +528,11 @@ export default function VirtualInvestTab({ recommendations = [], backtestRecomme
 
       if (!res.ok) throw new Error(`API 오류: ${res.status}`);
 
-      // 폴링 시작
+      // 폴링 시작 (중복 요청 방지 플래그 포함)
+      let isPolling = false;
       pollRef.current = setInterval(async () => {
+        if (isPolling) return;
+        isPolling = true;
         try {
           const pRes = await fetch(`${API_BASE}/api/virtual-invest/compare/progress`);
           const pData = await pRes.json();
@@ -555,6 +558,8 @@ export default function VirtualInvestTab({ recommendations = [], backtestRecomme
           }
         } catch (e) {
           console.error("Poll error:", e);
+        } finally {
+          isPolling = false;
         }
       }, 1500);
 
