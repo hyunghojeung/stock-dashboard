@@ -238,7 +238,8 @@ export default function PatternDetector() {
   const [patternScanning, setPatternScanning] = useState(false);
   const [patternMinSimilarity, setPatternMinSimilarity] = useState(60);
   const [selectedPatternStocks, setSelectedPatternStocks] = useState(new Set()); // 패턴 스캔 결과 선택 종목
-  const [regSource, setRegSource] = useState('recommend'); // 'recommend' | 'patternScan'
+  const [regSource, setRegSource] = useState('recommend'); // 'recommend' | 'patternScan' | 'addStock'
+  const [addStockForReg, setAddStockForReg] = useState(null); // 개별종목추가에서 모달용 종목 데이터
   const [patternSortKey, setPatternSortKey] = useState('similarity'); // 정렬 키
   const [patternSortDir, setPatternSortDir] = useState('desc'); // 'asc' | 'desc'
 
@@ -657,7 +658,11 @@ export default function PatternDetector() {
   const doRegisterVirtual = async () => {
     // ★ 소스에 따라 선택된 종목 가져오기
     let selRecs;
-    if (regSource === 'patternScan') {
+    if (regSource === 'addStock') {
+      // 개별종목추가에서 모달을 통한 등록
+      if (!addStockForReg) return;
+      selRecs = [addStockForReg];
+    } else if (regSource === 'patternScan') {
       selRecs = (patternScanResult?.matches || []).filter(r => selectedPatternStocks.has(r.code));
     } else {
       const recs = result?.recommendations || [];
@@ -725,7 +730,9 @@ export default function PatternDetector() {
           } catch(e) { console.log('필터 캐시 저장 실패:', e); }
         }
         setShowRegModal(false);
-        if (regSource === 'patternScan') {
+        if (regSource === 'addStock') {
+          setAddStockForReg(null);
+        } else if (regSource === 'patternScan') {
           setSelectedPatternStocks(new Set());
         } else {
           setSelectedRecStocks(new Set());
@@ -892,36 +899,18 @@ export default function PatternDetector() {
     finally { setAddStockChartLoading(false); }
   };
 
-  const addStockRegisterVirtual = async (stock) => {
+  const addStockRegisterVirtual = (stock) => {
+    // 개별종목추가에서 가상투자 등록 모달 열기
     const priceInfo = addStockPrices[stock.code];
     const price = priceInfo?.price || 0;
-    const confirmMsg = `🏦 가상투자 등록\n\n${stock.name}(${stock.code})\n현재가: ${price ? price.toLocaleString() + '원' : '미조회'}\n\n등록하시겠습니까?`;
-    if (!window.confirm(confirmMsg)) return;
-    try {
-      const body = {
-        title: `개별추가_${stock.name}`,
-        stocks: [{ code: stock.code, name: stock.name, buy_price: price, current_price: price }],
-        capital: price > 0 ? price * 10 : 1000000,
-        preset: 'smart',
-        take_profit_pct: 0, stop_loss_pct: 12, max_hold_days: 30,
-        trailing_stop_pct: 5, grace_days: 7, profit_activation_pct: 15,
-      };
-      const res = await fetch(`${API_BASE}/api/virtual-invest/realtime/start`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) {
-        const errBody = await res.json().catch(() => ({}));
-        const errMsg = errBody.detail
-          ? (Array.isArray(errBody.detail) ? errBody.detail.map(d => d.msg || d).join(', ') : errBody.detail)
-          : `HTTP ${res.status}`;
-        alert('등록 실패: ' + errMsg);
-        return;
-      }
-      const data = await res.json();
-      if (data.error) alert('등록 실패: ' + data.error);
-      else alert(data.message || `${stock.name} 가상투자 등록 완료!`);
-    } catch (e) { alert('등록 실패: ' + e.message); }
+    setAddStockForReg({ ...stock, current_price: price, buy_price: price });
+    setRegSource('addStock');
+    setRegTitle(`개별추가_${stock.name}`);
+    setRegCapital(price > 0 ? Math.max(price * 10, 500000) : 1000000);
+    setRegPreset('smart');
+    setRegPatternId(null);
+    setRegPatternName('');
+    setShowRegModal(true);
   };
 
   const addStockRegisterCandidate = async (stock) => {
@@ -2493,10 +2482,10 @@ export default function PatternDetector() {
               </div>
             )}
 
-            {/* ★ 적용 패턴 선택 (필수) */}
+            {/* ★ 적용 패턴 선택 (개별종목추가에서는 선택사항) */}
             <div style={{ marginBottom:16 }}>
-              <div style={{ fontSize:12, color: regPatternName ? '#9ca3af' : '#ff9800', marginBottom:8, display:'flex', alignItems:'center', gap:6 }}>
-                📚 적용 패턴 <span style={{ fontSize:10, color:'#ff9800' }}>필수</span>
+              <div style={{ fontSize:12, color: regPatternName ? '#9ca3af' : (regSource === 'addStock' ? '#9ca3af' : '#ff9800'), marginBottom:8, display:'flex', alignItems:'center', gap:6 }}>
+                📚 적용 패턴 <span style={{ fontSize:10, color: regSource === 'addStock' ? '#9ca3af' : '#ff9800' }}>{regSource === 'addStock' ? '선택' : '필수'}</span>
                 {regPatternName && <span style={{
                   fontSize:10, padding:'2px 8px', borderRadius:4,
                   background:'rgba(139,92,246,0.15)', border:'1px solid rgba(139,92,246,0.25)', color:'#8b5cf6', fontWeight:600,
@@ -2521,7 +2510,7 @@ export default function PatternDetector() {
                   ))
                 )}
               </div>
-              {!regPatternName && (
+              {!regPatternName && regSource !== 'addStock' && (
                 <div style={{ fontSize:10, color:'#ff9800', marginTop:4 }}>
                   ⚠️ 패턴을 선택해야 등록할 수 있습니다
                 </div>
@@ -2590,10 +2579,13 @@ export default function PatternDetector() {
             {/* 선택 종목 표시 */}
             {(() => {
               const isPatternScan = regSource === 'patternScan';
-              const selStocks = isPatternScan
-                ? (patternScanResult?.matches || []).filter(m => selectedPatternStocks.has(m.code))
-                : (result?.recommendations || []).filter(r => selectedRecStocks.has(r.code));
-              const accentColor = isPatternScan ? '#8b5cf6' : '#10b981';
+              const isAddStock = regSource === 'addStock';
+              const selStocks = isAddStock
+                ? (addStockForReg ? [addStockForReg] : [])
+                : isPatternScan
+                  ? (patternScanResult?.matches || []).filter(m => selectedPatternStocks.has(m.code))
+                  : (result?.recommendations || []).filter(r => selectedRecStocks.has(r.code));
+              const accentColor = isAddStock ? '#ff9800' : isPatternScan ? '#8b5cf6' : '#10b981';
               return (
               <div style={{
                 marginBottom:20, padding:10, borderRadius:8,
@@ -2601,7 +2593,7 @@ export default function PatternDetector() {
                 border: `1px solid ${isPatternScan ? 'rgba(139,92,246,0.2)' : 'rgba(16,185,129,0.2)'}`,
               }}>
                 <div style={{ fontSize:11, color: accentColor, marginBottom:6 }}>
-                  {isPatternScan ? '📚 패턴 매칭 종목' : '📋 선택 종목'} ({selStocks.length}개)
+                  {isAddStock ? '➕ 개별 추가 종목' : isPatternScan ? '📚 패턴 매칭 종목' : '📋 선택 종목'} ({selStocks.length}개)
                 </div>
                 <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
                   {selStocks.map(r => (
@@ -2624,12 +2616,12 @@ export default function PatternDetector() {
                   background:'transparent', border:'1px solid #374151', color:'#9ca3af',
                 }}>취소</button>
               <button onClick={doRegisterVirtual}
-                disabled={regLoading || !regPatternName}
+                disabled={regLoading || (regSource !== 'addStock' && !regPatternName)}
                 style={{
                   padding:'10px 28px', borderRadius:8, cursor:'pointer', fontSize:14, fontWeight:700, fontFamily:'inherit',
-                  background: regLoading || !regPatternName ? '#374151' : '#10b981',
-                  border:'none', color: regLoading || !regPatternName ? '#6b7280' : 'white',
-                  opacity: !regPatternName ? 0.5 : 1,
+                  background: regLoading || (regSource !== 'addStock' && !regPatternName) ? '#374151' : '#10b981',
+                  border:'none', color: regLoading || (regSource !== 'addStock' && !regPatternName) ? '#6b7280' : 'white',
+                  opacity: (regSource !== 'addStock' && !regPatternName) ? 0.5 : 1,
                 }}>{regLoading ? '⏳ 등록 중...' : '✅ 등록하기'}</button>
             </div>
           </div>
