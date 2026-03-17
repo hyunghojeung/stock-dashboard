@@ -225,16 +225,25 @@ async def register_portfolio(req: RegisterRequest):
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 @router.get("/list")
-async def list_portfolios():
-    """등록된 포트폴리오 목록 (최신순)"""
+async def list_portfolios(page: int = 1, per_page: int = 10):
+    """등록된 포트폴리오 목록 (최신순, 페이징)"""
     if not supabase:
-        return {"portfolios": []}
+        return {"portfolios": [], "total": 0, "page": page, "per_page": per_page, "total_pages": 0}
 
     try:
+        # 전체 개수 조회 (페이징 정보용)
+        count_res = supabase.table("virtual_portfolios") \
+            .select("id", count="exact") \
+            .execute()
+        total = count_res.count if count_res.count is not None else len(count_res.data or [])
+        total_pages = max(1, (total + per_page - 1) // per_page)
+
+        # 해당 페이지 포트폴리오만 조회
+        offset = (page - 1) * per_page
         res = supabase.table("virtual_portfolios") \
             .select("*") \
             .order("created_at", desc=True) \
-            .limit(100) \
+            .range(offset, offset + per_page - 1) \
             .execute()
         portfolios = res.data or []
 
@@ -291,10 +300,16 @@ async def list_portfolios():
                 } for p in positions],
             })
 
-        return {"portfolios": result}
+        return {
+            "portfolios": result,
+            "total": total,
+            "page": page,
+            "per_page": per_page,
+            "total_pages": total_pages,
+        }
     except Exception as e:
         logger.error(f"[가상투자] 목록 조회 실패: {e}")
-        return {"portfolios": [], "error": str(e)}
+        return {"portfolios": [], "total": 0, "page": page, "per_page": per_page, "total_pages": 0, "error": str(e)}
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
