@@ -77,15 +77,15 @@ class RealtimeStartRequest(BaseModel):
     stocks: List[StockInput]
     capital: float = DEFAULT_CAPITAL
     title: str = ""
-    preset: str = "standard"
-    take_profit_pct: float = 7.0
-    stop_loss_pct: float = 3.0
-    max_hold_days: int = 10
-    trailing_stop_pct: float = 0.0
-    grace_days: int = 0
-    # ★ 스마트형 전략 지원
+    preset: str = "smart"
+    take_profit_pct: float = 0.0
+    stop_loss_pct: float = 12.0
+    max_hold_days: int = 30
+    trailing_stop_pct: float = 5.0
+    grace_days: int = 7
+    # ★ 스마트형 전략 기본값
     strategy_type: str = ""
-    profit_activation_pct: float = 0.0
+    profit_activation_pct: float = 15.0
     # ★ 프론트에서 전달하는 필터 정보 (선택적)
     filters: Optional[List[Dict]] = None
 
@@ -258,8 +258,8 @@ async def realtime_start(req: RealtimeStartRequest):
 
     portfolio_id = None
 
-    # ★ 전략 유형 결정: strategy_type > preset > "standard"
-    strategy_type = req.strategy_type or req.preset or "standard"
+    # ★ 전략 유형 결정: strategy_type > preset > "smart" (기본값은 스마트형)
+    strategy_type = req.strategy_type or req.preset or "smart"
 
     # ★ 스마트형이면 기본값 적용
     if strategy_type == "smart":
@@ -461,7 +461,7 @@ async def realtime_sessions():
                 "session_id": str(pid),
                 "id": pid,
                 "title": pf.get("name", ""),
-                "preset": pf.get("strategy", "standard"),
+                "preset": pf.get("strategy", "smart"),
                 "capital": capital,
                 "status": pf.get("status", "active"),
                 "stock_count": pf.get("stock_count", len(positions)),

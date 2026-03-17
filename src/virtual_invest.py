@@ -801,10 +801,10 @@ async def run_comparison(
 async def start_realtime(
     stocks: List[Dict],
     capital: float = DEFAULT_CAPITAL,
-    take_profit_pct: float = 7.0,
-    stop_loss_pct: float = 3.0,
-    max_hold_days: int = 10,
-    strategy_type: str = "standard",
+    take_profit_pct: float = 0.0,
+    stop_loss_pct: float = 12.0,
+    max_hold_days: int = 30,
+    strategy_type: str = "smart",
     trailing_stop_pct: float = 5.0,
     profit_activation_pct: float = 15.0,
     grace_days: int = 7,
@@ -959,17 +959,24 @@ async def update_realtime(session_id: str, supabase=None) -> Dict:
             buy_date = datetime.strptime(pos["buy_date"], "%Y-%m-%d")
             hold_days = (datetime.now() - buy_date).days
 
-            # 전략 파라미터 구성 (포지션 레벨 → 세션 레벨 → 기본값 순으로 우선)
-            strategy_type = pos.get("strategy_type") or sess_data.get("strategy_type", "standard")
+            # 전략 파라미터 구성 — ★ 모든 전략을 스마트형(트레일링 스톱) 기본 적용
+            # 포지션/세션에 저장된 값이 0이면 스마트형 기본값 사용
+            from strategy_engine import SMART_DEFAULTS
+            raw_sl = float(pos.get("stop_loss_pct") or sess_data.get("stop_loss_pct", 0))
+            raw_tp = float(pos.get("take_profit_pct") or sess_data.get("take_profit_pct", 0))
+            raw_days = int(pos.get("max_hold_days") or sess_data.get("max_hold_days", 0))
+            raw_trail = float(pos.get("trailing_stop_pct") or sess_data.get("trailing_stop_pct", 0))
+            raw_activ = float(pos.get("profit_activation_pct") or sess_data.get("profit_activation_pct", 0))
+            raw_grace = int(pos.get("grace_days") or sess_data.get("grace_days", 0))
 
             params = StrategyParams(
-                strategy_type=strategy_type,
-                stop_loss_pct=float(pos.get("stop_loss_pct") or sess_data.get("stop_loss_pct", 3.0)),
-                take_profit_pct=float(pos.get("take_profit_pct") or sess_data.get("take_profit_pct", 7.0)),
-                max_hold_days=int(pos.get("max_hold_days") or sess_data.get("max_hold_days", 10)),
-                trailing_stop_pct=float(pos.get("trailing_stop_pct") or sess_data.get("trailing_stop_pct", 5.0)),
-                profit_activation_pct=float(pos.get("profit_activation_pct") or sess_data.get("profit_activation_pct", 15.0)),
-                grace_days=int(pos.get("grace_days") or sess_data.get("grace_days", 7)),
+                strategy_type="smart",
+                stop_loss_pct=raw_sl if raw_sl > 0 else SMART_DEFAULTS["stop_loss_pct"],
+                take_profit_pct=raw_tp,
+                max_hold_days=raw_days if raw_days > 0 else SMART_DEFAULTS["max_hold_days"],
+                trailing_stop_pct=raw_trail if raw_trail > 0 else SMART_DEFAULTS["trailing_stop_pct"],
+                profit_activation_pct=raw_activ if raw_activ > 0 else SMART_DEFAULTS["profit_activation_pct"],
+                grace_days=raw_grace if raw_grace > 0 else SMART_DEFAULTS["grace_days"],
             )
 
             # 포지션 상태 구성
