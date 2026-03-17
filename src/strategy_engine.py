@@ -69,11 +69,11 @@ class Signal:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 SMART_DEFAULTS = {
-    "stop_loss_pct": 12.0,
+    "stop_loss_pct": 10.0,
     "trailing_stop_pct": 5.0,
     "grace_days": 7,
     "max_hold_days": 30,
-    "profit_activation_pct": 15.0,
+    "profit_activation_pct": 10.0,
 }
 
 

@@ -80,13 +80,13 @@ class RealtimeStartRequest(BaseModel):
     title: str = ""
     preset: str = "smart"
     take_profit_pct: float = 0.0
-    stop_loss_pct: float = 12.0
+    stop_loss_pct: float = 10.0
     max_hold_days: int = 30
     trailing_stop_pct: float = 5.0
     grace_days: int = 7
     # ★ 스마트형 전략 기본값
     strategy_type: str = ""
-    profit_activation_pct: float = 15.0
+    profit_activation_pct: float = 10.0
     # ★ 프론트에서 전달하는 필터 정보 (선택적)
     filters: Optional[List[Dict]] = None
 
