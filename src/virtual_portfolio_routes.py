@@ -667,3 +667,67 @@ async def fix_buy_prices():
         return {"success": True, "fixed": fixed}
     except Exception as e:
         return {"error": str(e)}
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# ★ 기존 포지션 일괄 스마트형 교정
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+@router.post("/fix-strategy")
+async def fix_strategy():
+    """
+    기존 모든 보유중(holding) 포지션에 스마트형 전략 + 트레일링 강제 적용.
+    strategy_type이 'smart'가 아니거나 trailing_stop_pct가 0인 포지션을 교정.
+    포트폴리오의 strategy도 'smart'로 교정.
+    """
+    if not supabase:
+        return {"error": "DB 미연결"}
+
+    try:
+        # 1) 보유중 포지션 중 스마트형이 아닌 것 교정
+        res = supabase.table("virtual_positions").select("*").eq("status", "holding").execute()
+        fixed_positions = 0
+
+        for pos in (res.data or []):
+            needs_fix = (
+                pos.get("strategy_type") != "smart"
+                or float(pos.get("trailing_stop_pct") or 0) <= 0
+                or float(pos.get("profit_activation_pct") or 0) <= 0
+                or float(pos.get("stop_loss_pct") or 0) <= 0
+            )
+            if not needs_fix:
+                continue
+
+            update_data = {
+                "strategy_type": "smart",
+                "take_profit_pct": 0.0,
+                "stop_loss_pct": SMART_DEFAULTS["stop_loss_pct"],
+                "trailing_stop_pct": SMART_DEFAULTS["trailing_stop_pct"],
+                "profit_activation_pct": SMART_DEFAULTS["profit_activation_pct"],
+                "grace_days": SMART_DEFAULTS["grace_days"],
+                "max_hold_days": SMART_DEFAULTS["max_hold_days"],
+            }
+            supabase.table("virtual_positions").update(update_data).eq("id", pos["id"]).execute()
+            fixed_positions += 1
+            logger.info(f"[전략교정] {pos.get('name','')}({pos.get('code','')}) → 스마트형 적용")
+
+        # 2) 포트폴리오 strategy도 smart로 교정
+        pf_res = supabase.table("virtual_portfolios").select("id, strategy").eq("status", "active").execute()
+        fixed_portfolios = 0
+        for pf in (pf_res.data or []):
+            if pf.get("strategy") != "smart":
+                supabase.table("virtual_portfolios").update({
+                    "strategy": "smart",
+                    "updated_at": datetime.now(KST).isoformat(),
+                }).eq("id", pf["id"]).execute()
+                fixed_portfolios += 1
+
+        return {
+            "success": True,
+            "fixed_positions": fixed_positions,
+            "fixed_portfolios": fixed_portfolios,
+            "message": f"포지션 {fixed_positions}개, 포트폴리오 {fixed_portfolios}개 스마트형 교정 완료",
+        }
+    except Exception as e:
+        logger.error(f"[전략교정] 실패: {e}")
+        return {"error": str(e)}

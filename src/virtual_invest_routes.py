@@ -29,6 +29,7 @@ from app.services.virtual_invest import (
 )
 from app.utils.kr_holiday import is_market_open_now, KST
 from app.services.naver_stock import get_daily_candles_naver, get_realtime_price_naver
+from strategy_engine import SMART_DEFAULTS
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/virtual-invest", tags=["virtual-invest"])
@@ -258,24 +259,16 @@ async def realtime_start(req: RealtimeStartRequest):
 
     portfolio_id = None
 
-    # ★ 전략 유형 결정: strategy_type > preset > "smart" (기본값은 스마트형)
-    strategy_type = req.strategy_type or req.preset or "smart"
+    # ★ 모든 전략을 스마트형으로 강제 적용 (트레일링 스톱 보장)
+    strategy_type = "smart"
 
-    # ★ 스마트형이면 기본값 적용
-    if strategy_type == "smart":
-        stop_loss_pct = req.stop_loss_pct if req.stop_loss_pct != 3.0 else 12.0
-        take_profit_pct = 0.0  # 스마트형은 고정 익절 없음
-        trailing_stop_pct = req.trailing_stop_pct if req.trailing_stop_pct > 0 else 5.0
-        profit_activation_pct = req.profit_activation_pct if req.profit_activation_pct > 0 else 15.0
-        grace_days = req.grace_days if req.grace_days > 0 else 7
-        max_hold_days = req.max_hold_days if req.max_hold_days != 10 else 30
-    else:
-        stop_loss_pct = req.stop_loss_pct
-        take_profit_pct = req.take_profit_pct
-        trailing_stop_pct = req.trailing_stop_pct
-        profit_activation_pct = req.profit_activation_pct
-        grace_days = req.grace_days
-        max_hold_days = req.max_hold_days
+    # ★ 스마트형 기본값 적용 (요청 값이 유효하면 사용, 아니면 기본값)
+    stop_loss_pct = req.stop_loss_pct if req.stop_loss_pct > 0 and req.stop_loss_pct != 3.0 else SMART_DEFAULTS["stop_loss_pct"]
+    take_profit_pct = 0.0  # 스마트형은 고정 익절 없음 (추적손절 사용)
+    trailing_stop_pct = req.trailing_stop_pct if req.trailing_stop_pct > 0 else SMART_DEFAULTS["trailing_stop_pct"]
+    profit_activation_pct = req.profit_activation_pct if req.profit_activation_pct > 0 else SMART_DEFAULTS["profit_activation_pct"]
+    grace_days = req.grace_days if req.grace_days > 0 else SMART_DEFAULTS["grace_days"]
+    max_hold_days = req.max_hold_days if req.max_hold_days > 0 and req.max_hold_days != 10 else SMART_DEFAULTS["max_hold_days"]
 
     try:
         per_stock = req.capital / max(len(stocks_list), 1)
