@@ -284,7 +284,7 @@ export default function VirtualPortfolioTracker({ readOnly = false }) {
   // ★ 기존 포지션 일괄 스마트형 교정
   const handleFixStrategy = async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/virtual-portfolio/fix-strategy`, { method: 'POST' });
+      const res = await fetch(`${API_BASE}/api/virtual-invest/fix-strategy`, { method: 'POST' });
       const data = await res.json();
       if (data.success) {
         alert(`스마트형 교정 완료\n포지션 ${data.fixed_positions}개, 포트폴리오 ${data.fixed_portfolios}개 교정`);
