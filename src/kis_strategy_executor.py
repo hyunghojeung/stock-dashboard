@@ -79,9 +79,9 @@ async def register_kis_position(
     # 전략별 기본 파라미터
     presets = {
         "smart": {
-            "stop_loss_pct": 12.0, "take_profit_pct": 0,
+            "stop_loss_pct": 10.0, "take_profit_pct": 0,
             "max_hold_days": 30, "trailing_stop_pct": 5.0,
-            "profit_activation_pct": 15.0, "grace_days": 7,
+            "profit_activation_pct": 10.0, "grace_days": 7,
         },
         "aggressive": {
             "stop_loss_pct": 5.0, "take_profit_pct": 10.0,

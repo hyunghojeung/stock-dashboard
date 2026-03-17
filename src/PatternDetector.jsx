@@ -260,7 +260,7 @@ export default function PatternDetector() {
 
   // ★ 스마트형 고정 — localStorage에 전략값 저장 (자동매매 동기화용)
   useEffect(() => {
-    const p = { tp:0, sl:12, days:30, trailing:5, grace:7, activation:15 };
+    const p = { tp:0, sl:10, days:30, trailing:5, grace:7, activation:10 };
     localStorage.setItem('kis_auto_trade_preset', 'smart');
     localStorage.setItem('kis_auto_trade_strategy', JSON.stringify({
       tp: p.tp, sl: p.sl, days: p.days,
@@ -665,7 +665,7 @@ export default function PatternDetector() {
     setRegLoading(true);
     try {
       // ★ 모든 등록을 스마트형으로 강제 적용
-      const p = { tp:0, sl:12, days:30, trailing:5, grace:7, activation:15 };
+      const p = { tp:0, sl:10, days:30, trailing:5, grace:7, activation:10 };
       const filtersPayload = regActiveFilters.map(f => ({ label: f.label, color: f.color }));
       const stocksList = selRecs.map(s => ({
         code: s.code || '', name: s.name || '',
@@ -815,7 +815,7 @@ export default function PatternDetector() {
     const successStocks = results.filter(r => r.success);
     if (successStocks.length > 0) {
       // ★ 스마트형 고정 적용
-      const p = { tp:0, sl:12, days:30, trailing:5, grace:7, activation:15 };
+      const p = { tp:0, sl:10, days:30, trailing:5, grace:7, activation:10 };
       localStorage.setItem(`kis_auto_trade_sync_${kisOrderMode}`, JSON.stringify({
         tp: p.tp, sl: p.sl, days: p.days,
         trailing: p.trailing, grace: p.grace, activation: p.activation,
@@ -953,7 +953,7 @@ export default function PatternDetector() {
       alert(r.success ? `${stock.name} 매수 완료! (${qty}주)` : `매수 실패: ${r.message}`);
       if (r.success) {
         setupAutoTradeAfterBuy(mode, [{ code: stock.code, name: stock.name, qty, price }],
-          { tp: 15, sl: 12, days: 30, trailing: 5, grace: 0, activation: 15 });  // ★ 유예기간 보류
+          { tp: 10, sl: 10, days: 30, trailing: 5, grace: 7, activation: 10 });
       }
     } catch (e) { alert('매수 실패: ' + e.message); }
   };
@@ -2510,7 +2510,7 @@ export default function PatternDetector() {
                 <div>
                   <div style={{ fontSize:13, fontWeight:700, color:'#ff9800' }}>스마트형 (고정)</div>
                   <div style={{ fontSize:10, color:'#9ca3af', marginTop:2 }}>
-                    수익 활성화(+15%) → 고점 대비 -5% 추적손절 / -12% 손절 / 30일 만기
+                    수익 활성화(+10%) → 고점 대비 -5% 추적손절 / -10% 손절 / 30일 만기
                   </div>
                 </div>
               </div>

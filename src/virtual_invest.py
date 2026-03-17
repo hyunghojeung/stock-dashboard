@@ -74,11 +74,11 @@ STRATEGY_PRESETS = {
         "name": "🧠 스마트형",
         "name_en": "Smart",
         "take_profit_pct": 0.0,    # 트레일링 스탑 사용 (고정 익절 없음)
-        "stop_loss_pct": 12.0,     # 종가 기준 손절 (급등 전 눌림목 보호)
+        "stop_loss_pct": 10.0,     # 종가 기준 손절 (급등 전 눌림목 보호)
         "max_hold_days": 30,       # 최대 보유일 확대 (급등 대기)
         "trailing_stop_pct": 5.0,  # 최고가 대비 -5% 하락 시 매도 (여유)
         "grace_days": 7,           # 매수 후 7일간 손절 유예 (눌림목 보호)
-        "profit_activation_pct": 15.0,  # ★ 15% 수익 달성 후에만 추적손절 활성화
+        "profit_activation_pct": 10.0,  # ★ 10% 수익 달성 후에만 추적손절 활성화
         "use_close_stop": True,    # 종가 기준 손절 (장중 저점 무시)
         "color": "#ff9800",
     },
@@ -401,11 +401,11 @@ def _close_position(pos: Dict, sell_price: float, hold_days: int, result_type: s
 def simulate_smart_strategy(
     stocks_data: Dict[str, Dict],
     capital: float,
-    stop_loss_pct: float = 12.0,
+    stop_loss_pct: float = 10.0,
     trailing_stop_pct: float = 5.0,
     grace_days: int = 7,
     max_hold_days: int = 30,
-    profit_activation_pct: float = 15.0,
+    profit_activation_pct: float = 10.0,
 ) -> Tuple[List[TradeResult], List[DailySnapshot]]:
     """
     스마트형 전략 시뮬레이션 (재진입 포함)
@@ -687,7 +687,7 @@ async def run_comparison(
                 trailing_stop_pct=preset.get("trailing_stop_pct", 5.0),
                 grace_days=preset.get("grace_days", 7),
                 max_hold_days=mhd,
-                profit_activation_pct=preset.get("profit_activation_pct", 15.0),
+                profit_activation_pct=preset.get("profit_activation_pct", 10.0),
             )
         else:
             # 기존 전략: 고정 익절/손절
@@ -802,11 +802,11 @@ async def start_realtime(
     stocks: List[Dict],
     capital: float = DEFAULT_CAPITAL,
     take_profit_pct: float = 0.0,
-    stop_loss_pct: float = 12.0,
+    stop_loss_pct: float = 10.0,
     max_hold_days: int = 30,
     strategy_type: str = "smart",
     trailing_stop_pct: float = 5.0,
-    profit_activation_pct: float = 15.0,
+    profit_activation_pct: float = 10.0,
     grace_days: int = 7,
     supabase=None,
 ) -> Dict:
@@ -1186,8 +1186,8 @@ async def _auto_reinvest_from_candidates(
                 "hold_days": 0,
                 "status": "holding",
                 "strategy_type": "smart",
-                "stop_loss_pct": 12.0,
-                "profit_activation_pct": 15.0,
+                "stop_loss_pct": 10.0,
+                "profit_activation_pct": 10.0,
                 "trailing_stop_pct": 5.0,
                 "max_hold_days": 30,
                 "grace_days": 7,

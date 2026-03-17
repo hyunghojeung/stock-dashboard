@@ -311,7 +311,7 @@ async function syncRulesToBackend(mode, rules) {
       // ★ 스마트형 트레일링 스탑 필드
       strategy: r.strategy || 'fixed',
       trailing_stop_pct: r.trailing_stop_pct ?? 5,
-      profit_activation_pct: r.profit_activation_pct ?? 15,
+      profit_activation_pct: r.profit_activation_pct ?? 10,
       grace_days: r.grace_days ?? 7,
       peak_price: r.peak_price ?? 0,
     }));
@@ -361,9 +361,9 @@ export function startKisAutoTrade(mode = 'virtual', intervalSec = 30) {
       if (stratType === 'smart') {
         // ━━━ 스마트형: 트레일링 스탑 (클라이언트사이드 보조) ━━━
         // const grace = rule.grace_days ?? 7;  // ★ 유예기간 보류
-        const sl = rule.stop_loss_pct ?? 12;
+        const sl = rule.stop_loss_pct ?? 10;
         const trailing = rule.trailing_stop_pct ?? 5;
-        const activation = rule.profit_activation_pct ?? 15;
+        const activation = rule.profit_activation_pct ?? 10;
         let peak = rule.peak_price ?? 0;
         // peak_price 업데이트 (로컬)
         if (pos.current_price > peak) {
@@ -749,12 +749,12 @@ function BalancePanel() {
       rMap[pos.stock_code] = {
         stock_code: pos.stock_code,
         buy_date: pos.buy_date,
-        sl_pct: pos.stop_loss_pct || 12,
+        sl_pct: pos.stop_loss_pct || 10,
         max_hold_days: pos.max_hold_days || 30,
         hold_days: pos.hold_days || 0,
         strategy: pos.strategy || "smart",
         trailing_stop_pct: pos.trailing_stop_pct || 5,
-        profit_activation_pct: pos.profit_activation_pct || 15,
+        profit_activation_pct: pos.profit_activation_pct || 10,
         trailing_activated: pos.trailing_activated || false,
         peak_price: pos.peak_price || 0,
       };
@@ -778,9 +778,9 @@ function BalancePanel() {
                 (resp?.positions || []).forEach(pos => {
                   newMap[pos.stock_code] = {
                     stock_code: pos.stock_code, buy_date: pos.buy_date,
-                    sl_pct: pos.stop_loss_pct || 12, max_hold_days: pos.max_hold_days || 30,
+                    sl_pct: pos.stop_loss_pct || 10, max_hold_days: pos.max_hold_days || 30,
                     hold_days: pos.hold_days || 0, strategy: pos.strategy || "smart",
-                    trailing_stop_pct: pos.trailing_stop_pct || 5, profit_activation_pct: pos.profit_activation_pct || 15,
+                    trailing_stop_pct: pos.trailing_stop_pct || 5, profit_activation_pct: pos.profit_activation_pct || 10,
                     trailing_activated: pos.trailing_activated || false, peak_price: pos.peak_price || 0,
                   };
                 });
