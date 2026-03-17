@@ -281,6 +281,22 @@ export default function VirtualPortfolioTracker({ readOnly = false }) {
     } catch (e) { console.error('제목 변경 실패:', e); }
   };
 
+  // ★ 기존 포지션 일괄 스마트형 교정
+  const handleFixStrategy = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/virtual-portfolio/fix-strategy`, { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        alert(`스마트형 교정 완료\n포지션 ${data.fixed_positions}개, 포트폴리오 ${data.fixed_portfolios}개 교정`);
+        await loadList();
+      } else {
+        alert('교정 실패: ' + (data.error || '알 수 없는 오류'));
+      }
+    } catch (e) {
+      alert('교정 실패: ' + e.message);
+    }
+  };
+
   useEffect(() => { loadList(); }, [loadList]);
 
   // ── 장중 20분마다 자동 가격 갱신 (Auto-refresh every 20min during market hours) ──
@@ -329,7 +345,7 @@ export default function VirtualPortfolioTracker({ readOnly = false }) {
         )}
       </div>
 
-      {view === 'list' && <PortfolioList portfolios={portfolios} loading={loading} onSelect={loadDetail} onRefresh={loadList} onRename={handleRenamePortfolio} onBatchDelete={handleBatchDelete} onBatchRefresh={handleBatchRefresh} readOnly={readOnly} />}
+      {view === 'list' && <PortfolioList portfolios={portfolios} loading={loading} onSelect={loadDetail} onRefresh={loadList} onRename={handleRenamePortfolio} onBatchDelete={handleBatchDelete} onBatchRefresh={handleBatchRefresh} onFixStrategy={handleFixStrategy} readOnly={readOnly} />}
       {view === 'detail' && detail && (
         <PortfolioDetail
           detail={detail}
@@ -351,7 +367,7 @@ export default function VirtualPortfolioTracker({ readOnly = false }) {
 // 포트폴리오 목록
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-function PortfolioList({ portfolios, loading, onSelect, onRefresh, onRename, onBatchDelete, onBatchRefresh, readOnly }) {
+function PortfolioList({ portfolios, loading, onSelect, onRefresh, onRename, onBatchDelete, onBatchRefresh, onFixStrategy, readOnly }) {
   const [renamingId, setRenamingId] = useState(null);
   const [renameText, setRenameText] = useState('');
   const [selectedIds, setSelectedIds] = useState(new Set());
@@ -500,6 +516,16 @@ function PortfolioList({ portfolios, loading, onSelect, onRefresh, onRename, onB
             }}>
             {refreshing ? `⏳ 갱신중 ${refreshProgress}` : `🔄 전체 갱신${selectedIds.size > 0 ? ` (${selectedIds.size})` : ''}`}
           </button>
+          {/* ★ 스마트형 전략 일괄 교정 버튼 */}
+          {onFixStrategy && (
+            <button onClick={onFixStrategy}
+              style={{
+                background: 'rgba(255,152,0,0.12)', color: '#ff9800',
+                border: '1px solid rgba(255,152,0,0.3)',
+                borderRadius: 8, padding: '6px 14px', fontSize: 12, fontWeight: 600,
+                cursor: 'pointer', transition: 'all 0.2s',
+              }}>🧠 전략 교정</button>
+          )}
           {/* 선택 삭제 버튼 */}
           {selectedIds.size > 0 && (
             <button onClick={() => { onBatchDelete([...selectedIds]); setSelectedIds(new Set()); }}

@@ -258,20 +258,13 @@ export default function PatternDetector() {
   const [kisOrderLoading, setKisOrderLoading] = useState(false);
   const [kisOrderResults, setKisOrderResults] = useState(null);
 
-  // regPreset 변경 시 localStorage에 전략값 저장 (자동매매 동기화용)
+  // ★ 스마트형 고정 — localStorage에 전략값 저장 (자동매매 동기화용)
   useEffect(() => {
-    const presetDefs = {
-      aggressive:   { tp:10, sl:5, days:5, trailing:0, grace:0, activation:0 },
-      standard:     { tp:7,  sl:3, days:10, trailing:0, grace:0, activation:0 },
-      conservative: { tp:5,  sl:2, days:15, trailing:0, grace:0, activation:0 },
-      longterm:     { tp:15, sl:5, days:30, trailing:0, grace:0, activation:0 },
-      smart:        { tp:15, sl:12, days:30, trailing:5, grace:0, activation:15 },  // ★ 유예기간 보류
-    };
-    const p = presetDefs[regPreset] || presetDefs.smart;
-    localStorage.setItem('kis_auto_trade_preset', regPreset);
+    const p = { tp:0, sl:12, days:30, trailing:5, grace:7, activation:15 };
+    localStorage.setItem('kis_auto_trade_preset', 'smart');
     localStorage.setItem('kis_auto_trade_strategy', JSON.stringify({
       tp: p.tp, sl: p.sl, days: p.days,
-      trailing: p.trailing || 0, grace: p.grace || 0, activation: p.activation || 15,
+      trailing: p.trailing, grace: p.grace, activation: p.activation,
     }));
   }, [regPreset]);
 
@@ -671,14 +664,8 @@ export default function PatternDetector() {
     if (selRecs.length === 0) return;
     setRegLoading(true);
     try {
-      const presetDefs = {
-        aggressive:   { tp:10, sl:5, days:5, trailing:0, grace:0, activation:0 },
-        standard:     { tp:7,  sl:3, days:10, trailing:0, grace:0, activation:0 },
-        conservative: { tp:5,  sl:2, days:15, trailing:0, grace:0, activation:0 },
-        longterm:     { tp:15, sl:5, days:30, trailing:0, grace:0, activation:0 },
-        smart:        { tp:0, sl:12, days:30, trailing:5, grace:7, activation:15 },
-      };
-      const p = presetDefs[regPreset] || presetDefs.smart;
+      // ★ 모든 등록을 스마트형으로 강제 적용
+      const p = { tp:0, sl:12, days:30, trailing:5, grace:7, activation:15 };
       const filtersPayload = regActiveFilters.map(f => ({ label: f.label, color: f.color }));
       const stocksList = selRecs.map(s => ({
         code: s.code || '', name: s.name || '',
@@ -691,16 +678,16 @@ export default function PatternDetector() {
       let data;
 
       {
-        // 독립 포트폴리오 등록
+        // 독립 포트폴리오 등록 (스마트형 강제)
         const body = {
           title: regTitle || 'Untitled',
           stocks: stocksList,
           capital: regCapital,
-          preset: regPreset,
-          strategy_type: regPreset,
+          preset: 'smart',
+          strategy_type: 'smart',
           take_profit_pct: p.tp, stop_loss_pct: p.sl,
           max_hold_days: p.days, trailing_stop_pct: p.trailing, grace_days: p.grace,
-          profit_activation_pct: p.activation ?? 15,
+          profit_activation_pct: p.activation,
           filters: filtersPayload,
         };
         const res = await fetch(`${API_BASE}/api/virtual-invest/realtime/start`, {
@@ -827,17 +814,11 @@ export default function PatternDetector() {
     // 주문 성공 시 자동매매 규칙 생성 + 즉시 백그라운드 모니터링 시작
     const successStocks = results.filter(r => r.success);
     if (successStocks.length > 0) {
-      const presetDefs = {
-        aggressive:   { tp:10, sl:5, days:5, trailing:0, grace:0, activation:0 },
-        standard:     { tp:7,  sl:3, days:10, trailing:0, grace:0, activation:0 },
-        conservative: { tp:5,  sl:2, days:15, trailing:0, grace:0, activation:0 },
-        longterm:     { tp:15, sl:5, days:30, trailing:0, grace:0, activation:0 },
-        smart:        { tp:0, sl:12, days:30, trailing:5, grace:7, activation:15 },
-      };
-      const p = presetDefs[regPreset] || presetDefs.smart;
+      // ★ 스마트형 고정 적용
+      const p = { tp:0, sl:12, days:30, trailing:5, grace:7, activation:15 };
       localStorage.setItem(`kis_auto_trade_sync_${kisOrderMode}`, JSON.stringify({
         tp: p.tp, sl: p.sl, days: p.days,
-        trailing: p.trailing || 0, grace: p.grace || 0, activation: p.activation || 15,
+        trailing: p.trailing, grace: p.grace, activation: p.activation,
         autostart: true, timestamp: Date.now(),
       }));
       // 매입 즉시 자동 손절/익절 모니터링 시작
@@ -2517,27 +2498,21 @@ export default function PatternDetector() {
               )}
             </div>
 
-            {/* 전략 선택 */}
+            {/* 전략 표시 (스마트형 고정) */}
             <div style={{ marginBottom:16 }}>
               <div style={{ fontSize:12, color:'#9ca3af', marginBottom:8 }}>매매 전략</div>
-              <div style={{ display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:6 }}>
-                {[
-                  { key:'smart', label:'🧠 스마트', desc:'추적손절', color:'#ff9800' },
-                  { key:'aggressive', label:'🔥 공격형', desc:'10/5%', color:'#ff5252' },
-                  { key:'standard', label:'⚖️ 기본형', desc:'7/3%', color:'#4fc3f7' },
-                  { key:'conservative', label:'🛡️ 보수형', desc:'5/2%', color:'#4cff8b' },
-                  { key:'longterm', label:'🐢 장기형', desc:'15/5%', color:'#ffd54f' },
-                ].map(s => (
-                  <button key={s.key} onClick={() => setRegPreset(s.key)} style={{
-                    padding:'10px 6px', borderRadius:8, cursor:'pointer', textAlign:'center',
-                    border: regPreset===s.key ? `2px solid ${s.color}` : '1px solid #1e293b',
-                    background: regPreset===s.key ? `${s.color}20` : 'transparent',
-                    color: regPreset===s.key ? s.color : '#9ca3af', fontSize:11, fontFamily:'inherit',
-                  }}>
-                    <div style={{ fontWeight:600, marginBottom:2 }}>{s.label}</div>
-                    <div style={{ fontSize:10, opacity:0.7 }}>{s.desc}</div>
-                  </button>
-                ))}
+              <div style={{
+                padding:'12px 16px', borderRadius:10,
+                border:'2px solid #ff9800', background:'rgba(255,152,0,0.12)',
+                display:'flex', alignItems:'center', gap:12,
+              }}>
+                <span style={{ fontSize:22 }}>🧠</span>
+                <div>
+                  <div style={{ fontSize:13, fontWeight:700, color:'#ff9800' }}>스마트형 (고정)</div>
+                  <div style={{ fontSize:10, color:'#9ca3af', marginTop:2 }}>
+                    수익 활성화(+15%) → 고점 대비 -5% 추적손절 / -12% 손절 / 30일 만기
+                  </div>
+                </div>
               </div>
             </div>
 
