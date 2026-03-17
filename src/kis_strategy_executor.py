@@ -184,16 +184,21 @@ async def check_and_execute_kis_positions(
                 if current_price <= 0:
                     continue
 
-                # 전략 파라미터 구성
-                strategy = pos.get("strategy", "smart")
+                # 전략 파라미터 구성 — ★ 모든 전략에 스마트형(트레일링 스톱) 강제 적용
+                from strategy_engine import SMART_DEFAULTS
+                raw_sl = float(pos.get("stop_loss_pct") or 0)
+                raw_trail = float(pos.get("trailing_stop_pct") or 0)
+                raw_activ = float(pos.get("profit_activation_pct") or 0)
+                raw_grace = int(pos.get("grace_days") or 0)
+                raw_days = int(pos.get("max_hold_days") or 0)
                 params = StrategyParams(
-                    strategy_type=strategy,
-                    stop_loss_pct=float(pos.get("stop_loss_pct", 12.0)),
+                    strategy_type="smart",
+                    stop_loss_pct=raw_sl if raw_sl > 0 else SMART_DEFAULTS["stop_loss_pct"],
                     take_profit_pct=float(pos.get("take_profit_pct", 0)),
-                    max_hold_days=int(pos.get("max_hold_days", 30)),
-                    trailing_stop_pct=float(pos.get("trailing_stop_pct", 5.0)),
-                    profit_activation_pct=float(pos.get("profit_activation_pct", 15.0)),
-                    grace_days=int(pos.get("grace_days", 7)),
+                    max_hold_days=raw_days if raw_days > 0 else SMART_DEFAULTS["max_hold_days"],
+                    trailing_stop_pct=raw_trail if raw_trail > 0 else SMART_DEFAULTS["trailing_stop_pct"],
+                    profit_activation_pct=raw_activ if raw_activ > 0 else SMART_DEFAULTS["profit_activation_pct"],
+                    grace_days=raw_grace if raw_grace > 0 else SMART_DEFAULTS["grace_days"],
                 )
 
                 # 보유일 계산

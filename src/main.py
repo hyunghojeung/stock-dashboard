@@ -18,6 +18,9 @@ from app.api.surge_scanner_routes import router as scanner_router
 from app.api.virtual_invest_routes import router as virtual_invest_router
 from app.api.buy_candidates_routes import router as candidates_router
 
+# ★ 가상투자 포트폴리오 관리 API
+from virtual_portfolio_routes import router as virtual_portfolio_router
+
 # ★ KIS 모의투자 API
 from kis_routes import router as kis_router
 
@@ -141,6 +144,7 @@ app.include_router(scanner_router)
 app.include_router(pattern_router)
 app.include_router(virtual_invest_router)
 app.include_router(kis_router)
+app.include_router(virtual_portfolio_router)
 app.include_router(candidates_router)
 
 @app.get("/api/health")
