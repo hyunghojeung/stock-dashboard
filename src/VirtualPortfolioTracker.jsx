@@ -120,20 +120,22 @@ const STRATEGY_PARAMS = {
 
 export default function VirtualPortfolioTracker({ readOnly = false }) {
   const [view, setView] = useState('list');    // list | detail
-  const [portfolios, setPortfolios] = useState([]);
+  const [allPortfolios, setAllPortfolios] = useState([]);  // 전체 데이터
   const [selectedId, setSelectedId] = useState(null);
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(false);
   const [updating, setUpdating] = useState(false);
-  // ★ 페이징 상태
+  // ★ 클라이언트 사이드 페이징
   const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
   const PER_PAGE = 10;
 
-  // ── 포트폴리오 목록 로드 (★ 페이징 적용) ──
-  const loadList = useCallback(async (page) => {
-    const p = page || currentPage;
+  // 페이징 계산
+  const totalCount = allPortfolios.length;
+  const totalPages = Math.max(1, Math.ceil(totalCount / PER_PAGE));
+  const portfolios = allPortfolios.slice((currentPage - 1) * PER_PAGE, currentPage * PER_PAGE);
+
+  // ── 포트폴리오 목록 로드 ──
+  const loadList = useCallback(async () => {
     setLoading(true);
     const fetchWithTimeout = async (url, timeout = 10000) => {
       const controller = new AbortController();
@@ -148,26 +150,22 @@ export default function VirtualPortfolioTracker({ readOnly = false }) {
       }
     };
     try {
-      const url = `${API_BASE}/api/virtual-portfolio/list?page=${p}&per_page=${PER_PAGE}`;
       let res;
       try {
-        res = await fetchWithTimeout(url, 8000);
+        res = await fetchWithTimeout(`${API_BASE}/api/virtual-portfolio/list`, 8000);
       } catch (e) {
         console.warn('첫 로드 타임아웃, 재시도...');
         await new Promise(r => setTimeout(r, 1000));
-        res = await fetchWithTimeout(url, 15000);
+        res = await fetchWithTimeout(`${API_BASE}/api/virtual-portfolio/list`, 15000);
       }
       const data = await res.json();
-      setPortfolios(data.portfolios || []);
-      setTotalPages(data.total_pages || 1);
-      setTotalCount(data.total || 0);
-      setCurrentPage(p);
+      setAllPortfolios(data.portfolios || []);
     } catch (e) {
       console.error('목록 로드 실패:', e);
     } finally {
       setLoading(false);
     }
-  }, [currentPage]);
+  }, []);
 
   // ── 포트폴리오 상세 로드 ──
   const loadDetail = useCallback(async (id) => {
@@ -338,7 +336,7 @@ export default function VirtualPortfolioTracker({ readOnly = false }) {
         )}
       </div>
 
-      {view === 'list' && <PortfolioList portfolios={portfolios} loading={loading} onSelect={loadDetail} onRefresh={loadList} onRename={handleRenamePortfolio} onBatchDelete={handleBatchDelete} onBatchRefresh={handleBatchRefresh} readOnly={readOnly} currentPage={currentPage} totalPages={totalPages} totalCount={totalCount} onPageChange={(p) => loadList(p)} />}
+      {view === 'list' && <PortfolioList portfolios={portfolios} loading={loading} onSelect={loadDetail} onRefresh={loadList} onRename={handleRenamePortfolio} onBatchDelete={handleBatchDelete} onBatchRefresh={handleBatchRefresh} readOnly={readOnly} currentPage={currentPage} totalPages={totalPages} totalCount={totalCount} onPageChange={setCurrentPage} />}
       {view === 'detail' && detail && (
         <PortfolioDetail
           detail={detail}
@@ -441,7 +439,7 @@ function PortfolioList({ portfolios, loading, onSelect, onRefresh, onRename, onB
         {[
           { label: '전체', value: totalCount || portfolios.length, unit: '개', color: COLORS.accent },
           { label: '추적중', value: activeCount, unit: '개', color: COLORS.green },
-          { label: '이 페이지', value: portfolios.length, unit: '개', color: COLORS.gray },
+          { label: '종료', value: closedCount, unit: '개', color: COLORS.gray },
           { label: '총 수익', value: `${totalProfit >= 0 ? '+' : ''}${fmt(totalProfit)}원`, color: totalProfit >= 0 ? COLORS.red : COLORS.accent },
         ].map((s, i) => (
           <div key={i} style={{
