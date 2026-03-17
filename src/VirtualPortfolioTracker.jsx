@@ -125,9 +125,15 @@ export default function VirtualPortfolioTracker({ readOnly = false }) {
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(false);
   const [updating, setUpdating] = useState(false);
+  // ★ 페이징 상태
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const PER_PAGE = 10;
 
-  // ── 포트폴리오 목록 로드 (★ v3: 타임아웃 + 리트라이) ──
-  const loadList = useCallback(async () => {
+  // ── 포트폴리오 목록 로드 (★ 페이징 적용) ──
+  const loadList = useCallback(async (page) => {
+    const p = page || currentPage;
     setLoading(true);
     const fetchWithTimeout = async (url, timeout = 10000) => {
       const controller = new AbortController();
@@ -142,23 +148,26 @@ export default function VirtualPortfolioTracker({ readOnly = false }) {
       }
     };
     try {
+      const url = `${API_BASE}/api/virtual-portfolio/list?page=${p}&per_page=${PER_PAGE}`;
       let res;
       try {
-        res = await fetchWithTimeout(`${API_BASE}/api/virtual-portfolio/list`, 8000);
+        res = await fetchWithTimeout(url, 8000);
       } catch (e) {
-        // 첫 시도 실패 (Cold Start) → 1초 후 재시도
         console.warn('첫 로드 타임아웃, 재시도...');
         await new Promise(r => setTimeout(r, 1000));
-        res = await fetchWithTimeout(`${API_BASE}/api/virtual-portfolio/list`, 15000);
+        res = await fetchWithTimeout(url, 15000);
       }
       const data = await res.json();
       setPortfolios(data.portfolios || []);
+      setTotalPages(data.total_pages || 1);
+      setTotalCount(data.total || 0);
+      setCurrentPage(p);
     } catch (e) {
       console.error('목록 로드 실패:', e);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [currentPage]);
 
   // ── 포트폴리오 상세 로드 ──
   const loadDetail = useCallback(async (id) => {
@@ -329,7 +338,7 @@ export default function VirtualPortfolioTracker({ readOnly = false }) {
         )}
       </div>
 
-      {view === 'list' && <PortfolioList portfolios={portfolios} loading={loading} onSelect={loadDetail} onRefresh={loadList} onRename={handleRenamePortfolio} onBatchDelete={handleBatchDelete} onBatchRefresh={handleBatchRefresh} readOnly={readOnly} />}
+      {view === 'list' && <PortfolioList portfolios={portfolios} loading={loading} onSelect={loadDetail} onRefresh={loadList} onRename={handleRenamePortfolio} onBatchDelete={handleBatchDelete} onBatchRefresh={handleBatchRefresh} readOnly={readOnly} currentPage={currentPage} totalPages={totalPages} totalCount={totalCount} onPageChange={(p) => loadList(p)} />}
       {view === 'detail' && detail && (
         <PortfolioDetail
           detail={detail}
@@ -351,7 +360,7 @@ export default function VirtualPortfolioTracker({ readOnly = false }) {
 // 포트폴리오 목록
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-function PortfolioList({ portfolios, loading, onSelect, onRefresh, onRename, onBatchDelete, onBatchRefresh, readOnly }) {
+function PortfolioList({ portfolios, loading, onSelect, onRefresh, onRename, onBatchDelete, onBatchRefresh, readOnly, currentPage, totalPages, totalCount, onPageChange }) {
   const [renamingId, setRenamingId] = useState(null);
   const [renameText, setRenameText] = useState('');
   const [selectedIds, setSelectedIds] = useState(new Set());
@@ -430,9 +439,9 @@ function PortfolioList({ portfolios, loading, onSelect, onRefresh, onRename, onB
       {/* 요약 카드 */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
         {[
-          { label: '전체', value: portfolios.length, unit: '개', color: COLORS.accent },
+          { label: '전체', value: totalCount || portfolios.length, unit: '개', color: COLORS.accent },
           { label: '추적중', value: activeCount, unit: '개', color: COLORS.green },
-          { label: '종료', value: closedCount, unit: '개', color: COLORS.gray },
+          { label: '이 페이지', value: portfolios.length, unit: '개', color: COLORS.gray },
           { label: '총 수익', value: `${totalProfit >= 0 ? '+' : ''}${fmt(totalProfit)}원`, color: totalProfit >= 0 ? COLORS.red : COLORS.accent },
         ].map((s, i) => (
           <div key={i} style={{
@@ -631,6 +640,66 @@ function PortfolioList({ portfolios, loading, onSelect, onRefresh, onRename, onB
           );
         })}
       </div>
+
+      {/* ★ 페이징 UI */}
+      {totalPages > 1 && (
+        <div style={{
+          display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 6,
+          marginTop: 20, padding: '12px 0',
+        }}>
+          <button onClick={() => onPageChange(1)} disabled={currentPage <= 1}
+            style={{
+              padding: '6px 10px', borderRadius: 6, fontSize: 12, cursor: currentPage <= 1 ? 'not-allowed' : 'pointer',
+              background: 'transparent', border: `1px solid ${COLORS.cardBorder}`,
+              color: currentPage <= 1 ? COLORS.gray : COLORS.text, opacity: currentPage <= 1 ? 0.4 : 1,
+            }}>«</button>
+          <button onClick={() => onPageChange(currentPage - 1)} disabled={currentPage <= 1}
+            style={{
+              padding: '6px 10px', borderRadius: 6, fontSize: 12, cursor: currentPage <= 1 ? 'not-allowed' : 'pointer',
+              background: 'transparent', border: `1px solid ${COLORS.cardBorder}`,
+              color: currentPage <= 1 ? COLORS.gray : COLORS.text, opacity: currentPage <= 1 ? 0.4 : 1,
+            }}>‹</button>
+
+          {Array.from({ length: totalPages }, (_, i) => i + 1)
+            .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 2)
+            .reduce((acc, p, i, arr) => {
+              if (i > 0 && p - arr[i - 1] > 1) acc.push('...');
+              acc.push(p);
+              return acc;
+            }, [])
+            .map((p, i) =>
+              p === '...' ? (
+                <span key={`dot-${i}`} style={{ color: COLORS.gray, fontSize: 12, padding: '0 4px' }}>···</span>
+              ) : (
+                <button key={p} onClick={() => onPageChange(p)}
+                  style={{
+                    padding: '6px 12px', borderRadius: 6, fontSize: 12, fontWeight: p === currentPage ? 700 : 400,
+                    cursor: 'pointer', fontFamily: 'JetBrains Mono, monospace',
+                    background: p === currentPage ? COLORS.accent : 'transparent',
+                    border: `1px solid ${p === currentPage ? COLORS.accent : COLORS.cardBorder}`,
+                    color: p === currentPage ? '#fff' : COLORS.text,
+                  }}>{p}</button>
+              )
+          )}
+
+          <button onClick={() => onPageChange(currentPage + 1)} disabled={currentPage >= totalPages}
+            style={{
+              padding: '6px 10px', borderRadius: 6, fontSize: 12, cursor: currentPage >= totalPages ? 'not-allowed' : 'pointer',
+              background: 'transparent', border: `1px solid ${COLORS.cardBorder}`,
+              color: currentPage >= totalPages ? COLORS.gray : COLORS.text, opacity: currentPage >= totalPages ? 0.4 : 1,
+            }}>›</button>
+          <button onClick={() => onPageChange(totalPages)} disabled={currentPage >= totalPages}
+            style={{
+              padding: '6px 10px', borderRadius: 6, fontSize: 12, cursor: currentPage >= totalPages ? 'not-allowed' : 'pointer',
+              background: 'transparent', border: `1px solid ${COLORS.cardBorder}`,
+              color: currentPage >= totalPages ? COLORS.gray : COLORS.text, opacity: currentPage >= totalPages ? 0.4 : 1,
+            }}>»</button>
+
+          <span style={{ fontSize: 11, color: COLORS.textDim, marginLeft: 10 }}>
+            {currentPage}/{totalPages} 페이지 (총 {totalCount}개)
+          </span>
+        </div>
+      )}
     </div>
   );
 }
