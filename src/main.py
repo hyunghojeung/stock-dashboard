@@ -68,13 +68,26 @@ async def lifespan(app: FastAPI):
                 if not supabase:
                     return
 
-                # 1. 가상투자 활성 세션 업데이트
+                # 1. 가상투자 활성 세션 업데이트 (레거시: session_id 기반)
                 from virtual_invest import update_realtime
                 sessions = supabase.table("virtual_realtime_session").select(
                     "session_id"
                 ).eq("status", "active").execute()
                 for s in (sessions.data or []):
                     await update_realtime(s["session_id"], supabase)
+
+                # 1-2. 가상투자 활성 포트폴리오 업데이트 (portfolio_id 기반)
+                # ★ realtime/start로 생성된 포지션은 session_id가 없어서
+                #    update_realtime으로 업데이트되지 않음 → portfolio_id로 직접 업데이트
+                from virtual_portfolio_routes import update_prices
+                pf_res = supabase.table("virtual_portfolios").select("id").eq(
+                    "status", "active"
+                ).execute()
+                for pf in (pf_res.data or []):
+                    try:
+                        await update_prices(pf["id"])
+                    except Exception as pf_ex:
+                        print(f"[전략체크] 포트폴리오 {pf['id']} 업데이트 오류: {pf_ex}")
 
                 # 2. KIS 전략 체크 (모의 + 실전)
                 from kis_strategy_executor import check_and_execute_kis_positions, save_server_log
