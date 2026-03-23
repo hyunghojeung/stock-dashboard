@@ -219,7 +219,7 @@ async def get_orders(
     start_date: str = Query("", description="조회 시작일 YYYYMMDD"),
     end_date: str = Query("", description="조회 종료일 YYYYMMDD"),
 ):
-    """체결내역 조회"""
+    """체결내역 조회 (KIS 서버 + 자동매매 DB 기록 통합)"""
     client = _require_configured()
     try:
         result = await client.get_order_history(start_date, end_date)
@@ -237,10 +237,115 @@ async def get_orders(
                 "exec_qty": int(o.get("tot_ccld_qty", "0")),
                 "exec_price": int(o.get("avg_prvs", "0")),
                 "status": o.get("ord_dvsn_name", ""),
+                "source": "kis",
             })
+
+        # ★ DB 자동매매 기록 통합 (kis_managed_positions에서 매도 완료된 기록)
+        supabase = _get_supabase()
+        if supabase:
+            try:
+                account_type = "virtual" if client.is_virtual else "real"
+                # 조회 기간 포맷 변환 (YYYYMMDD → YYYY-MM-DD)
+                sd_fmt = f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:8]}" if len(start_date) == 8 else ""
+                ed_fmt = f"{end_date[:4]}-{end_date[4:6]}-{end_date[6:8]}" if len(end_date) == 8 else ""
+
+                # 매도 완료된 포지션 (sell_date 기간 필터)
+                sold_query = supabase.table("kis_managed_positions").select("*").eq(
+                    "account_type", account_type
+                ).neq("status", "holding")
+                if sd_fmt:
+                    sold_query = sold_query.gte("sell_date", sd_fmt)
+                if ed_fmt:
+                    sold_query = sold_query.lte("sell_date", ed_fmt)
+                sold_res = sold_query.execute()
+
+                # 보유 중인 포지션 (buy_date 기간 필터 → 매수 기록 표시)
+                hold_query = supabase.table("kis_managed_positions").select("*").eq(
+                    "account_type", account_type
+                ).eq("status", "holding")
+                if sd_fmt:
+                    hold_query = hold_query.gte("buy_date", sd_fmt)
+                if ed_fmt:
+                    hold_query = hold_query.lte("buy_date", ed_fmt)
+                hold_res = hold_query.execute()
+
+                # 매도 완료 + 보유 중 포지션 합치기
+                all_db_positions = (sold_res.data or []) + (hold_res.data or [])
+                for pos in all_db_positions:
+                    sell_date = (pos.get("sell_date") or "").replace("-", "")
+                    # 매수 기록
+                    buy_date = (pos.get("buy_date") or "").replace("-", "")
+                    if buy_date >= (start_date or "") and buy_date <= (end_date or ""):
+                        orders.append({
+                            "order_no": f"auto-buy-{pos['id']}",
+                            "order_date": buy_date,
+                            "order_time": "090000",
+                            "stock_code": pos.get("stock_code", ""),
+                            "stock_name": pos.get("stock_name", ""),
+                            "side": "매수",
+                            "order_qty": pos.get("qty", 0),
+                            "order_price": int(pos.get("buy_price", 0)),
+                            "exec_qty": pos.get("qty", 0),
+                            "exec_price": int(pos.get("buy_price", 0)),
+                            "status": "자동매매",
+                            "source": "auto",
+                            "sell_reason": "",
+                        })
+                    # 매도 기록
+                    if sell_date:
+                        orders.append({
+                            "order_no": f"auto-sell-{pos['id']}",
+                            "order_date": sell_date,
+                            "order_time": pos.get("sell_time", "150000"),
+                            "stock_code": pos.get("stock_code", ""),
+                            "stock_name": pos.get("stock_name", ""),
+                            "side": "매도",
+                            "order_qty": pos.get("qty", 0),
+                            "order_price": int(pos.get("sell_price", 0)),
+                            "exec_qty": pos.get("qty", 0),
+                            "exec_price": int(pos.get("sell_price", 0)),
+                            "status": "자동매매",
+                            "source": "auto",
+                            "sell_reason": pos.get("sell_reason", ""),
+                        })
+
+                # 날짜+시간 역순 정렬
+                orders.sort(key=lambda x: (x.get("order_date", ""), x.get("order_time", "")), reverse=True)
+            except Exception as db_err:
+                print(f"[KIS] 자동매매 DB 기록 조회 오류 (무시): {db_err}")
+
         return {"success": True, "orders": orders}
     except Exception as e:
         raise HTTPException(500, f"체결내역 조회 실패: {str(e)}")
+
+
+@router.get("/pending")
+async def get_pending_orders():
+    """미체결 주문 조회"""
+    client = _require_configured()
+    try:
+        result = await client.get_pending_orders()
+        pending = []
+        for o in result.get("output1", []):
+            # 미체결 수량이 있는 주문만
+            remain = int(o.get("ord_qty", "0")) - int(o.get("tot_ccld_qty", "0"))
+            if remain <= 0:
+                continue
+            pending.append({
+                "order_no": o.get("odno", ""),
+                "order_date": o.get("ord_dt", ""),
+                "order_time": o.get("ord_tmd", ""),
+                "stock_code": o.get("pdno", ""),
+                "stock_name": o.get("prdt_name", ""),
+                "side": "매수" if o.get("sll_buy_dvsn_cd") == "02" else "매도",
+                "order_qty": int(o.get("ord_qty", "0")),
+                "order_price": int(o.get("ord_unpr", "0")),
+                "remain_qty": remain,
+                "status": o.get("ord_dvsn_name", ""),
+            })
+        return {"success": True, "pending": pending}
+    except Exception as e:
+        raise HTTPException(500, f"미체결 주문 조회 실패: {str(e)}")
 
 
 @router.get("/buyable")

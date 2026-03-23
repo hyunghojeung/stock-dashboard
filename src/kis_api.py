@@ -240,6 +240,27 @@ class KISClient:
         }
         return await self._get("/uapi/domestic-stock/v1/trading/inquire-daily-ccld", tr_id, params)
 
+    async def get_pending_orders(self) -> dict:
+        """미체결 주문 조회"""
+        tr_id = "VTTC8001R" if self.is_virtual else "TTTC8001R"
+        params = {
+            "CANO": self.cano,
+            "ACNT_PRDT_CD": self.acnt_prdt_cd,
+            "INQR_STRT_DT": datetime.now().strftime("%Y%m%d"),
+            "INQR_END_DT": datetime.now().strftime("%Y%m%d"),
+            "SLL_BUY_DVSN_CD": "00",
+            "INQR_DVSN": "00",
+            "PDNO": "",
+            "CCLD_DVSN": "01",  # 01=미체결
+            "ORD_GNO_BRNO": "",
+            "ODNO": "",
+            "INQR_DVSN_3": "00",
+            "INQR_DVSN_1": "",
+            "CTX_AREA_FK100": "",
+            "CTX_AREA_NK100": "",
+        }
+        return await self._get("/uapi/domestic-stock/v1/trading/inquire-daily-ccld", tr_id, params)
+
     async def get_buyable_amount(self, stock_code: str, price: int) -> dict:
         """매수가능금액 조회"""
         tr_id = "VTTC8908R" if self.is_virtual else "TTTC8908R"
