@@ -1957,7 +1957,7 @@ function OrderHistoryPanel() {
         <>
           {filter === "all" && orders.length > 0 && <div style={{ color: "#4cff8b", fontSize: 11, fontWeight: 600, marginBottom: 6 }}>✅ 체결 주문</div>}
           {orders.length === 0 ? (
-            !loading && <div style={{ textAlign: "center", padding: 30, color: "#6688aa" }}>해당 기간 체결내역 없음</div>
+            !loading && <div style={{ textAlign: "center", padding: 30, color: "#6688aa" }}>해당 기간 체결내역 없음 (KIS 서버 + 자동매매 기록 모두 없음)</div>
           ) : (
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
@@ -1967,18 +1967,21 @@ function OrderHistoryPanel() {
                 {orders.map((o, i) => {
                   const execAmt = (o.exec_price || 0) * (o.exec_qty || 0);
                   const dateStr = o.order_date ? `${o.order_date.slice(4,6)}/${o.order_date.slice(6,8)}` : '';
+                  const isAuto = o.source === "auto";
+                  const statusText = isAuto ? (o.sell_reason || "자동매매") : (o.exec_qty > 0 ? "체결" : "미체결");
+                  const statusColor = isAuto ? "#e040fb" : (o.exec_qty > 0 ? "#4cff8b" : "#ff9800");
                   return (
-                  <tr key={i} style={{ background: i % 2 === 0 ? "rgba(10,18,40,0.3)" : "transparent" }}>
+                  <tr key={i} style={{ background: isAuto ? "rgba(224,64,251,0.04)" : (i % 2 === 0 ? "rgba(10,18,40,0.3)" : "transparent") }}>
                     <td style={{ ...S.td, color: "#8899bb", fontFamily: "monospace", fontSize: 11 }}>{dateStr}</td>
                     <td style={{ ...S.td, color: "#6688aa", fontFamily: "monospace" }}>{o.order_time?.slice(0, 4) ? `${o.order_time.slice(0, 2)}:${o.order_time.slice(2, 4)}` : o.order_time}</td>
-                    <td style={{ ...S.td, color: o.side === "매수" ? "#ff4444" : "#4488ff", fontWeight: 600 }}>{o.side}</td>
-                    <td style={{ ...S.td, color: "#e0e6f0", fontWeight: 600 }}>{o.stock_name}</td>
+                    <td style={{ ...S.td, color: o.side === "매수" ? "#ff4444" : "#4488ff", fontWeight: 600 }}>{o.side}{isAuto ? " (자동)" : ""}</td>
+                    <td style={{ ...S.td, color: "#e0e6f0", fontWeight: 600 }}>{o.stock_name}{o.stock_code ? ` (${o.stock_code})` : ""}</td>
                     <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace" }}>{fmt(o.order_price)}</td>
                     <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace" }}>{fmt(o.order_qty)}</td>
                     <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace" }}>{fmt(o.exec_price)}</td>
                     <td style={{ ...S.td, color: "#e0e6f0", fontFamily: "monospace" }}>{fmt(o.exec_qty)}</td>
                     <td style={{ ...S.td, color: o.side === "매도" ? "#4488ff" : "#ff4444", fontFamily: "monospace", fontWeight: 600 }}>{execAmt > 0 ? `${fmt(execAmt)}원` : '-'}</td>
-                    <td style={{ ...S.td, color: o.exec_qty > 0 ? "#4cff8b" : "#ff9800" }}>{o.exec_qty > 0 ? "체결" : "미체결"}</td>
+                    <td style={{ ...S.td, color: statusColor, fontSize: 10 }}>{statusText}</td>
                   </tr>
                   );
                 })}
