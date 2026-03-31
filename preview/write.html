@@ -148,9 +148,7 @@ body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
       <tr>
         <td class="lbl" style="vertical-align:top; padding-top:8px;">세부사양/<br>후가공</td>
         <td colspan="3">
-          <textarea>용지/부수
-제본비/출력비 (흑/칼)
-규격(사이즈)</textarea>
+          <textarea placeholder="세부사양 및 후가공 내용을 입력하세요"></textarea>
         </td>
       </tr>
     </table>
@@ -206,8 +204,21 @@ body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
             <option>인쇄만</option>
           </select>
         </td>
-        <td class="lbl2"></td>
-        <td></td>
+        <td class="lbl2">사이즈</td>
+        <td>
+          <select id="sizeSelect" style="width:100%;" onchange="if(this.value==='direct'){document.getElementById('sizeInput').style.display='';this.style.display='none';}">
+            <option value="">선택</option>
+            <option value="direct">직접입력</option>
+            <option>A4</option>
+            <option>A3</option>
+            <option>A2</option>
+            <option>190x260</option>
+            <option>465x315</option>
+            <option>A5</option>
+            <option>B4</option>
+          </select>
+          <input id="sizeInput" type="text" placeholder="사이즈 직접 입력" style="display:none; width:100%;">
+        </td>
       </tr>
     </table>
   </div>
