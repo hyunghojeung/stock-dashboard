@@ -321,18 +321,6 @@ body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
 
   <!-- ===== 인쇄 화면 ===== -->
   <div id="printView" style="display:none;">
-    <div class="print-btn-bar">
-      <button class="pbtn-print" onclick="window.print()">인쇄</button>
-      <button class="pbtn-email">Email</button>
-      <button class="pbtn-close" onclick="showListView()">닫기</button>
-    </div>
-    <div class="email-area">
-      <label>수신 이메일:</label>
-      <input type="email" placeholder="이메일 주소를 입력하세요">
-      <button style="padding:6px 14px; background:#374151; color:#fff; border:none; border-radius:4px; font-size:12px; cursor:pointer;">발송</button>
-      <span style="color:#999; font-size:11px;">발신: pwindow@naver.com</span>
-    </div>
-
     <div class="print-wrap">
       <div class="print-title">발 주 서</div>
 
@@ -412,6 +400,17 @@ body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
           <td class="val" style="width:12%;">0</td>
         </tr>
       </table>
+    </div>
+
+    <div class="email-area" style="margin-top:12px;">
+      <label>수신 팩스번호:</label>
+      <input type="text" placeholder="팩스번호를 입력하세요" style="width:220px;">
+      <button style="padding:6px 14px; background:#374151; color:#fff; border:none; border-radius:4px; font-size:12px; cursor:pointer;">발송</button>
+    </div>
+    <div class="print-btn-bar">
+      <button class="pbtn-print" onclick="window.print()">인쇄</button>
+      <button class="pbtn-email">팩스발송</button>
+      <button class="pbtn-close" onclick="showListView()">닫기</button>
     </div>
   </div>
 
