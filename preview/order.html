@@ -313,7 +313,7 @@ body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
 
     <div class="btn-bar">
       <button class="btn-save" onclick="showListView()">저장</button>
-      <button onclick="showListView()">다시 작성</button>
+      <button onclick="copyOrder()">발주서 복사</button>
       <button onclick="showListView()">리스트</button>
       <button class="btn-del" onclick="showListView()">삭제</button>
     </div>
@@ -436,6 +436,13 @@ function showListView() { hideAll(); document.getElementById('listView').style.d
 function showWrite() { hideAll(); document.getElementById('writeView').style.display = 'block'; }
 function showView() { showWrite(); }
 function showPrint() { hideAll(); document.getElementById('printView').style.display = 'block'; }
+function copyOrder() {
+  // 발주No만 초기화하고 나머지 내용은 유지 (복사)
+  var writeView = document.getElementById('writeView');
+  var noInput = writeView.querySelector('input.input-readonly');
+  if (noInput) { noInput.value = '저장시점에 생성됩니다.'; }
+  alert('발주서가 복사되었습니다. 내용을 수정 후 저장하세요.');
+}
 </script>
 </body>
 </html>
