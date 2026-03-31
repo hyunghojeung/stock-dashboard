@@ -107,8 +107,9 @@ body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
         <td><input type="text" placeholder="제목" value="에스트라 5cm원형 스티커 50개 제작"></td>
         <td class="lbl2">거래유형</td>
         <td>
-          <select style="width:100%;">
-            <option>부가세율 적용</option>
+          <select id="vatType" style="width:100%;" onchange="toggleVat()">
+            <option value="vat">부가세율 적용</option>
+            <option value="novat">부가세율 미적용</option>
           </select>
         </td>
       </tr>
@@ -256,7 +257,7 @@ body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
           <th style="width:70px;">제본비</th>
           <th style="width:70px;">코팅비</th>
           <th style="width:85px;">공급가</th>
-          <th style="width:70px;">부가세</th>
+          <th style="width:70px;" class="vat-col">부가세</th>
           <th style="width:85px;">합계금액</th>
         </tr>
       </thead>
@@ -271,7 +272,7 @@ body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
           <td><input type="text" class="input-right"></td>
           <td><input type="text" class="input-right"></td>
           <td><input type="text" class="input-right" value="54,545"></td>
-          <td><input type="text" class="input-right" value="5,455"></td>
+          <td class="vat-col"><input type="text" class="input-right" value="5,455"></td>
           <td><input type="text" class="input-right" value="60,000"></td>
         </tr>
         <tr>
@@ -284,7 +285,7 @@ body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
           <td><input type="text" class="input-right"></td>
           <td><input type="text" class="input-right"></td>
           <td><input type="text" class="input-right"></td>
-          <td><input type="text" class="input-right"></td>
+          <td class="vat-col"><input type="text" class="input-right"></td>
           <td><input type="text" class="input-right"></td>
         </tr>
         <tr>
@@ -297,7 +298,7 @@ body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
           <td><input type="text" class="input-right"></td>
           <td><input type="text" class="input-right"></td>
           <td><input type="text" class="input-right"></td>
-          <td><input type="text" class="input-right"></td>
+          <td class="vat-col"><input type="text" class="input-right"></td>
           <td><input type="text" class="input-right"></td>
         </tr>
         <tr>
@@ -310,7 +311,7 @@ body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
           <td><input type="text" class="input-right"></td>
           <td><input type="text" class="input-right"></td>
           <td><input type="text" class="input-right"></td>
-          <td><input type="text" class="input-right"></td>
+          <td class="vat-col"><input type="text" class="input-right"></td>
           <td><input type="text" class="input-right"></td>
         </tr>
         <tr>
@@ -323,13 +324,13 @@ body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
           <td><input type="text" class="input-right"></td>
           <td><input type="text" class="input-right"></td>
           <td><input type="text" class="input-right"></td>
-          <td><input type="text" class="input-right"></td>
+          <td class="vat-col"><input type="text" class="input-right"></td>
           <td><input type="text" class="input-right"></td>
         </tr>
         <tr class="total-row">
           <td colspan="8" style="text-align:right; padding-right:8px;">합 계</td>
           <td style="text-align:right; padding-right:4px;">54,545</td>
-          <td style="text-align:right; padding-right:4px;">5,455</td>
+          <td class="vat-col" style="text-align:right; padding-right:4px;">5,455</td>
           <td style="text-align:right; padding-right:4px;">60,000</td>
         </tr>
       </tbody>
@@ -358,6 +359,17 @@ body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
   localStorage.setItem(key, count);
   document.getElementById('orderNo').value = dateStr + '-' + count;
 })();
+
+// 거래유형 변경 시 부가세 컬럼 표시/숨김
+function toggleVat() {
+  var vatType = document.getElementById('vatType').value;
+  var vatCols = document.querySelectorAll('.vat-col');
+  if (vatType === 'novat') {
+    vatCols.forEach(function(el) { el.style.display = 'none'; });
+  } else {
+    vatCols.forEach(function(el) { el.style.display = ''; });
+  }
+}
 </script>
 </body>
 </html>
