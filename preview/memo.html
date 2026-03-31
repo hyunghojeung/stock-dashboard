@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>업무관리 - 작업메모</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
+.header { background: #1e293b; color: #fff; padding: 12px 24px; display: flex; justify-content: space-between; align-items: center; }
+.header h1 { font-size: 18px; }
+.header-right { display: flex; align-items: center; gap: 12px; font-size: 13px; }
+.header-right a { color: #94a3b8; text-decoration: none; }
+.header-right a:hover { color: #fff; }
+.content { max-width: 900px; margin: 20px auto; }
+.toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.search-bar { display: flex; gap: 6px; }
+.search-bar input { padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 13px; width: 220px; }
+.search-bar button { padding: 6px 14px; background: #374151; color: #fff; border: none; border-radius: 4px; font-size: 12px; cursor: pointer; }
+.btn-new { padding: 8px 20px; background: #059669; color: #fff; border: none; border-radius: 4px; font-size: 13px; cursor: pointer; text-decoration: none; }
+.btn-new:hover { background: #047857; }
+.btn-list { padding: 8px 20px; background: #2563eb; color: #fff; border: none; border-radius: 4px; font-size: 13px; cursor: pointer; text-decoration: none; }
+
+/* 리스트 */
+.board-table { width: 100%; border-collapse: collapse; background: #fff; font-size: 13px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); border-radius: 6px; overflow: hidden; }
+.board-table thead th { background: #f8fafc; padding: 10px 8px; text-align: center; border-bottom: 2px solid #e2e8f0; color: #475569; font-weight: 600; }
+.board-table tbody td { padding: 10px 8px; text-align: center; border-bottom: 1px solid #f1f5f9; color: #334155; }
+.board-table tbody tr:hover { background: #f8fafc; cursor: pointer; }
+.td-left { text-align: left !important; }
+.title-link { color: #334155; text-decoration: none; }
+.title-link:hover { color: #2563eb; text-decoration: underline; }
+.pagination { text-align: center; padding: 16px; font-size: 13px; color: #666; }
+.pagination a { display: inline-block; padding: 4px 10px; margin: 0 2px; border: 1px solid #d1d5db; border-radius: 3px; text-decoration: none; color: #555; }
+.pagination a.active { background: #059669; color: #fff; border-color: #059669; }
+
+/* 글쓰기/보기 */
+.write-box { background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); padding: 24px; display: none; }
+.write-box h3 { font-size: 16px; color: #1e293b; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #e2e8f0; }
+.write-box label { font-size: 12px; font-weight: 600; color: #555; display: block; margin-bottom: 4px; }
+.write-box input[type="text"] { width: 100%; padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 13px; margin-bottom: 12px; }
+.write-box textarea { width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 13px; font-family: inherit; min-height: 200px; resize: vertical; margin-bottom: 12px; }
+.write-box .btn-area { display: flex; gap: 6px; }
+.btn-save { padding: 8px 30px; background: #059669; color: #fff; border: none; border-radius: 4px; font-size: 13px; cursor: pointer; }
+.btn-cancel { padding: 8px 30px; background: #fff; color: #555; border: 1px solid #d1d5db; border-radius: 4px; font-size: 13px; cursor: pointer; }
+.btn-del { padding: 8px 30px; background: #dc2626; color: #fff; border: none; border-radius: 4px; font-size: 13px; cursor: pointer; }
+
+/* 보기 */
+.view-box { background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); padding: 24px; display: none; }
+.view-box h3 { font-size: 18px; color: #1e293b; margin-bottom: 8px; }
+.view-meta { font-size: 12px; color: #999; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #e2e8f0; }
+.view-body { font-size: 14px; color: #333; line-height: 1.8; min-height: 150px; margin-bottom: 20px; }
+.view-btns { display: flex; gap: 6px; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>업무관리 시스템 - 작업메모</h1>
+  <div class="header-right">
+    <span>정형호님</span>
+    <a href="list.html">목록</a>
+    <a href="admin.html">관리자</a>
+    <a href="index.html">로그아웃</a>
+  </div>
+</div>
+
+<div class="content">
+
+  <!-- ===== 리스트 화면 ===== -->
+  <div id="listView">
+    <div class="toolbar">
+      <div class="search-bar">
+        <input type="text" placeholder="제목 또는 내용 검색">
+        <button>검색</button>
+      </div>
+      <div style="display:flex; gap:6px;">
+        <a href="list.html" class="btn-list">주문목록</a>
+        <button class="btn-new" onclick="showWrite()">+ 메모 작성</button>
+      </div>
+    </div>
+
+    <table class="board-table">
+      <thead>
+        <tr>
+          <th style="width:50px;">번호</th>
+          <th>제목</th>
+          <th style="width:80px;">작성자</th>
+          <th style="width:110px;">작성일</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr onclick="showView(1)">
+          <td>8</td>
+          <td class="td-left"><a class="title-link">4월 용지 발주 현황 정리</a></td>
+          <td>정형호</td>
+          <td>2026-03-31</td>
+        </tr>
+        <tr onclick="showView(2)">
+          <td>7</td>
+          <td class="td-left"><a class="title-link">커뮤니크 스티커 - 유포지 재고 확인</a></td>
+          <td>김민수</td>
+          <td>2026-03-30</td>
+        </tr>
+        <tr onclick="showView(3)">
+          <td>6</td>
+          <td class="td-left"><a class="title-link">방위사업청 제본 규격 B5로 변경됨</a></td>
+          <td>이지연</td>
+          <td>2026-03-29</td>
+        </tr>
+        <tr onclick="showView(4)">
+          <td>5</td>
+          <td class="td-left"><a class="title-link">LS E-Link 회사소개서 - 중철제본 40p</a></td>
+          <td>박준혁</td>
+          <td>2026-03-28</td>
+        </tr>
+        <tr onclick="showView(5)">
+          <td>4</td>
+          <td class="td-left"><a class="title-link">아모레퍼시픽 리플렛 - 칼라 양면 인쇄</a></td>
+          <td>최윤아</td>
+          <td>2026-03-27</td>
+        </tr>
+        <tr onclick="showView(6)">
+          <td>3</td>
+          <td class="td-left"><a class="title-link">코팅기 점검 일정 안내</a></td>
+          <td>정형호</td>
+          <td>2026-03-26</td>
+        </tr>
+        <tr onclick="showView(7)">
+          <td>2</td>
+          <td class="td-left"><a class="title-link">경주이씨 팜플렛 - 중철 32p 작업 메모</a></td>
+          <td>김민수</td>
+          <td>2026-03-25</td>
+        </tr>
+        <tr onclick="showView(8)">
+          <td>1</td>
+          <td class="td-left"><a class="title-link">3월 작업 일지 정리</a></td>
+          <td>정형호</td>
+          <td>2026-03-24</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="pagination">
+      <a href="#" class="active">1</a>
+      <a href="#">2</a>
+      <a href="#">3</a>
+      <span style="margin-left:8px;">/ 3 페이지</span>
+    </div>
+  </div>
+
+  <!-- ===== 글쓰기 화면 ===== -->
+  <div id="writeView" class="write-box">
+    <h3>메모 작성</h3>
+    <label>제목</label>
+    <input type="text" placeholder="제목을 입력하세요">
+    <label>내용</label>
+    <textarea placeholder="내용을 입력하세요"></textarea>
+    <div class="btn-area">
+      <button class="btn-save" onclick="showList()">저장</button>
+      <button class="btn-cancel" onclick="showList()">취소</button>
+    </div>
+  </div>
+
+  <!-- ===== 글보기 화면 ===== -->
+  <div id="viewBox" class="view-box">
+    <h3>4월 용지 발주 현황 정리</h3>
+    <div class="view-meta">작성자: 정형호 | 작성일: 2026-03-31</div>
+    <div class="view-body">
+      4월 용지 발주를 위해 현재 재고를 정리합니다.<br><br>
+      ■ 모조지<br>
+      - 80g: 재고 2,000매 → 3,000매 추가 발주 필요<br>
+      - 100g: 재고 1,500매 → 충분<br><br>
+      ■ 아트지<br>
+      - 150g: 재고 500매 → 2,000매 추가 발주 필요<br>
+      - 200g: 재고 800매 → 1,000매 추가 발주 필요<br><br>
+      ■ 스노우지<br>
+      - 120g: 재고 3,000매 → 충분<br><br>
+      발주 마감일: 4월 2일까지
+    </div>
+    <div class="view-btns">
+      <button class="btn-cancel" onclick="showList()">목록</button>
+      <button class="btn-save" onclick="showEdit()">수정</button>
+      <button class="btn-del" onclick="showList()">삭제</button>
+    </div>
+  </div>
+
+  <!-- ===== 수정 화면 ===== -->
+  <div id="editView" class="write-box">
+    <h3>메모 수정</h3>
+    <label>제목</label>
+    <input type="text" value="4월 용지 발주 현황 정리">
+    <label>내용</label>
+    <textarea>4월 용지 발주를 위해 현재 재고를 정리합니다.
+
+■ 모조지
+- 80g: 재고 2,000매 → 3,000매 추가 발주 필요
+- 100g: 재고 1,500매 → 충분
+
+■ 아트지
+- 150g: 재고 500매 → 2,000매 추가 발주 필요
+- 200g: 재고 800매 → 1,000매 추가 발주 필요
+
+■ 스노우지
+- 120g: 재고 3,000매 → 충분
+
+발주 마감일: 4월 2일까지</textarea>
+    <div class="btn-area">
+      <button class="btn-save" onclick="showList()">저장</button>
+      <button class="btn-cancel" onclick="showView(1)">취소</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function hideAll() {
+  document.getElementById('listView').style.display = 'none';
+  document.getElementById('writeView').style.display = 'none';
+  document.getElementById('viewBox').style.display = 'none';
+  document.getElementById('editView').style.display = 'none';
+}
+function showList() {
+  hideAll();
+  document.getElementById('listView').style.display = 'block';
+}
+function showWrite() {
+  hideAll();
+  document.getElementById('writeView').style.display = 'block';
+}
+function showView(id) {
+  hideAll();
+  document.getElementById('viewBox').style.display = 'block';
+}
+function showEdit() {
+  hideAll();
+  document.getElementById('editView').style.display = 'block';
+}
+</script>
+</body>
+</html>
