@@ -155,6 +155,62 @@ body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
     </table>
   </div>
 
+  <!-- 작업내용 영역 -->
+  <div class="form-box" style="margin-top:12px;">
+    <table class="form-table">
+      <tr>
+        <td colspan="4" style="font-weight:700; font-size:14px; color:#1e293b; padding-bottom:10px; border-bottom:1px solid #e2e8f0;">작업내용</td>
+      </tr>
+      <tr>
+        <td class="lbl">용지</td>
+        <td>
+          <select style="width:100%;">
+            <option value="">선택</option>
+            <option>모조</option>
+            <option>스노우</option>
+            <option>아트지</option>
+            <option>아르떼</option>
+            <option>펄지</option>
+            <option>CCP</option>
+          </select>
+        </td>
+        <td class="lbl2">색상</td>
+        <td>
+          <select style="width:100%;">
+            <option value="">선택</option>
+            <option>칼라</option>
+            <option>흑백</option>
+          </select>
+        </td>
+      </tr>
+      <tr>
+        <td class="lbl">인쇄면</td>
+        <td>
+          <select style="width:100%;">
+            <option value="">선택</option>
+            <option>양면</option>
+            <option>단면</option>
+          </select>
+        </td>
+        <td class="lbl2">부수</td>
+        <td><input type="text" placeholder="부수 입력"></td>
+      </tr>
+      <tr>
+        <td class="lbl">제본방식</td>
+        <td>
+          <select style="width:100%;">
+            <option value="">선택</option>
+            <option>무선제본</option>
+            <option>스프링</option>
+            <option>인쇄만</option>
+          </select>
+        </td>
+        <td class="lbl2"></td>
+        <td></td>
+      </tr>
+    </table>
+  </div>
+
   <!-- 예비 항목 -->
   <span class="reserve-toggle" onclick="var el=document.getElementById('reserveBox'); el.style.display = el.style.display==='none'?'block':'none';">▼ 예비항목 (1~10)</span>
   <div class="reserve-box" id="reserveBox" style="display:none;">
