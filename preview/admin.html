@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>업무관리 - 관리자</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
+.header { background: #1e293b; color: #fff; padding: 12px 24px; display: flex; justify-content: space-between; align-items: center; }
+.header h1 { font-size: 18px; }
+.header-right { display: flex; align-items: center; gap: 12px; font-size: 13px; }
+.header-right a { color: #94a3b8; text-decoration: none; }
+.header-right a:hover { color: #fff; }
+.content { max-width: 900px; margin: 24px auto; }
+.card { background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); padding: 24px; margin-bottom: 20px; }
+.card h3 { font-size: 16px; color: #1e293b; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #e2e8f0; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { background: #f8fafc; padding: 10px; text-align: center; border-bottom: 2px solid #e2e8f0; color: #475569; }
+td { padding: 10px; text-align: center; border-bottom: 1px solid #f1f5f9; }
+.btn-sm { padding: 4px 12px; border: 1px solid #d1d5db; border-radius: 3px; background: #fff; font-size: 11px; cursor: pointer; color: #555; }
+.btn-sm.edit { color: #2563eb; border-color: #2563eb; }
+.btn-sm.del { color: #dc2626; border-color: #dc2626; }
+.btn-add { padding: 6px 16px; background: #2563eb; color: #fff; border: none; border-radius: 4px; font-size: 12px; cursor: pointer; }
+.form-inline { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
+.form-inline input { padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 13px; }
+.badge-admin { background: #fef3c7; color: #92400e; padding: 2px 8px; border-radius: 10px; font-size: 11px; }
+.badge-user { background: #eff6ff; color: #1d4ed8; padding: 2px 8px; border-radius: 10px; font-size: 11px; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>업무관리 시스템 - 관리자</h1>
+  <div class="header-right">
+    <span>정형호님 (관리자)</span>
+    <a href="list.html">목록</a>
+    <a href="index.html">로그아웃</a>
+  </div>
+</div>
+
+<div class="content">
+  <!-- 사용자 관리 -->
+  <div class="card">
+    <h3>사용자 관리</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>순번</th>
+          <th>이름</th>
+          <th>권한</th>
+          <th>등록일</th>
+          <th>관리</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>1</td>
+          <td>정형호</td>
+          <td><span class="badge-admin">관리자</span></td>
+          <td>2026-03-01</td>
+          <td>-</td>
+        </tr>
+        <tr>
+          <td>2</td>
+          <td>김민수</td>
+          <td><span class="badge-user">사용자</span></td>
+          <td>2026-03-05</td>
+          <td>
+            <button class="btn-sm edit">수정</button>
+            <button class="btn-sm del">삭제</button>
+          </td>
+        </tr>
+        <tr>
+          <td>3</td>
+          <td>이지연</td>
+          <td><span class="badge-user">사용자</span></td>
+          <td>2026-03-05</td>
+          <td>
+            <button class="btn-sm edit">수정</button>
+            <button class="btn-sm del">삭제</button>
+          </td>
+        </tr>
+        <tr>
+          <td>4</td>
+          <td>박준혁</td>
+          <td><span class="badge-user">사용자</span></td>
+          <td>2026-03-10</td>
+          <td>
+            <button class="btn-sm edit">수정</button>
+            <button class="btn-sm del">삭제</button>
+          </td>
+        </tr>
+        <tr>
+          <td>5</td>
+          <td>최윤아</td>
+          <td><span class="badge-user">사용자</span></td>
+          <td>2026-03-12</td>
+          <td>
+            <button class="btn-sm edit">수정</button>
+            <button class="btn-sm del">삭제</button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="form-inline">
+      <input type="text" placeholder="이름 입력">
+      <button class="btn-add">+ 사용자 추가</button>
+      <span style="font-size:11px; color:#999;">비밀번호는 자동 적용됩니다</span>
+    </div>
+  </div>
+
+  <!-- 카테고리 관리 -->
+  <div class="card">
+    <h3>카테고리 관리</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>순번</th>
+          <th>카테고리명</th>
+          <th>관리</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>1</td>
+          <td>블랙카피</td>
+          <td>
+            <button class="btn-sm edit">수정</button>
+            <button class="btn-sm del">삭제</button>
+          </td>
+        </tr>
+        <tr>
+          <td>2</td>
+          <td>출력실</td>
+          <td>
+            <button class="btn-sm edit">수정</button>
+            <button class="btn-sm del">삭제</button>
+          </td>
+        </tr>
+        <tr>
+          <td>3</td>
+          <td>디자인실</td>
+          <td>
+            <button class="btn-sm edit">수정</button>
+            <button class="btn-sm del">삭제</button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="form-inline">
+      <input type="text" placeholder="카테고리명 입력">
+      <button class="btn-add">+ 카테고리 추가</button>
+    </div>
+  </div>
+
+  <!-- 품목테이블 형식 관리 -->
+  <div class="card">
+    <h3>품목 테이블 형식 관리</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>순번</th>
+          <th>형식명</th>
+          <th>컬럼</th>
+          <th>관리</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>1</td>
+          <td>책제본</td>
+          <td style="text-align:left; font-size:11px; color:#666;">순번, 품목명, 규격, 부수, 페이지수, 인쇄비, 제본비, 코팅비, 공급가, 부가세, 합계</td>
+          <td>
+            <button class="btn-sm edit">수정</button>
+          </td>
+        </tr>
+        <tr>
+          <td>2</td>
+          <td>낱장인쇄</td>
+          <td style="text-align:left; font-size:11px; color:#999;">(미설정)</td>
+          <td>
+            <button class="btn-sm edit">수정</button>
+          </td>
+        </tr>
+        <tr>
+          <td>3</td>
+          <td>일반형식</td>
+          <td style="text-align:left; font-size:11px; color:#999;">(미설정)</td>
+          <td>
+            <button class="btn-sm edit">수정</button>
+          </td>
+        </tr>
+        <tr>
+          <td>4</td>
+          <td>예비1</td>
+          <td style="text-align:left; font-size:11px; color:#999;">(미설정)</td>
+          <td>
+            <button class="btn-sm edit">수정</button>
+          </td>
+        </tr>
+        <tr>
+          <td>5</td>
+          <td>예비2</td>
+          <td style="text-align:left; font-size:11px; color:#999;">(미설정)</td>
+          <td>
+            <button class="btn-sm edit">수정</button>
+          </td>
+        </tr>
+        <tr>
+          <td>6</td>
+          <td>예비3</td>
+          <td style="text-align:left; font-size:11px; color:#999;">(미설정)</td>
+          <td>
+            <button class="btn-sm edit">수정</button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+</body>
+</html>

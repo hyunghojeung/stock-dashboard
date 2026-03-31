@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>업무관리 - 로그인</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Malgun Gothic', sans-serif; background: #f0f2f5; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+.login-box { background: #fff; padding: 40px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); width: 360px; text-align: center; }
+.login-box h1 { font-size: 24px; color: #333; margin-bottom: 8px; }
+.login-box p { color: #888; font-size: 13px; margin-bottom: 30px; }
+.login-box label { display: block; text-align: left; font-size: 13px; color: #555; margin-bottom: 6px; }
+.login-box input { width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; margin-bottom: 20px; }
+.login-box button { width: 100%; padding: 12px; background: #2563eb; color: #fff; border: none; border-radius: 4px; font-size: 15px; cursor: pointer; }
+.login-box button:hover { background: #1d4ed8; }
+.user-list { margin-top: 20px; text-align: left; }
+.user-list span { display: inline-block; background: #f0f2f5; padding: 4px 12px; margin: 3px; border-radius: 12px; font-size: 12px; color: #555; cursor: pointer; }
+.user-list span:hover { background: #2563eb; color: #fff; }
+</style>
+</head>
+<body>
+<div class="login-box">
+  <h1>업무관리 시스템</h1>
+  <p>등록된 이름을 입력하여 로그인하세요</p>
+  <label>이름</label>
+  <input type="text" placeholder="이름을 입력하세요" value="정형호">
+  <button onclick="location.href='list.html'">로그인</button>
+  <div class="user-list">
+    <p style="font-size:12px; color:#999; margin-bottom:8px;">등록된 사용자:</p>
+    <span onclick="location.href='list.html'">정형호(관리자)</span>
+    <span onclick="location.href='list.html'">김민수</span>
+    <span onclick="location.href='list.html'">이지연</span>
+    <span onclick="location.href='list.html'">박준혁</span>
+    <span onclick="location.href='list.html'">최윤아</span>
+  </div>
+</div>
+</body>
+</html>

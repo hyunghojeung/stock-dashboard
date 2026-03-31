@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>거래명세서</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
+.print-wrap { max-width: 800px; margin: 20px auto; background: #fff; padding: 40px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+.doc-no { font-size: 13px; color: #333; margin-bottom: 20px; }
+.doc-title { text-align: center; font-size: 28px; font-weight: 700; letter-spacing: 20px; margin-bottom: 30px; color: #1e293b; }
+.doc-info { display: flex; justify-content: space-between; margin-bottom: 20px; font-size: 13px; }
+.doc-info-left { flex: 1; }
+.doc-info-left p { margin-bottom: 6px; color: #333; }
+.supplier-table { border-collapse: collapse; font-size: 12px; }
+.supplier-table th, .supplier-table td { border: 1px solid #333; padding: 6px 10px; }
+.supplier-table th { background: #f8fafc; text-align: center; width: 70px; font-weight: 600; }
+.supplier-table td { min-width: 120px; }
+.supplier-label { writing-mode: vertical-rl; text-align: center; font-weight: 700; background: #f8fafc; padding: 4px; letter-spacing: 6px; }
+.desc-text { text-align: center; font-size: 15px; margin: 24px 0; color: #333; }
+.item-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
+.item-table th { background: #f0f2f5; padding: 8px; border: 1px solid #333; text-align: center; font-weight: 600; }
+.item-table td { padding: 8px; border: 1px solid #ccc; text-align: center; min-height: 30px; }
+.item-table .amount { text-align: right; }
+.total-section { display: flex; justify-content: flex-end; margin-top: 16px; font-size: 14px; font-weight: 700; }
+.total-section table { border-collapse: collapse; }
+.total-section th, .total-section td { border: 1px solid #333; padding: 8px 16px; }
+.total-section th { background: #f0f2f5; }
+.btn-bar { max-width: 800px; margin: 0 auto; padding: 16px 0; display: flex; gap: 8px; }
+.btn-bar button { padding: 8px 24px; border-radius: 4px; font-size: 13px; cursor: pointer; border: none; }
+.btn-print { background: #2563eb; color: #fff; }
+.btn-email { background: #374151; color: #fff; }
+.btn-excel { background: #059669; color: #fff; }
+.btn-close { background: #fff; color: #555; border: 1px solid #d1d5db !important; }
+.email-area { max-width: 800px; margin: 0 auto 10px; display: flex; gap: 8px; align-items: center; font-size: 13px; }
+.email-area input { padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 13px; width: 280px; }
+@media print {
+  .btn-bar, .email-area { display: none; }
+  body { background: #fff; }
+  .print-wrap { box-shadow: none; margin: 0; padding: 20px; }
+}
+</style>
+</head>
+<body>
+
+<div class="btn-bar">
+  <button class="btn-print" onclick="window.print()">인쇄</button>
+  <button class="btn-email">Email</button>
+  <button class="btn-excel">Excel</button>
+  <button class="btn-close" onclick="window.close()">닫기</button>
+</div>
+<div class="email-area">
+  <label>수신 이메일:</label>
+  <input type="email" placeholder="이메일 주소를 입력하세요">
+  <button style="padding:6px 14px; background:#374151; color:#fff; border:none; border-radius:4px; font-size:12px; cursor:pointer;">발송</button>
+  <span style="color:#999; font-size:11px;">발신: pwindow@naver.com</span>
+</div>
+
+<div class="print-wrap">
+  <div class="doc-no">No. 20260325-6</div>
+  <div class="doc-title">거 래 명 세 서</div>
+
+  <div class="doc-info">
+    <div class="doc-info-left">
+      <p><strong>견적일: 2026년 03월 25일</strong></p>
+      <p><strong>업체명: 커뮤니크 귀하</strong></p>
+      <br>
+      <p style="font-size:15px;">아래와 같이 납품합니다.</p>
+    </div>
+    <div>
+      <table class="supplier-table">
+        <tr>
+          <td rowspan="5" class="supplier-label">공<br>급<br>자</td>
+          <th>등록번호</th>
+          <td colspan="3">114-04-56136</td>
+        </tr>
+        <tr>
+          <th>상호(법인명)</th>
+          <td>인쇄의장</td>
+          <th>성명</th>
+          <td style="position:relative;">
+            <span style="color:#c00; font-size:11px;">[직인]</span>
+          </td>
+        </tr>
+        <tr>
+          <th>주소</th>
+          <td colspan="3">서울특별시 용산구 한강로2가 74-2 성산빌딩2층</td>
+        </tr>
+        <tr>
+          <th>업태</th>
+          <td>서비스, 제조</td>
+          <th>종목</th>
+          <td>출판, 인쇄, 기획</td>
+        </tr>
+        <tr>
+          <th>TEL / E-mail</th>
+          <td colspan="3">02-793-4332 / pwindow@naver.com</td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <table class="item-table">
+    <thead>
+      <tr>
+        <th style="width:50px;">순번</th>
+        <th>품목명(규격)</th>
+        <th style="width:60px;">수량</th>
+        <th style="width:80px;">단가</th>
+        <th style="width:100px;">공급가액</th>
+        <th style="width:80px;">부가세</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>1</td>
+        <td style="text-align:left; padding-left:12px;">에스트라 5cm원형스티커 50개 제작</td>
+        <td>50</td>
+        <td class="amount"></td>
+        <td class="amount">54,545</td>
+        <td class="amount">5,455</td>
+      </tr>
+      <tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td></tr>
+      <tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td></tr>
+      <tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td></tr>
+      <tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td></tr>
+      <tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td></tr>
+      <tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td></tr>
+      <tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td></tr>
+    </tbody>
+  </table>
+
+  <div class="total-section">
+    <table>
+      <tr>
+        <th>공급가액 합계</th>
+        <td style="text-align:right;">54,545</td>
+        <th>부가세 합계</th>
+        <td style="text-align:right;">5,455</td>
+        <th>총 합계</th>
+        <td style="text-align:right; font-weight:700;">60,000</td>
+      </tr>
+    </table>
+  </div>
+</div>
+</body>
+</html>
