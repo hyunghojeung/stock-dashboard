@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>업무관리 - 발주서</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
+.header { background: #1e293b; color: #fff; padding: 12px 24px; display: flex; justify-content: space-between; align-items: center; }
+.header h1 { font-size: 18px; }
+.header-right { display: flex; align-items: center; gap: 12px; font-size: 13px; }
+.header-right a { color: #94a3b8; text-decoration: none; }
+.header-right a:hover { color: #fff; }
+.content { max-width: 1000px; margin: 20px auto; }
+
+/* 리스트 */
+.toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px; }
+.date-range { display: flex; align-items: center; gap: 4px; font-size: 12px; }
+.date-range input { padding: 5px 8px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 12px; }
+.toolbar-btns { display: flex; gap: 6px; }
+.btn-new { padding: 8px 20px; background: #374151; color: #fff; border: none; border-radius: 4px; font-size: 13px; cursor: pointer; text-decoration: none; }
+.btn-new:hover { background: #1f2937; }
+.btn-list-back { padding: 8px 20px; background: #2563eb; color: #fff; border: none; border-radius: 4px; font-size: 13px; cursor: pointer; text-decoration: none; }
+.board-table { width: 100%; border-collapse: collapse; background: #fff; font-size: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); border-radius: 6px; overflow: hidden; }
+.board-table thead th { background: #f8fafc; padding: 9px 6px; text-align: center; border-bottom: 2px solid #e2e8f0; color: #475569; font-weight: 600; white-space: nowrap; }
+.board-table tbody td { padding: 8px 6px; text-align: center; border-bottom: 1px solid #f1f5f9; color: #334155; }
+.board-table tbody tr:hover { background: #f8fafc; }
+.td-left { text-align: left !important; }
+.row-link { color: #334155; text-decoration: none; cursor: pointer; }
+.row-link:hover { color: #2563eb; text-decoration: underline; }
+.btn-print-sm { padding: 3px 8px; background: #dc2626; color: #fff; border: none; border-radius: 3px; font-size: 11px; cursor: pointer; }
+.pagination { text-align: center; padding: 16px; font-size: 13px; color: #666; }
+.pagination a { display: inline-block; padding: 4px 10px; margin: 0 2px; border: 1px solid #d1d5db; border-radius: 3px; text-decoration: none; color: #555; }
+.pagination a.active { background: #374151; color: #fff; border-color: #374151; }
+
+/* 입력 폼 */
+.form-box { background: #fff; border: 1px solid #d1d5db; border-radius: 4px; padding: 16px 20px; margin-bottom: 12px; }
+.form-table { width: 100%; border-collapse: collapse; }
+.form-table td { padding: 5px 4px; vertical-align: middle; font-size: 13px; color: #333; }
+.form-table .lbl { width: 70px; font-weight: 600; color: #555; white-space: nowrap; font-size: 12px; }
+.form-table .lbl2 { width: 60px; font-weight: 600; color: #555; white-space: nowrap; font-size: 12px; text-align: right; padding-right: 8px; }
+.form-table input[type="text"], .form-table select { padding: 5px 8px; border: 1px solid #d1d5db; border-radius: 3px; font-size: 13px; font-family: inherit; }
+.form-table input[type="text"] { width: 100%; }
+.form-table textarea { width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 3px; font-size: 13px; font-family: inherit; min-height: 80px; resize: vertical; }
+.input-readonly { background: #f5f6fa; color: #999; }
+
+/* 품목 테이블 */
+.item-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 10px; }
+.item-table th { background: #f0f2f5; padding: 7px 4px; border: 1px solid #d1d5db; color: #475569; font-weight: 600; text-align: center; font-size: 11px; }
+.item-table td { padding: 3px 2px; border: 1px solid #e2e8f0; text-align: center; }
+.item-table input { width: 100%; padding: 4px 3px; border: 1px solid #e5e7eb; border-radius: 2px; font-size: 12px; text-align: center; }
+.btn-add-row { padding: 3px 10px; border: 1px solid #d1d5db; border-radius: 3px; background: #fff; font-size: 11px; cursor: pointer; color: #555; }
+.total-row td { background: #f8fafc; font-weight: 700; font-size: 12px; }
+.btn-bar { display: flex; gap: 6px; align-items: center; padding: 10px 0; }
+.btn-bar button, .btn-bar a { padding: 7px 24px; border-radius: 4px; font-size: 13px; cursor: pointer; border: 1px solid #d1d5db; background: #fff; color: #333; text-decoration: none; }
+.btn-save { background: #374151 !important; color: #fff !important; border-color: #374151 !important; }
+.btn-del { background: #dc2626 !important; color: #fff !important; border-color: #dc2626 !important; }
+
+/* 인쇄 화면 */
+.print-wrap { max-width: 800px; margin: 20px auto; background: #fff; padding: 40px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+.print-title { text-align: center; font-size: 28px; font-weight: 700; letter-spacing: 20px; margin-bottom: 24px; }
+.print-info { display: flex; justify-content: space-between; margin-bottom: 16px; font-size: 13px; }
+.print-info-left p { margin-bottom: 4px; }
+.supplier-table { border-collapse: collapse; font-size: 12px; }
+.supplier-table th, .supplier-table td { border: 1px solid #333; padding: 5px 8px; }
+.supplier-table th { background: #f8fafc; text-align: center; font-weight: 600; }
+.print-orderer { text-align: center; font-size: 14px; margin: 16px 0; padding: 8px; border: 1px solid #ddd; }
+.print-memo { font-size: 14px; margin: 16px 0; line-height: 1.6; }
+.print-item-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 16px; }
+.print-item-table th { background: #f0f2f5; padding: 8px; border: 1px solid #333; text-align: center; font-weight: 600; }
+.print-item-table td { padding: 8px; border: 1px solid #ccc; text-align: center; min-height: 28px; }
+.print-total { margin-top: 0; }
+.print-total td { background: #1e293b; color: #fff; padding: 8px 12px; font-weight: 700; font-size: 13px; }
+.print-total td.val { text-align: right; }
+.print-btn-bar { max-width: 800px; margin: 0 auto; padding: 12px 0; display: flex; gap: 8px; }
+.print-btn-bar button { padding: 8px 24px; border-radius: 4px; font-size: 13px; cursor: pointer; border: none; }
+.pbtn-print { background: #2563eb; color: #fff; }
+.pbtn-email { background: #374151; color: #fff; }
+.pbtn-close { background: #fff; color: #555; border: 1px solid #d1d5db !important; }
+.email-area { max-width: 800px; margin: 0 auto 8px; display: flex; gap: 8px; align-items: center; font-size: 13px; }
+.email-area input { padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 13px; width: 280px; }
+@media print { .print-btn-bar, .email-area, .header { display: none; } body { background: #fff; } .print-wrap { box-shadow: none; margin: 0; padding: 20px; } }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>업무관리 시스템 - 발주서</h1>
+  <div class="header-right">
+    <span>정형호님</span>
+    <a href="list.html">주문목록</a>
+    <a href="admin.html">관리자</a>
+    <a href="index.html">로그아웃</a>
+  </div>
+</div>
+
+<div class="content">
+
+  <!-- ===== 리스트 화면 ===== -->
+  <div id="listView">
+    <div class="toolbar">
+      <div class="date-range">
+        <input type="date" value="2025-04-01"> <span>~</span> <input type="date" value="2026-04-01">
+      </div>
+      <div class="toolbar-btns">
+        <a href="list.html" class="btn-list-back">주문목록</a>
+        <button class="btn-new" onclick="showWrite()">+ 발주서 작성</button>
+      </div>
+    </div>
+    <table class="board-table">
+      <thead>
+        <tr>
+          <th style="width:30px;"></th>
+          <th>발주No.</th>
+          <th>일자-No.</th>
+          <th>거래처명</th>
+          <th>담당자명</th>
+          <th>용지종류 및 평량</th>
+          <th style="width:50px;">인쇄</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>1</td>
+          <td><a class="row-link" onclick="showView()">20260330002</a></td>
+          <td>2026/03/30 -2</td>
+          <td class="td-left">천지페이퍼</td>
+          <td>정형호</td>
+          <td class="td-left">드라이보루지 1800g [0] 외 2건</td>
+          <td><button class="btn-print-sm" onclick="showPrint()">인쇄</button></td>
+        </tr>
+        <tr>
+          <td>2</td>
+          <td><a class="row-link" onclick="showView()">20260330001</a></td>
+          <td>2026/03/30 -1</td>
+          <td class="td-left">천지페이퍼</td>
+          <td>정형호</td>
+          <td class="td-left">드라이보루지 1800g [0] 외 1건</td>
+          <td><button class="btn-print-sm" onclick="showPrint()">인쇄</button></td>
+        </tr>
+        <tr>
+          <td>3</td>
+          <td><a class="row-link" onclick="showView()">20260327001</a></td>
+          <td>2026/03/27 -1</td>
+          <td class="td-left">(주)대흥지류</td>
+          <td>백승한</td>
+          <td class="td-left">100g 미색모조 [자가]</td>
+          <td><button class="btn-print-sm" onclick="showPrint()">인쇄</button></td>
+        </tr>
+        <tr>
+          <td>4</td>
+          <td><a class="row-link" onclick="showView()">20260324002</a></td>
+          <td>2026/03/24 -2</td>
+          <td class="td-left">(주)대흥지류</td>
+          <td>백승한</td>
+          <td class="td-left">150g스노우 [자가] 외 1건</td>
+          <td><button class="btn-print-sm" onclick="showPrint()">인쇄</button></td>
+        </tr>
+        <tr>
+          <td>5</td>
+          <td><a class="row-link" onclick="showView()">20260324001</a></td>
+          <td>2026/03/24 -1</td>
+          <td class="td-left">(주)대흥지류</td>
+          <td>백승한</td>
+          <td class="td-left">250g 스노우 [자가]</td>
+          <td><button class="btn-print-sm" onclick="showPrint()">인쇄</button></td>
+        </tr>
+        <tr>
+          <td>6</td>
+          <td><a class="row-link" onclick="showView()">20260319001</a></td>
+          <td>2026/03/19 -1</td>
+          <td class="td-left">(주)대흥지류</td>
+          <td>백승한</td>
+          <td class="td-left">150g스노우 [자가] 외 1건</td>
+          <td><button class="btn-print-sm" onclick="showPrint()">인쇄</button></td>
+        </tr>
+        <tr>
+          <td>7</td>
+          <td><a class="row-link" onclick="showView()">20260316001</a></td>
+          <td>2026/03/16 -1</td>
+          <td class="td-left">(주)대흥지류</td>
+          <td>백승한</td>
+          <td class="td-left">아르떼 190g 고백색 [자가]</td>
+          <td><button class="btn-print-sm" onclick="showPrint()">인쇄</button></td>
+        </tr>
+        <tr>
+          <td>8</td>
+          <td><a class="row-link" onclick="showView()">20260311001</a></td>
+          <td>2026/03/11 -1</td>
+          <td class="td-left">(주)대흥지류</td>
+          <td>백승한</td>
+          <td class="td-left">100g 모조 백색 [자가]</td>
+          <td><button class="btn-print-sm" onclick="showPrint()">인쇄</button></td>
+        </tr>
+        <tr>
+          <td>9</td>
+          <td><a class="row-link" onclick="showView()">20260303001</a></td>
+          <td>2026/03/03 -1</td>
+          <td class="td-left">(주)대흥지류</td>
+          <td>백승한</td>
+          <td class="td-left">100g 모조 백색 [자가]</td>
+          <td><button class="btn-print-sm" onclick="showPrint()">인쇄</button></td>
+        </tr>
+        <tr>
+          <td>10</td>
+          <td><a class="row-link" onclick="showView()">20260224001</a></td>
+          <td>2026/02/24 -1</td>
+          <td class="td-left">(주)대흥지류</td>
+          <td>백승한</td>
+          <td class="td-left">100g 모조 백색 [자가] 외 1건</td>
+          <td><button class="btn-print-sm" onclick="showPrint()">인쇄</button></td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="pagination">
+      <a href="#" class="active">1</a>
+      <a href="#">2</a>
+      <a href="#">3</a>
+      <a href="#">4</a>
+      <a href="#">5</a>
+      <span style="margin-left:8px;">/ 5 페이지</span>
+    </div>
+  </div>
+
+  <!-- ===== 입력/수정 화면 ===== -->
+  <div id="writeView" style="display:none;">
+    <div style="font-size:16px; font-weight:700; color:#1e293b; margin-bottom:12px;">발주서입력</div>
+    <div class="form-box">
+      <table class="form-table">
+        <tr>
+          <td class="lbl">발주No.</td>
+          <td><input type="text" value="저장시점에 생성됩니다." class="input-readonly" readonly></td>
+          <td class="lbl2">일자</td>
+          <td style="white-space:nowrap;">
+            <select style="width:70px;"><option>2026</option></select> /
+            <select style="width:55px;"><option>4월</option></select> /
+            <input type="text" value="01" style="width:40px; text-align:center;">
+          </td>
+        </tr>
+        <tr>
+          <td class="lbl">거래처</td>
+          <td><input type="text" placeholder="거래처" value="천지페이퍼"></td>
+          <td class="lbl2">발주자</td>
+          <td><input type="text" placeholder="발주자" value="정형호"></td>
+        </tr>
+        <tr>
+          <td class="lbl">연락처</td>
+          <td><input type="text" placeholder="연락처" value="010-2040-4719"></td>
+          <td class="lbl2">납기일자</td>
+          <td style="white-space:nowrap;">
+            <select style="width:70px;"><option>2026</option></select> /
+            <select style="width:55px;"><option>4월</option></select> /
+            <input type="text" value="01" style="width:40px; text-align:center;">
+          </td>
+        </tr>
+        <tr>
+          <td class="lbl" style="vertical-align:top; padding-top:8px;">요청사항</td>
+          <td colspan="3">
+            <textarea placeholder="요청사항을 입력하세요">오후에 가져갈 예정입니다.</textarea>
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- 품목 테이블 -->
+    <div style="display:flex; justify-content:flex-end; margin-bottom:6px;">
+      <button class="btn-add-row">+ 행 추가</button>
+    </div>
+    <table class="item-table">
+      <thead>
+        <tr>
+          <th style="width:35px;">순번</th>
+          <th>품목명</th>
+          <th style="width:90px;">규격(원지)</th>
+          <th style="width:70px;">종이결</th>
+          <th style="width:80px;">재단코기</th>
+          <th style="width:80px;">주문수량</th>
+          <th style="width:70px;">입고</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>1</td>
+          <td><input type="text" value="드라이보루지 1800g" style="text-align:left;"></td>
+          <td><input type="text" value="4x6전지"></td>
+          <td><input type="text" value="종목"></td>
+          <td><input type="text" value="701x310"></td>
+          <td><input type="text" value="전지20장"></td>
+          <td><input type="text"></td>
+        </tr>
+        <tr>
+          <td>2</td>
+          <td><input type="text" value="드라이보루지 1800g" style="text-align:left;"></td>
+          <td><input type="text" value="4x6전지"></td>
+          <td><input type="text" value="종목"></td>
+          <td><input type="text" value="741x310"></td>
+          <td><input type="text" value="전지40장"></td>
+          <td><input type="text"></td>
+        </tr>
+        <tr>
+          <td>3</td>
+          <td><input type="text" value="드라이보루지 1800g" style="text-align:left;"></td>
+          <td><input type="text" value="국전"></td>
+          <td><input type="text" value="종목"></td>
+          <td><input type="text" value="635x310"></td>
+          <td><input type="text" value="전지40장"></td>
+          <td><input type="text"></td>
+        </tr>
+        <tr><td>4</td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td></tr>
+        <tr><td>5</td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td></tr>
+      </tbody>
+    </table>
+
+    <div class="btn-bar">
+      <button class="btn-save" onclick="showListView()">저장</button>
+      <button onclick="showListView()">다시 작성</button>
+      <button onclick="showListView()">리스트</button>
+      <button class="btn-del" onclick="showListView()">삭제</button>
+    </div>
+  </div>
+
+  <!-- ===== 인쇄 화면 ===== -->
+  <div id="printView" style="display:none;">
+    <div class="print-btn-bar">
+      <button class="pbtn-print" onclick="window.print()">인쇄</button>
+      <button class="pbtn-email">Email</button>
+      <button class="pbtn-close" onclick="showListView()">닫기</button>
+    </div>
+    <div class="email-area">
+      <label>수신 이메일:</label>
+      <input type="email" placeholder="이메일 주소를 입력하세요">
+      <button style="padding:6px 14px; background:#374151; color:#fff; border:none; border-radius:4px; font-size:12px; cursor:pointer;">발송</button>
+      <span style="color:#999; font-size:11px;">발신: pwindow@naver.com</span>
+    </div>
+
+    <div class="print-wrap">
+      <div class="print-title">발 주 서</div>
+
+      <div class="print-info">
+        <div class="print-info-left">
+          <p><strong>일 자</strong>&nbsp;&nbsp; 2026년 03월 30일</p>
+          <p><strong>수 신</strong>&nbsp;&nbsp; 천지페이퍼 귀하</p>
+          <br>
+          <p><strong>발주번호</strong>&nbsp;&nbsp; 2026/03/30 -2</p>
+        </div>
+        <div>
+          <table class="supplier-table">
+            <tr><td colspan="2" style="text-align:center; font-weight:700; background:#f8fafc;">공급자정보</td></tr>
+            <tr><th>사업자등록번호</th><td>114-04-56136</td></tr>
+            <tr><th>상 호</th><td>인쇄의장</td></tr>
+            <tr><th>대표자</th><td>정형호</td></tr>
+            <tr><th>TEL / FAX</th><td>02-793-4332 / 027934338</td></tr>
+            <tr><th>주 소</th><td>서울특별시 용산구 한강로2가 74-2 성산빌딩 2층</td></tr>
+          </table>
+        </div>
+      </div>
+
+      <div class="print-orderer">인쇄의장 주문자: 정형호 &nbsp; 010-4548-4848</div>
+
+      <div class="print-memo">오후에 가져갈 예정입니다.</div>
+
+      <table class="print-item-table">
+        <thead>
+          <tr>
+            <th style="width:40px;">순번</th>
+            <th>품목명</th>
+            <th style="width:80px;">규격(원지)</th>
+            <th style="width:60px;">종이결</th>
+            <th style="width:80px;">주문수량</th>
+            <th style="width:80px;">재단사이즈</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1</td>
+            <td style="text-align:left; padding-left:8px;">드라이보루지 1800g</td>
+            <td>4x6전지</td>
+            <td>종목</td>
+            <td>전지20장</td>
+            <td>701x310</td>
+          </tr>
+          <tr>
+            <td>2</td>
+            <td style="text-align:left; padding-left:8px;">드라이보루지 1800g</td>
+            <td>4x6전지</td>
+            <td>종목</td>
+            <td>전지40장</td>
+            <td>741x310</td>
+          </tr>
+          <tr>
+            <td>3</td>
+            <td style="text-align:left; padding-left:8px;">드라이보루지 1800g</td>
+            <td>국전</td>
+            <td>종목</td>
+            <td>전지40장</td>
+            <td>635x310</td>
+          </tr>
+          <tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td></tr>
+          <tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td></tr>
+          <tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td></tr>
+          <tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td></tr>
+        </tbody>
+      </table>
+      <table class="print-item-table print-total" style="margin-top:0;">
+        <tr>
+          <td style="width:30%;"></td>
+          <td style="font-weight:700;">공급가액</td>
+          <td class="val" style="width:12%;">0</td>
+          <td style="font-weight:700;">VAT</td>
+          <td class="val" style="width:12%;">0</td>
+          <td style="font-weight:700;">합계</td>
+          <td class="val" style="width:12%;">0</td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function hideAll() {
+  document.getElementById('listView').style.display = 'none';
+  document.getElementById('writeView').style.display = 'none';
+  document.getElementById('printView').style.display = 'none';
+}
+function showListView() { hideAll(); document.getElementById('listView').style.display = 'block'; }
+function showWrite() { hideAll(); document.getElementById('writeView').style.display = 'block'; }
+function showView() { showWrite(); }
+function showPrint() { hideAll(); document.getElementById('printView').style.display = 'block'; }
+</script>
+</body>
+</html>
