@@ -55,6 +55,19 @@ body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
 .item-table .input-right { text-align: right; padding-right: 4px; }
 .total-row td { background: #f8fafc; font-weight: 700; font-size: 12px; }
 
+/* 거래처 검색 모달 */
+.client-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; }
+.client-modal-content { background: #fff; border-radius: 8px; padding: 24px; width: 90%; max-width: 650px; max-height: 80vh; overflow-y: auto; box-shadow: 0 4px 20px rgba(0,0,0,0.2); }
+.client-modal-content h4 { font-size: 16px; color: #1e293b; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 2px solid #e2e8f0; }
+.client-search-bar { display: flex; gap: 6px; margin-bottom: 12px; }
+.client-search-bar input { flex: 1; padding: 7px 10px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 13px; }
+.client-list-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.client-list-table th { background: #f8fafc; padding: 8px; border-bottom: 2px solid #e2e8f0; text-align: center; color: #475569; font-weight: 600; }
+.client-list-table td { padding: 8px; border-bottom: 1px solid #f1f5f9; text-align: center; cursor: pointer; }
+.client-list-table tr:hover td { background: #eff6ff; }
+.client-list-table .cl-left { text-align: left; }
+.client-modal-btns { margin-top: 12px; display: flex; gap: 6px; justify-content: flex-end; }
+
 /* 하단 버튼 */
 .btn-bar { display: flex; gap: 6px; align-items: center; padding: 10px 0; }
 .btn-bar button { padding: 7px 24px; border-radius: 4px; font-size: 13px; cursor: pointer; border: 1px solid #d1d5db; background: #fff; color: #333; }
@@ -98,7 +111,10 @@ body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
       </tr>
       <tr>
         <td class="lbl">거래처</td>
-        <td><input type="text" placeholder="거래처" value="커뮤니크"></td>
+        <td style="display:flex; gap:4px; align-items:center;">
+          <input id="clientName" type="text" placeholder="거래처" value="커뮤니크" style="flex:1;">
+          <button type="button" onclick="document.getElementById('clientModal').style.display='flex'" style="padding:4px 8px; background:#2563eb; color:#fff; border:none; border-radius:3px; font-size:11px; cursor:pointer; white-space:nowrap;">검색</button>
+        </td>
         <td class="lbl2">제품형태</td>
         <td><input type="text" placeholder="제품형태" value="유포지+원형컷팅"></td>
       </tr>
@@ -356,7 +372,85 @@ body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
     <button class="btn-del" onclick="location.href='list.html'">삭제</button>
   </div>
 </div>
+
+<!-- 거래처 검색 모달 -->
+<div class="client-modal" id="clientModal" onclick="if(event.target===this) this.style.display='none'">
+  <div class="client-modal-content">
+    <h4>거래처 검색</h4>
+    <div class="client-search-bar">
+      <input id="clientSearchInput" type="text" placeholder="거래처명을 입력하세요" oninput="filterClients()">
+    </div>
+    <table class="client-list-table">
+      <thead>
+        <tr>
+          <th>회사명</th>
+          <th>담당자</th>
+          <th>전화</th>
+          <th>핸드폰</th>
+          <th>이메일</th>
+        </tr>
+      </thead>
+      <tbody id="clientListBody">
+        <tr onclick="selectClient('커뮤니크','한지원','010-5324-6492')" class="client-row" data-name="커뮤니크">
+          <td class="cl-left">커뮤니크</td><td>한지원</td><td>02-1234-5678</td><td>010-5324-6492</td><td class="cl-left">hanjiwon@communique.co.kr</td>
+        </tr>
+        <tr onclick="selectClient('행정공제회','이현진','010-2204-4252')" class="client-row" data-name="행정공제회">
+          <td class="cl-left">행정공제회</td><td>이현진</td><td>02-2345-6789</td><td>010-2204-4252</td><td class="cl-left">lee@geps.or.kr</td>
+        </tr>
+        <tr onclick="selectClient('한화에어로스페이스','송승민 주임','010-8803-2799')" class="client-row" data-name="한화에어로스페이스">
+          <td class="cl-left">한화에어로스페이스</td><td>송승민 주임</td><td>02-3456-7890</td><td>010-8803-2799</td><td class="cl-left">song@hanwha.com</td>
+        </tr>
+        <tr onclick="selectClient('유니트플레이','','010-5651-0118')" class="client-row" data-name="유니트플레이">
+          <td class="cl-left">유니트플레이</td><td></td><td></td><td>010-5651-0118</td><td class="cl-left"></td>
+        </tr>
+        <tr onclick="selectClient('방위사업청','임은영 중령','02-2079-5112')" class="client-row" data-name="방위사업청">
+          <td class="cl-left">방위사업청</td><td>임은영 중령</td><td>02-2079-5112</td><td></td><td class="cl-left"></td>
+        </tr>
+        <tr onclick="selectClient('LS E-Link','박정길','010-8950-0248')" class="client-row" data-name="LS E-Link">
+          <td class="cl-left">LS E-Link</td><td>박정길</td><td></td><td>010-8950-0248</td><td class="cl-left">park@lselink.com</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="client-modal-btns">
+      <button onclick="document.getElementById('clientModal').style.display='none'" style="padding:6px 20px; background:#374151; color:#fff; border:none; border-radius:4px; font-size:12px; cursor:pointer;">닫기</button>
+    </div>
+  </div>
+</div>
+
 <script>
+// 거래처 선택
+function selectClient(name, person, phone) {
+  document.getElementById('clientName').value = name;
+  // 주문자, 연락처 자동 입력
+  var inputs = document.querySelectorAll('.form-table input[type="text"]');
+  inputs.forEach(function(inp) {
+    if (inp.placeholder === '주문자' && person) inp.value = person;
+    if (inp.placeholder === '연락처' && phone) inp.value = phone;
+  });
+  document.getElementById('clientModal').style.display = 'none';
+}
+
+// 거래처 검색 필터
+function filterClients() {
+  var keyword = document.getElementById('clientSearchInput').value.toLowerCase();
+  document.querySelectorAll('.client-row').forEach(function(row) {
+    var name = row.getAttribute('data-name').toLowerCase();
+    row.style.display = name.indexOf(keyword) >= 0 ? '' : 'none';
+  });
+}
+
+// 거래처 입력시 자동완성
+document.getElementById('clientName').addEventListener('input', function() {
+  var val = this.value.toLowerCase();
+  if (!val) return;
+  var clients = ['커뮤니크','행정공제회','한화에어로스페이스','유니트플레이','방위사업청','LS E-Link'];
+  var match = clients.find(function(c) { return c.toLowerCase().indexOf(val) === 0; });
+  if (match && match.toLowerCase() !== val) {
+    this.value = match;
+    this.setSelectionRange(val.length, match.length);
+  }
+});
+
 // 주문번호 자동 생성: 년월일-순번
 (function() {
   var today = new Date();
