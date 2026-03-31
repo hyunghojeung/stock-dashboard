@@ -80,17 +80,35 @@ body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
 .pbtn-close { background: #fff; color: #555; border: 1px solid #d1d5db !important; }
 .email-area { max-width: 800px; margin: 0 auto 8px; display: flex; gap: 8px; align-items: center; font-size: 13px; }
 .email-area input { padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 13px; width: 280px; }
-@media print { .print-btn-bar, .email-area, .header { display: none; } body { background: #fff; } .print-wrap { box-shadow: none; margin: 0; padding: 20px; } }
+@media print { .print-btn-bar, .email-area, .header, .top-fixed { display: none; } body { background: #fff; } .print-wrap { box-shadow: none; margin: 0; padding: 20px; } }
+.top-fixed { position: sticky; top: 0; z-index: 100; }
+.nav-bar { background: #fff; padding: 8px 24px; border-bottom: 1px solid #e2e8f0; display: flex; gap: 8px; align-items: center; justify-content: flex-end; }
+.nav-bar a { padding: 6px 16px; border-radius: 4px; font-size: 12px; text-decoration: none; color: #fff; }
+.notice-item { padding: 6px 24px; border-bottom: 1px solid #fee2e2; cursor: pointer; }
+.notice-item:hover { background: #fef2f2; }
+.notice-text { font-size: 16px; font-weight: 800; color: #dc2626; animation: blink 1s ease-in-out infinite; }
+@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.1; } }
 </style>
 </head>
 <body>
-<div class="header">
-  <h1>업무관리 시스템 - 발주서</h1>
-  <div class="header-right">
-    <span>정형호님</span>
-    <a href="list.html">발주목록</a>
-    <a href="admin.html">관리자</a>
-    <a href="index.html">로그아웃</a>
+<div class="top-fixed">
+  <div class="header">
+    <h1>업무관리 시스템</h1>
+    <div class="header-right">
+      <span>정형호님</span>
+      <a href="admin.html">관리자</a>
+      <a href="index.html">로그아웃</a>
+    </div>
+  </div>
+  <div style="background:#fff; border-bottom:1px solid #e2e8f0;">
+    <div class="notice-item"><span class="notice-text">긴급! 내일까지 커뮤니크 스티커 작업 완료 요망</span></div>
+    <div class="notice-item"><span class="notice-text">방위사업청 제본 작업 - 규격 변경 안내</span></div>
+  </div>
+  <div class="nav-bar">
+    <a href="list.html" style="background:#2563eb;">주문목록</a>
+    <a href="write.html" style="background:#2563eb;">+ 신규 작성</a>
+    <a href="order.html" style="background:#374151;">발주서</a>
+    <a href="memo.html" style="background:#059669;">작업메모</a>
   </div>
 </div>
 

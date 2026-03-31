@@ -43,6 +43,13 @@ body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
 .btn-save { padding: 8px 30px; background: #059669; color: #fff; border: none; border-radius: 4px; font-size: 13px; cursor: pointer; }
 .btn-cancel { padding: 8px 30px; background: #fff; color: #555; border: 1px solid #d1d5db; border-radius: 4px; font-size: 13px; cursor: pointer; }
 .btn-del { padding: 8px 30px; background: #dc2626; color: #fff; border: none; border-radius: 4px; font-size: 13px; cursor: pointer; }
+.top-fixed { position: sticky; top: 0; z-index: 100; }
+.nav-bar { background: #fff; padding: 8px 24px; border-bottom: 1px solid #e2e8f0; display: flex; gap: 8px; align-items: center; justify-content: flex-end; }
+.nav-bar a { padding: 6px 16px; border-radius: 4px; font-size: 12px; text-decoration: none; color: #fff; }
+.notice-item { padding: 6px 24px; border-bottom: 1px solid #fee2e2; cursor: pointer; }
+.notice-item:hover { background: #fef2f2; }
+.notice-text { font-size: 16px; font-weight: 800; color: #dc2626; animation: blink 1s ease-in-out infinite; }
+@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.1; } }
 
 /* 보기 */
 .view-box { background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); padding: 24px; display: none; }
@@ -53,13 +60,24 @@ body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
 </style>
 </head>
 <body>
-<div class="header">
-  <h1>업무관리 시스템 - 작업메모</h1>
-  <div class="header-right">
-    <span>정형호님</span>
-    <a href="list.html">목록</a>
-    <a href="admin.html">관리자</a>
-    <a href="index.html">로그아웃</a>
+<div class="top-fixed">
+  <div class="header">
+    <h1>업무관리 시스템</h1>
+    <div class="header-right">
+      <span>정형호님</span>
+      <a href="admin.html">관리자</a>
+      <a href="index.html">로그아웃</a>
+    </div>
+  </div>
+  <div style="background:#fff; border-bottom:1px solid #e2e8f0;">
+    <div class="notice-item"><span class="notice-text">긴급! 내일까지 커뮤니크 스티커 작업 완료 요망</span></div>
+    <div class="notice-item"><span class="notice-text">방위사업청 제본 작업 - 규격 변경 안내</span></div>
+  </div>
+  <div class="nav-bar">
+    <a href="list.html" style="background:#2563eb;">주문목록</a>
+    <a href="write.html" style="background:#2563eb;">+ 신규 작성</a>
+    <a href="order.html" style="background:#374151;">발주서</a>
+    <a href="memo.html" style="background:#059669;">작업메모</a>
   </div>
 </div>
 
