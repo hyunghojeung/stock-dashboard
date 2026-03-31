@@ -238,8 +238,8 @@ body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
           </td>
         </tr>
         <tr>
-          <td class="lbl">거래처</td>
-          <td><input type="text" placeholder="거래처" value="천지페이퍼"></td>
+          <td class="lbl"><button type="button" onclick="document.getElementById('orderClientModal').style.display='flex'" style="padding:3px 10px; background:#2563eb; color:#fff; border:none; border-radius:3px; font-size:11px; cursor:pointer;">거래처</button></td>
+          <td><input id="orderClientName" type="text" placeholder="거래처" value="천지페이퍼"></td>
           <td class="lbl2">발주자</td>
           <td><input type="text" placeholder="발주자" value="정형호"></td>
         </tr>
@@ -403,6 +403,27 @@ body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
     </div>
   </div>
 
+</div>
+
+<!-- 거래처 등록/검색 모달 -->
+<div id="orderClientModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; justify-content:center; align-items:center;" onclick="if(event.target===this) this.style.display='none'">
+  <div style="background:#fff; border-radius:8px; padding:24px; width:420px; box-shadow:0 4px 20px rgba(0,0,0,0.2);">
+    <h4 style="font-size:15px; color:#1e293b; margin-bottom:14px; padding-bottom:8px; border-bottom:2px solid #e2e8f0;">거래처 등록</h4>
+    <div style="display:grid; grid-template-columns:70px 1fr; gap:8px; align-items:center; font-size:13px;">
+      <span style="font-weight:600; color:#555; font-size:12px;">거래처명</span>
+      <input id="ocName" type="text" placeholder="거래처명" style="padding:6px 8px; border:1px solid #d1d5db; border-radius:4px; font-size:13px;">
+      <span style="font-weight:600; color:#555; font-size:12px;">전화</span>
+      <input id="ocPhone" type="text" placeholder="02-0000-0000" style="padding:6px 8px; border:1px solid #d1d5db; border-radius:4px; font-size:13px;">
+      <span style="font-weight:600; color:#555; font-size:12px;">팩스</span>
+      <input id="ocFax" type="text" placeholder="02-0000-0000" style="padding:6px 8px; border:1px solid #d1d5db; border-radius:4px; font-size:13px;">
+      <span style="font-weight:600; color:#555; font-size:12px;">이메일</span>
+      <input id="ocEmail" type="text" placeholder="email@example.com" style="padding:6px 8px; border:1px solid #d1d5db; border-radius:4px; font-size:13px;">
+    </div>
+    <div style="margin-top:14px; display:flex; gap:6px; justify-content:flex-end;">
+      <button onclick="var n=document.getElementById('ocName').value; if(n){document.getElementById('orderClientName').value=n;} document.getElementById('orderClientModal').style.display='none';" style="padding:6px 20px; background:#2563eb; color:#fff; border:none; border-radius:4px; font-size:12px; cursor:pointer;">등록</button>
+      <button onclick="document.getElementById('orderClientModal').style.display='none'" style="padding:6px 20px; background:#fff; color:#555; border:1px solid #d1d5db; border-radius:4px; font-size:12px; cursor:pointer;">닫기</button>
+    </div>
+  </div>
 </div>
 
 <script>
