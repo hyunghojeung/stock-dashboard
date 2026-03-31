@@ -59,15 +59,12 @@ a.row-link:hover { color: #2563eb; text-decoration: underline; }
 <div class="toolbar">
   <div style="display:flex; gap:16px; align-items:center; flex-wrap:wrap;">
     <div class="filters">
-      <button class="filter-btn active">전체</button>
-      <button class="filter-btn">블랙카피</button>
-      <button class="filter-btn">출력실</button>
-      <button class="filter-btn">디자인실</button>
-    </div>
-    <div class="filters">
-      <button class="filter-btn active">전체</button>
-      <button class="filter-btn">진행중</button>
-      <button class="filter-btn">완료</button>
+      <select style="padding:6px 10px; border:1px solid #d1d5db; border-radius:4px; font-size:12px;">
+        <option>전체</option>
+        <option>블랙카피</option>
+        <option>출력실</option>
+        <option>디자인실</option>
+      </select>
     </div>
   </div>
   <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
@@ -77,12 +74,6 @@ a.row-link:hover { color: #2563eb; text-decoration: underline; }
       <input type="date" value="2026-03-31">
     </div>
     <div class="search-area">
-      <select>
-        <option>업체명</option>
-        <option>주문자명</option>
-        <option>전화번호</option>
-        <option>제목</option>
-      </select>
       <input type="text" placeholder="검색어 입력">
       <button>검색</button>
     </div>
@@ -110,9 +101,9 @@ a.row-link:hover { color: #2563eb; text-decoration: underline; }
 <tbody>
 <tr>
   <td>1</td>
-  <td><a href="write.html" class="row-link">커뮤니크</a></td>
-  <td>한지원</td>
-  <td>010-5324-6492</td>
+  <td class="td-left"><a href="write.html" class="row-link">커뮤니크</a></td>
+  <td class="td-left">한지원</td>
+  <td class="td-left">010-5324-6492</td>
   <td class="td-left"><a href="write.html" class="row-link">에스트라 5cm원형 스티커 50개 제작</a></td>
   <td class="amount">60,000</td>
   <td>유포지+원형컷팅</td>
@@ -123,9 +114,9 @@ a.row-link:hover { color: #2563eb; text-decoration: underline; }
 </tr>
 <tr>
   <td>2</td>
-  <td>행정공제회</td>
-  <td>이현진</td>
-  <td>010-2204-4252</td>
+  <td class="td-left">행정공제회</td>
+  <td class="td-left">이현진</td>
+  <td class="td-left">010-2204-4252</td>
   <td class="td-left"><a href="write.html" class="row-link">에너지절약 실천을 위한 국민행동지침 포스터</a></td>
   <td class="amount">180,000</td>
   <td>반광인화지출력</td>
@@ -136,9 +127,9 @@ a.row-link:hover { color: #2563eb; text-decoration: underline; }
 </tr>
 <tr>
   <td>3</td>
-  <td>한화에어로스페이스</td>
-  <td>송승민 주임</td>
-  <td>010-8803-2799</td>
+  <td class="td-left">한화에어로스페이스</td>
+  <td class="td-left">송승민 주임</td>
+  <td class="td-left">010-8803-2799</td>
   <td class="td-left"><a href="write.html" class="row-link">K9자주포 2차 성능개량 체계개발 규격3차</a></td>
   <td class="amount">1,130,580</td>
   <td>무선</td>
@@ -149,9 +140,9 @@ a.row-link:hover { color: #2563eb; text-decoration: underline; }
 </tr>
 <tr>
   <td>4</td>
-  <td>경주이씨재사당공파노전종회</td>
-  <td>이재철</td>
-  <td>010-9354-3778</td>
+  <td class="td-left">경주이씨재사당공파노전종회</td>
+  <td class="td-left">이재철</td>
+  <td class="td-left">010-9354-3778</td>
   <td class="td-left"><a href="write.html" class="row-link">우리의 조상 팜플렛</a></td>
   <td class="amount">495,000</td>
   <td>중철</td>
@@ -162,9 +153,9 @@ a.row-link:hover { color: #2563eb; text-decoration: underline; }
 </tr>
 <tr>
   <td>5</td>
-  <td>유니트플레이</td>
-  <td></td>
-  <td>010-5651-0118</td>
+  <td class="td-left">유니트플레이</td>
+  <td class="td-left"></td>
+  <td class="td-left">010-5651-0118</td>
   <td class="td-left"><a href="write.html" class="row-link">유포지출력</a></td>
   <td class="amount">40,000</td>
   <td></td>
@@ -175,9 +166,9 @@ a.row-link:hover { color: #2563eb; text-decoration: underline; }
 </tr>
 <tr>
   <td>6</td>
-  <td>방위사업청</td>
-  <td>임은영 중령</td>
-  <td>02-2079-5112</td>
+  <td class="td-left">방위사업청</td>
+  <td class="td-left">임은영 중령</td>
+  <td class="td-left">02-2079-5112</td>
   <td class="td-left"><a href="write.html" class="row-link">★★RFP구축합(KDD)상세설계 및 선도합 건조</a></td>
   <td class="amount">500,280</td>
   <td>무선제본</td>
@@ -188,9 +179,9 @@ a.row-link:hover { color: #2563eb; text-decoration: underline; }
 </tr>
 <tr>
   <td>7</td>
-  <td>LS E-Link</td>
-  <td>박정길</td>
-  <td>010-8950-0248</td>
+  <td class="td-left">LS E-Link</td>
+  <td class="td-left">박정길</td>
+  <td class="td-left">010-8950-0248</td>
   <td class="td-left"><a href="write.html" class="row-link">LS E-Link 회사소개서</a></td>
   <td class="amount">990,000</td>
   <td>중철제본</td>
@@ -201,9 +192,9 @@ a.row-link:hover { color: #2563eb; text-decoration: underline; }
 </tr>
 <tr>
   <td>8</td>
-  <td>아모레 퍼시픽</td>
-  <td>한울팀 육인화</td>
-  <td>010-6773-6630</td>
+  <td class="td-left">아모레 퍼시픽</td>
+  <td class="td-left">한울팀 육인화</td>
+  <td class="td-left">010-6773-6630</td>
   <td class="td-left"><a href="write.html" class="row-link">드롭한울_최종인쇄파일</a></td>
   <td class="amount">48,000</td>
   <td>리플렛</td>
@@ -214,9 +205,9 @@ a.row-link:hover { color: #2563eb; text-decoration: underline; }
 </tr>
 <tr>
   <td>9</td>
-  <td>주식회사 환경NPS</td>
-  <td>김영인 선생님</td>
-  <td>010-4767-5136</td>
+  <td class="td-left">주식회사 환경NPS</td>
+  <td class="td-left">김영인 선생님</td>
+  <td class="td-left">010-4767-5136</td>
   <td class="td-left"><a href="write.html" class="row-link">분리배출 퍼즐 도무송 및 출력 2차</a></td>
   <td class="amount">884,500</td>
   <td>과천</td>
@@ -227,9 +218,9 @@ a.row-link:hover { color: #2563eb; text-decoration: underline; }
 </tr>
 <tr>
   <td>10</td>
-  <td>(주)고전정보통신</td>
-  <td>서선배대표</td>
-  <td>010-4788-0175</td>
+  <td class="td-left">(주)고전정보통신</td>
+  <td class="td-left">서선배대표</td>
+  <td class="td-left">010-4788-0175</td>
   <td class="td-left"><a href="write.html" class="row-link">(주)고전정보통신_명함2종</a></td>
   <td class="amount">71,060</td>
   <td>명함</td>
