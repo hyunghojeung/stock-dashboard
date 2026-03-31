@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>업무관리 - 글쓰기</title>
+<title>업무관리 - 주문서입력</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
@@ -11,34 +11,57 @@ body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
 .header h1 { font-size: 18px; }
 .header-right { display: flex; align-items: center; gap: 12px; font-size: 13px; }
 .header-right a { color: #94a3b8; text-decoration: none; }
-.content { max-width: 1100px; margin: 20px auto; background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); padding: 30px; }
-.content h2 { font-size: 18px; color: #1e293b; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 2px solid #e2e8f0; }
-.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 24px; }
-.form-group { display: flex; flex-direction: column; }
-.form-group.full { grid-column: 1 / -1; }
-.form-group label { font-size: 12px; color: #64748b; margin-bottom: 4px; font-weight: 600; }
-.form-group input, .form-group select, .form-group textarea { padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 13px; font-family: inherit; }
-.form-group textarea { min-height: 80px; resize: vertical; }
-.form-group input:focus, .form-group select:focus, .form-group textarea:focus { outline: none; border-color: #2563eb; }
-.section-title { font-size: 14px; font-weight: 600; color: #1e293b; margin: 24px 0 12px; padding: 8px 0; border-bottom: 1px solid #e2e8f0; grid-column: 1 / -1; }
-.attach-area { border: 2px dashed #d1d5db; border-radius: 6px; padding: 24px; text-align: center; color: #94a3b8; font-size: 13px; cursor: pointer; grid-column: 1 / -1; }
-.attach-area:hover { border-color: #2563eb; color: #2563eb; }
-.item-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
-.item-table th { background: #f8fafc; padding: 8px 6px; border: 1px solid #e2e8f0; color: #475569; font-weight: 600; text-align: center; }
-.item-table td { padding: 6px; border: 1px solid #e2e8f0; text-align: center; }
-.item-table input { width: 100%; padding: 5px 4px; border: 1px solid #e5e7eb; border-radius: 3px; font-size: 12px; text-align: center; }
-.item-table .input-right { text-align: right; }
-.item-table-wrap { grid-column: 1 / -1; margin-top: 10px; }
-.item-table-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-.item-table-header select { padding: 5px 10px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 12px; }
-.btn-add-row { padding: 4px 12px; border: 1px solid #d1d5db; border-radius: 3px; background: #fff; font-size: 11px; cursor: pointer; color: #555; }
-.total-row td { background: #f8fafc; font-weight: 700; }
-.btn-area { grid-column: 1 / -1; display: flex; justify-content: center; gap: 10px; margin-top: 20px; padding-top: 20px; border-top: 1px solid #e2e8f0; }
-.btn-save { padding: 10px 40px; background: #2563eb; color: #fff; border: none; border-radius: 4px; font-size: 14px; cursor: pointer; }
-.btn-save:hover { background: #1d4ed8; }
-.btn-cancel { padding: 10px 40px; background: #fff; color: #555; border: 1px solid #d1d5db; border-radius: 4px; font-size: 14px; cursor: pointer; }
-.btn-cancel:hover { background: #f5f6fa; }
-.btn-delete { padding: 10px 40px; background: #dc2626; color: #fff; border: none; border-radius: 4px; font-size: 14px; cursor: pointer; }
+.header-right a:hover { color: #fff; }
+
+.page-wrap { max-width: 1100px; margin: 16px auto; }
+.page-title { font-size: 16px; font-weight: 700; color: #1e293b; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+
+/* 입력 폼 영역 */
+.form-box { background: #fff; border: 1px solid #d1d5db; border-radius: 4px; padding: 16px 20px; margin-bottom: 12px; }
+.form-table { width: 100%; border-collapse: collapse; }
+.form-table td { padding: 5px 4px; vertical-align: middle; font-size: 13px; color: #333; }
+.form-table .lbl { width: 70px; font-weight: 600; color: #555; white-space: nowrap; font-size: 12px; }
+.form-table .lbl2 { width: 60px; font-weight: 600; color: #555; white-space: nowrap; font-size: 12px; text-align: right; padding-right: 8px; }
+.form-table input[type="text"],
+.form-table input[type="date"],
+.form-table select { padding: 5px 8px; border: 1px solid #d1d5db; border-radius: 3px; font-size: 13px; font-family: inherit; }
+.form-table input[type="text"] { width: 100%; }
+.form-table select { min-width: 140px; }
+.form-table textarea { width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 3px; font-size: 13px; font-family: inherit; min-height: 70px; resize: vertical; }
+.form-table input:focus, .form-table select:focus, .form-table textarea:focus { outline: none; border-color: #2563eb; }
+.input-readonly { background: #f5f6fa; color: #999; }
+
+/* 첨부 영역 */
+.attach-row { border: 1px dashed #ccc; border-radius: 4px; padding: 10px; text-align: center; color: #aaa; font-size: 12px; cursor: pointer; }
+.attach-row:hover { border-color: #2563eb; color: #2563eb; }
+
+/* 예비항목 접기 */
+.reserve-toggle { font-size: 12px; color: #2563eb; cursor: pointer; margin: 8px 0; display: inline-block; }
+.reserve-box { background: #fafbfc; border: 1px solid #e5e7eb; border-radius: 4px; padding: 12px 16px; margin-bottom: 12px; }
+.reserve-grid { display: grid; grid-template-columns: 70px 1fr 70px 1fr; gap: 5px 8px; align-items: center; font-size: 12px; }
+.reserve-grid .rlbl { font-weight: 600; color: #888; }
+.reserve-grid input { padding: 4px 6px; border: 1px solid #d1d5db; border-radius: 3px; font-size: 12px; width: 100%; }
+
+/* 품목 테이블 */
+.item-section { background: #fff; border: 1px solid #d1d5db; border-radius: 4px; padding: 12px; margin-bottom: 12px; }
+.item-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.item-header select { padding: 5px 10px; border: 1px solid #d1d5db; border-radius: 3px; font-size: 12px; }
+.btn-add-row { padding: 3px 10px; border: 1px solid #d1d5db; border-radius: 3px; background: #fff; font-size: 11px; cursor: pointer; color: #555; }
+.btn-add-row:hover { background: #eff6ff; border-color: #2563eb; color: #2563eb; }
+.item-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.item-table th { background: #f0f2f5; padding: 7px 4px; border: 1px solid #d1d5db; color: #475569; font-weight: 600; text-align: center; font-size: 11px; }
+.item-table td { padding: 3px 2px; border: 1px solid #e2e8f0; text-align: center; }
+.item-table input { width: 100%; padding: 4px 3px; border: 1px solid #e5e7eb; border-radius: 2px; font-size: 12px; text-align: center; }
+.item-table .input-right { text-align: right; padding-right: 4px; }
+.total-row td { background: #f8fafc; font-weight: 700; font-size: 12px; }
+
+/* 하단 버튼 */
+.btn-bar { display: flex; gap: 6px; align-items: center; padding: 10px 0; }
+.btn-bar button { padding: 7px 24px; border-radius: 4px; font-size: 13px; cursor: pointer; border: 1px solid #d1d5db; background: #fff; color: #333; }
+.btn-save { background: #2563eb !important; color: #fff !important; border-color: #2563eb !important; }
+.btn-save:hover { background: #1d4ed8 !important; }
+.btn-del { background: #dc2626 !important; color: #fff !important; border-color: #dc2626 !important; }
+.btn-bar button:hover { background: #f5f6fa; }
 </style>
 </head>
 <body>
@@ -51,246 +74,218 @@ body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
   </div>
 </div>
 
-<div class="content">
-  <h2>주문서 입력</h2>
-  <div class="form-grid">
-    <div class="form-group">
-      <label>주문 No.</label>
-      <input type="text" value="20260325-8" readonly style="background:#f0f2f5; color:#888;">
-    </div>
-    <div class="form-group">
-      <label>작성일</label>
-      <input type="date" value="2026-03-25">
-    </div>
-    <div class="form-group">
-      <label>카테고리</label>
-      <select>
-        <option>블랙카피</option>
-        <option>출력실</option>
-        <option>디자인실</option>
-      </select>
-    </div>
-    <div class="form-group">
-      <label>진행상태</label>
-      <select>
-        <option>진행중</option>
-        <option>완료</option>
-      </select>
-    </div>
-    <div class="form-group">
-      <label>주문자</label>
-      <input type="text" placeholder="주문자" value="한지원">
-    </div>
-    <div class="form-group">
-      <label>연락처</label>
-      <input type="text" placeholder="연락처" value="010-5324-6492">
-    </div>
-    <div class="form-group">
-      <label>거래처</label>
-      <input type="text" placeholder="거래처(업체명)" value="커뮤니크">
-    </div>
-    <div class="form-group">
-      <label>제품형태</label>
-      <input type="text" placeholder="자유입력" value="유포지+원형컷팅">
-    </div>
-    <div class="form-group">
-      <label>제목</label>
-      <input type="text" placeholder="제목" value="에스트라 5cm원형 스티커 50개 제작">
-    </div>
-    <div class="form-group">
-      <label>거래유형</label>
-      <select>
-        <option>부가세율 적용</option>
-      </select>
-    </div>
-    <div class="form-group">
-      <label>선급</label>
-      <input type="text" placeholder="선급금액">
-    </div>
-    <div class="form-group">
-      <label>납기일자</label>
-      <input type="date" value="2026-03-26">
-    </div>
-    <div class="form-group">
-      <label>세금계산서</label>
-      <input type="text" placeholder="발행일 직접 입력">
-    </div>
-    <div class="form-group">
-      <label>결제</label>
-      <input type="text" placeholder="결제 정보">
-    </div>
+<div class="page-wrap">
+  <div class="page-title">주문서입력</div>
 
-    <!-- 예비 항목 -->
-    <div class="section-title">예비 항목</div>
-    <div class="form-group">
-      <label>예비1</label>
-      <input type="text" placeholder="">
-    </div>
-    <div class="form-group">
-      <label>예비2</label>
-      <input type="text" placeholder="">
-    </div>
-    <div class="form-group">
-      <label>예비3</label>
-      <input type="text" placeholder="">
-    </div>
-    <div class="form-group">
-      <label>예비4</label>
-      <input type="text" placeholder="">
-    </div>
-    <div class="form-group">
-      <label>예비5</label>
-      <input type="text" placeholder="">
-    </div>
-    <div class="form-group">
-      <label>예비6</label>
-      <input type="text" placeholder="">
-    </div>
-    <div class="form-group">
-      <label>예비7</label>
-      <input type="text" placeholder="">
-    </div>
-    <div class="form-group">
-      <label>예비8</label>
-      <input type="text" placeholder="">
-    </div>
-    <div class="form-group">
-      <label>예비9</label>
-      <input type="text" placeholder="">
-    </div>
-    <div class="form-group">
-      <label>예비10</label>
-      <input type="text" placeholder="">
-    </div>
-
-    <!-- 세부사양 -->
-    <div class="section-title">세부사양 / 후가공</div>
-    <div class="form-group full">
-      <textarea placeholder="세부사양 및 후가공 내용을 입력하세요">용지/부수
+  <!-- 기본 정보 입력 -->
+  <div class="form-box">
+    <table class="form-table">
+      <tr>
+        <td class="lbl">주문No.</td>
+        <td><input type="text" value="저장시점에 생성됩니다." class="input-readonly" readonly></td>
+        <td class="lbl2">작성일</td>
+        <td style="white-space:nowrap;">
+          <select style="width:70px;"><option>2026</option></select> /
+          <select style="width:55px;"><option>3월</option><option>4월</option></select> /
+          <input type="text" value="25" style="width:40px; text-align:center;">
+        </td>
+      </tr>
+      <tr>
+        <td class="lbl">주문자</td>
+        <td><input type="text" placeholder="주문자" value="한지원"></td>
+        <td class="lbl2">연락처</td>
+        <td><input type="text" placeholder="연락처" value="010-5324-6492"></td>
+      </tr>
+      <tr>
+        <td class="lbl">거래처</td>
+        <td><input type="text" placeholder="거래처" value="커뮤니크"></td>
+        <td class="lbl2">제품형태</td>
+        <td><input type="text" placeholder="제품형태" value="유포지+원형컷팅"></td>
+      </tr>
+      <tr>
+        <td class="lbl">제목</td>
+        <td><input type="text" placeholder="제목" value="에스트라 5cm원형 스티커 50개 제작"></td>
+        <td class="lbl2">거래유형</td>
+        <td>
+          <select style="width:100%;">
+            <option>부가세율 적용</option>
+          </select>
+        </td>
+      </tr>
+      <tr>
+        <td class="lbl">선급</td>
+        <td><input type="text" placeholder="선급"></td>
+        <td class="lbl2">세금계산서</td>
+        <td><input type="text" placeholder="발행일 직접 입력"></td>
+      </tr>
+      <tr>
+        <td class="lbl">결제</td>
+        <td><input type="text" placeholder="결제 정보"></td>
+        <td class="lbl2">카테고리</td>
+        <td>
+          <select style="width:100%;">
+            <option>블랙카피</option>
+            <option>출력실</option>
+            <option>디자인실</option>
+          </select>
+        </td>
+      </tr>
+      <tr>
+        <td class="lbl">납기일자</td>
+        <td colspan="3" style="white-space:nowrap;">
+          <select style="width:70px;"><option>2026</option></select> /
+          <select style="width:55px;"><option>3월</option><option>4월</option></select> /
+          <input type="text" value="26" style="width:40px; text-align:center;">
+        </td>
+      </tr>
+      <tr>
+        <td class="lbl">첨부</td>
+        <td colspan="3">
+          <div class="attach-row">+ 파일을 드래그하여 놓거나 클릭하여 첨부 (최대 1GB, Dropbox)</div>
+        </td>
+      </tr>
+      <tr>
+        <td class="lbl" style="vertical-align:top; padding-top:8px;">세부사양/<br>후가공</td>
+        <td colspan="3">
+          <textarea>용지/부수
 제본비/출력비 (흑/칼)
 규격(사이즈)</textarea>
-    </div>
+        </td>
+      </tr>
+    </table>
+  </div>
 
-    <!-- 첨부파일 -->
-    <div class="section-title">첨부파일</div>
-    <div class="attach-area">
-      📎 파일을 드래그하여 놓거나 클릭하여 첨부하세요 (최대 1GB, Dropbox 저장)
+  <!-- 예비 항목 -->
+  <span class="reserve-toggle" onclick="var el=document.getElementById('reserveBox'); el.style.display = el.style.display==='none'?'block':'none';">▼ 예비항목 (1~10)</span>
+  <div class="reserve-box" id="reserveBox" style="display:none;">
+    <div class="reserve-grid">
+      <span class="rlbl">예비1</span><input type="text">
+      <span class="rlbl">예비2</span><input type="text">
+      <span class="rlbl">예비3</span><input type="text">
+      <span class="rlbl">예비4</span><input type="text">
+      <span class="rlbl">예비5</span><input type="text">
+      <span class="rlbl">예비6</span><input type="text">
+      <span class="rlbl">예비7</span><input type="text">
+      <span class="rlbl">예비8</span><input type="text">
+      <span class="rlbl">예비9</span><input type="text">
+      <span class="rlbl">예비10</span><input type="text">
     </div>
+  </div>
 
-    <!-- 품목 테이블 -->
-    <div class="item-table-wrap">
-      <div class="item-table-header">
-        <div style="display:flex; align-items:center; gap:10px;">
-          <strong style="font-size:14px;">품목 테이블</strong>
-          <select style="padding:5px 10px; border:1px solid #d1d5db; border-radius:4px; font-size:12px;">
-            <option>책제본</option>
-            <option>낱장인쇄</option>
-            <option>일반형식</option>
-            <option>예비1</option>
-            <option>예비2</option>
-            <option>예비3</option>
-          </select>
-        </div>
-        <button class="btn-add-row">+ 행 추가</button>
+  <!-- 품목 테이블 -->
+  <div class="item-section">
+    <div class="item-header">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <strong style="font-size:13px;">품목 테이블</strong>
+        <select>
+          <option>책제본</option>
+          <option>낱장인쇄</option>
+          <option>일반형식</option>
+          <option>예비1</option>
+          <option>예비2</option>
+          <option>예비3</option>
+        </select>
       </div>
-      <table class="item-table">
-        <thead>
-          <tr>
-            <th style="width:40px;">순번</th>
-            <th style="width:180px;">품목명</th>
-            <th style="width:80px;">규격</th>
-            <th style="width:70px;">부수</th>
-            <th style="width:70px;">페이지수</th>
-            <th style="width:80px;">인쇄비</th>
-            <th style="width:80px;">제본비</th>
-            <th style="width:80px;">코팅비</th>
-            <th style="width:100px;">공급가</th>
-            <th style="width:80px;">부가세</th>
-            <th style="width:100px;">합계</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>1</td>
-            <td><input type="text" value="에스트라 5cm원형스티커 50개 제작"></td>
-            <td><input type="text"></td>
-            <td><input type="text" value="50"></td>
-            <td><input type="text"></td>
-            <td><input type="text" class="input-right"></td>
-            <td><input type="text" class="input-right"></td>
-            <td><input type="text" class="input-right"></td>
-            <td><input type="text" class="input-right" value="54,545"></td>
-            <td><input type="text" class="input-right" value="5,455"></td>
-            <td><input type="text" class="input-right" value="60,000"></td>
-          </tr>
-          <tr>
-            <td>2</td>
-            <td><input type="text"></td>
-            <td><input type="text"></td>
-            <td><input type="text"></td>
-            <td><input type="text"></td>
-            <td><input type="text" class="input-right"></td>
-            <td><input type="text" class="input-right"></td>
-            <td><input type="text" class="input-right"></td>
-            <td><input type="text" class="input-right"></td>
-            <td><input type="text" class="input-right"></td>
-            <td><input type="text" class="input-right"></td>
-          </tr>
-          <tr>
-            <td>3</td>
-            <td><input type="text"></td>
-            <td><input type="text"></td>
-            <td><input type="text"></td>
-            <td><input type="text"></td>
-            <td><input type="text" class="input-right"></td>
-            <td><input type="text" class="input-right"></td>
-            <td><input type="text" class="input-right"></td>
-            <td><input type="text" class="input-right"></td>
-            <td><input type="text" class="input-right"></td>
-            <td><input type="text" class="input-right"></td>
-          </tr>
-          <tr>
-            <td>4</td>
-            <td><input type="text"></td>
-            <td><input type="text"></td>
-            <td><input type="text"></td>
-            <td><input type="text"></td>
-            <td><input type="text" class="input-right"></td>
-            <td><input type="text" class="input-right"></td>
-            <td><input type="text" class="input-right"></td>
-            <td><input type="text" class="input-right"></td>
-            <td><input type="text" class="input-right"></td>
-            <td><input type="text" class="input-right"></td>
-          </tr>
-          <tr>
-            <td>5</td>
-            <td><input type="text"></td>
-            <td><input type="text"></td>
-            <td><input type="text"></td>
-            <td><input type="text"></td>
-            <td><input type="text" class="input-right"></td>
-            <td><input type="text" class="input-right"></td>
-            <td><input type="text" class="input-right"></td>
-            <td><input type="text" class="input-right"></td>
-            <td><input type="text" class="input-right"></td>
-            <td><input type="text" class="input-right"></td>
-          </tr>
-          <tr class="total-row">
-            <td colspan="8" style="text-align:right; padding-right:10px;">합 계</td>
-            <td style="text-align:right;">54,545</td>
-            <td style="text-align:right;">5,455</td>
-            <td style="text-align:right;">60,000</td>
-          </tr>
-        </tbody>
-      </table>
+      <button class="btn-add-row">+ 행 추가</button>
     </div>
+    <table class="item-table">
+      <thead>
+        <tr>
+          <th style="width:35px;">순번</th>
+          <th>품목명</th>
+          <th style="width:70px;">규격</th>
+          <th style="width:55px;">부수</th>
+          <th style="width:60px;">페이지수</th>
+          <th style="width:70px;">인쇄비</th>
+          <th style="width:70px;">제본비</th>
+          <th style="width:70px;">코팅비</th>
+          <th style="width:85px;">공급가</th>
+          <th style="width:70px;">부가세</th>
+          <th style="width:85px;">합계금액</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>1</td>
+          <td><input type="text" value="에스트라 5cm원형스티커 50개 제작" style="text-align:left;"></td>
+          <td><input type="text"></td>
+          <td><input type="text" value="50"></td>
+          <td><input type="text"></td>
+          <td><input type="text" class="input-right"></td>
+          <td><input type="text" class="input-right"></td>
+          <td><input type="text" class="input-right"></td>
+          <td><input type="text" class="input-right" value="54,545"></td>
+          <td><input type="text" class="input-right" value="5,455"></td>
+          <td><input type="text" class="input-right" value="60,000"></td>
+        </tr>
+        <tr>
+          <td>2</td>
+          <td><input type="text"></td>
+          <td><input type="text"></td>
+          <td><input type="text"></td>
+          <td><input type="text"></td>
+          <td><input type="text" class="input-right"></td>
+          <td><input type="text" class="input-right"></td>
+          <td><input type="text" class="input-right"></td>
+          <td><input type="text" class="input-right"></td>
+          <td><input type="text" class="input-right"></td>
+          <td><input type="text" class="input-right"></td>
+        </tr>
+        <tr>
+          <td>3</td>
+          <td><input type="text"></td>
+          <td><input type="text"></td>
+          <td><input type="text"></td>
+          <td><input type="text"></td>
+          <td><input type="text" class="input-right"></td>
+          <td><input type="text" class="input-right"></td>
+          <td><input type="text" class="input-right"></td>
+          <td><input type="text" class="input-right"></td>
+          <td><input type="text" class="input-right"></td>
+          <td><input type="text" class="input-right"></td>
+        </tr>
+        <tr>
+          <td>4</td>
+          <td><input type="text"></td>
+          <td><input type="text"></td>
+          <td><input type="text"></td>
+          <td><input type="text"></td>
+          <td><input type="text" class="input-right"></td>
+          <td><input type="text" class="input-right"></td>
+          <td><input type="text" class="input-right"></td>
+          <td><input type="text" class="input-right"></td>
+          <td><input type="text" class="input-right"></td>
+          <td><input type="text" class="input-right"></td>
+        </tr>
+        <tr>
+          <td>5</td>
+          <td><input type="text"></td>
+          <td><input type="text"></td>
+          <td><input type="text"></td>
+          <td><input type="text"></td>
+          <td><input type="text" class="input-right"></td>
+          <td><input type="text" class="input-right"></td>
+          <td><input type="text" class="input-right"></td>
+          <td><input type="text" class="input-right"></td>
+          <td><input type="text" class="input-right"></td>
+          <td><input type="text" class="input-right"></td>
+        </tr>
+        <tr class="total-row">
+          <td colspan="8" style="text-align:right; padding-right:8px;">합 계</td>
+          <td style="text-align:right; padding-right:4px;">54,545</td>
+          <td style="text-align:right; padding-right:4px;">5,455</td>
+          <td style="text-align:right; padding-right:4px;">60,000</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
 
-    <!-- 버튼 -->
-    <div class="btn-area">
-      <button class="btn-save" onclick="location.href='list.html'">저장</button>
-      <button class="btn-cancel" onclick="location.href='list.html'">취소</button>
-      <button class="btn-delete" onclick="location.href='list.html'">삭제</button>
-    </div>
+  <!-- 하단 버튼 -->
+  <div class="btn-bar">
+    <button class="btn-save" onclick="location.href='list.html'">저장</button>
+    <button onclick="location.href='list.html'">다시 작성</button>
+    <button onclick="location.href='list.html'">리스트</button>
+    <button class="btn-del" onclick="location.href='list.html'">삭제</button>
   </div>
 </div>
 </body>
