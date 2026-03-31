@@ -82,7 +82,7 @@ body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
     <table class="form-table">
       <tr>
         <td class="lbl">주문No.</td>
-        <td><input type="text" value="저장시점에 생성됩니다." class="input-readonly" readonly></td>
+        <td><input id="orderNo" type="text" value="" class="input-readonly" readonly></td>
         <td class="lbl2">작성일</td>
         <td style="white-space:nowrap;">
           <select style="width:70px;"><option>2026</option></select> /
@@ -344,5 +344,20 @@ body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
     <button class="btn-del" onclick="location.href='list.html'">삭제</button>
   </div>
 </div>
+<script>
+// 주문번호 자동 생성: 년월일-순번
+(function() {
+  var today = new Date();
+  var y = today.getFullYear();
+  var m = String(today.getMonth() + 1).padStart(2, '0');
+  var d = String(today.getDate()).padStart(2, '0');
+  var dateStr = y + m + d;
+  // localStorage로 하루 순번 관리
+  var key = 'orderCount_' + dateStr;
+  var count = parseInt(localStorage.getItem(key) || '0') + 1;
+  localStorage.setItem(key, count);
+  document.getElementById('orderNo').value = dateStr + '-' + count;
+})();
+</script>
 </body>
 </html>
