@@ -12,20 +12,38 @@ body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
 .header-right { display: flex; align-items: center; gap: 12px; font-size: 13px; }
 .header-right a { color: #94a3b8; text-decoration: none; }
 .header-right a:hover { color: #fff; }
+
+/* 탭 네비게이션 */
+.tab-nav { background: #fff; border-bottom: 2px solid #e2e8f0; padding: 0 24px; display: flex; gap: 0; }
+.tab-btn { padding: 12px 24px; font-size: 13px; font-weight: 600; color: #64748b; border: none; background: none; cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -2px; font-family: inherit; }
+.tab-btn:hover { color: #1e293b; background: #f8fafc; }
+.tab-btn.active { color: #2563eb; border-bottom-color: #2563eb; }
+
 .content { max-width: 1000px; margin: 24px auto; }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
 .card { background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); padding: 24px; margin-bottom: 20px; }
 .card h3 { font-size: 16px; color: #1e293b; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #e2e8f0; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
 th { background: #f8fafc; padding: 10px; text-align: center; border-bottom: 2px solid #e2e8f0; color: #475569; }
 td { padding: 10px; text-align: center; border-bottom: 1px solid #f1f5f9; }
+.td-left { text-align: left; }
 .btn-sm { padding: 4px 12px; border: 1px solid #d1d5db; border-radius: 3px; background: #fff; font-size: 11px; cursor: pointer; color: #555; }
 .btn-sm.edit { color: #2563eb; border-color: #2563eb; }
 .btn-sm.del { color: #dc2626; border-color: #dc2626; }
 .btn-add { padding: 6px 16px; background: #2563eb; color: #fff; border: none; border-radius: 4px; font-size: 12px; cursor: pointer; }
-.form-inline { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
+.form-inline { display: flex; gap: 8px; align-items: center; margin-top: 12px; flex-wrap: wrap; }
 .form-inline input { padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 13px; }
 .badge-admin { background: #fef3c7; color: #92400e; padding: 2px 8px; border-radius: 10px; font-size: 11px; }
 .badge-user { background: #eff6ff; color: #1d4ed8; padding: 2px 8px; border-radius: 10px; font-size: 11px; }
+
+/* 거래처 등록 폼 */
+.client-form { background: #fafbfc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 16px; margin-top: 16px; }
+.client-form-grid { display: grid; grid-template-columns: 70px 1fr 70px 1fr; gap: 8px; align-items: center; font-size: 13px; }
+.client-form-grid .lbl { font-weight: 600; color: #555; font-size: 12px; }
+.client-form-grid input { padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 13px; }
+.client-form-btns { margin-top: 12px; display: flex; gap: 6px; }
 
 /* 품목 테이블 편집기 */
 .template-list { margin-bottom: 16px; }
@@ -36,24 +54,20 @@ td { padding: 10px; text-align: center; border-bottom: 1px solid #f1f5f9; }
 .template-cols { font-size: 11px; color: #888; margin-top: 2px; }
 .template-actions { display: flex; gap: 4px; }
 
-/* 편집 영역 */
 .editor-box { background: #fafbfc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 20px; margin-top: 16px; }
 .editor-box h4 { font-size: 14px; color: #1e293b; margin-bottom: 12px; }
 .editor-section { margin-bottom: 16px; }
 .editor-section-title { font-size: 12px; font-weight: 600; color: #64748b; margin-bottom: 8px; }
 
-/* 컬럼 편집 */
 .col-list { display: flex; flex-direction: column; gap: 4px; }
 .col-item { display: flex; align-items: center; gap: 6px; padding: 6px 10px; background: #fff; border: 1px solid #e2e8f0; border-radius: 4px; font-size: 12px; }
 .col-item .drag-handle { cursor: grab; color: #aaa; font-size: 14px; }
-.col-item .col-name { flex: 1; }
 .col-item input { padding: 3px 6px; border: 1px solid #d1d5db; border-radius: 3px; font-size: 12px; }
 .col-item .col-name-input { width: 100px; }
 .col-item .col-type { width: 80px; font-size: 11px; padding: 3px 4px; }
 .col-item .col-remove { color: #dc2626; cursor: pointer; font-size: 14px; border: none; background: none; }
 .col-auto { background: #fef3c7; border-color: #fbbf24; }
 
-/* 계산공식 */
 .formula-list { display: flex; flex-direction: column; gap: 6px; }
 .formula-item { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: #fff; border: 1px solid #e2e8f0; border-radius: 4px; font-size: 12px; }
 .formula-item .f-target { font-weight: 700; color: #2563eb; min-width: 60px; }
@@ -61,7 +75,6 @@ td { padding: 10px; text-align: center; border-bottom: 1px solid #f1f5f9; }
 .formula-item .f-expr { flex: 1; padding: 4px 8px; border: 1px solid #d1d5db; border-radius: 3px; font-size: 12px; font-family: 'Consolas', monospace; background: #f8fafc; }
 .formula-item .f-remove { color: #dc2626; cursor: pointer; border: none; background: none; font-size: 14px; }
 
-/* 미리보기 */
 .preview-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 10px; }
 .preview-table th { background: #f0f2f5; padding: 7px 6px; border: 1px solid #d1d5db; color: #475569; font-weight: 600; text-align: center; }
 .preview-table td { padding: 6px; border: 1px solid #e2e8f0; text-align: center; height: 28px; }
@@ -83,393 +96,481 @@ td { padding: 10px; text-align: center; border-bottom: 1px solid #f1f5f9; }
   </div>
 </div>
 
-<div class="content">
-  <!-- 사용자 관리 -->
-  <div class="card">
-    <h3>사용자 관리</h3>
-    <table>
-      <thead>
-        <tr>
-          <th>순번</th>
-          <th>이름</th>
-          <th>권한</th>
-          <th>등록일</th>
-          <th>관리</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>1</td>
-          <td>정형호</td>
-          <td><span class="badge-admin">관리자</span></td>
-          <td>2026-03-01</td>
-          <td>-</td>
-        </tr>
-        <tr>
-          <td>2</td>
-          <td>김민수</td>
-          <td><span class="badge-user">사용자</span></td>
-          <td>2026-03-05</td>
-          <td>
-            <button class="btn-sm edit">수정</button>
-            <button class="btn-sm del">삭제</button>
-          </td>
-        </tr>
-        <tr>
-          <td>3</td>
-          <td>이지연</td>
-          <td><span class="badge-user">사용자</span></td>
-          <td>2026-03-05</td>
-          <td>
-            <button class="btn-sm edit">수정</button>
-            <button class="btn-sm del">삭제</button>
-          </td>
-        </tr>
-        <tr>
-          <td>4</td>
-          <td>박준혁</td>
-          <td><span class="badge-user">사용자</span></td>
-          <td>2026-03-10</td>
-          <td>
-            <button class="btn-sm edit">수정</button>
-            <button class="btn-sm del">삭제</button>
-          </td>
-        </tr>
-        <tr>
-          <td>5</td>
-          <td>최윤아</td>
-          <td><span class="badge-user">사용자</span></td>
-          <td>2026-03-12</td>
-          <td>
-            <button class="btn-sm edit">수정</button>
-            <button class="btn-sm del">삭제</button>
-          </td>
-        </tr>
-      </tbody>
-    </table>
-    <div class="form-inline">
-      <input type="text" placeholder="이름 입력">
-      <button class="btn-add">+ 사용자 추가</button>
-      <span style="font-size:11px; color:#999;">비밀번호는 자동 적용됩니다</span>
-    </div>
-  </div>
-
-  <!-- 카테고리 관리 -->
-  <div class="card">
-    <h3>카테고리 관리</h3>
-    <table>
-      <thead>
-        <tr>
-          <th>순번</th>
-          <th>카테고리명</th>
-          <th>관리</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>1</td>
-          <td>블랙카피</td>
-          <td>
-            <button class="btn-sm edit">수정</button>
-            <button class="btn-sm del">삭제</button>
-          </td>
-        </tr>
-        <tr>
-          <td>2</td>
-          <td>출력실</td>
-          <td>
-            <button class="btn-sm edit">수정</button>
-            <button class="btn-sm del">삭제</button>
-          </td>
-        </tr>
-        <tr>
-          <td>3</td>
-          <td>디자인실</td>
-          <td>
-            <button class="btn-sm edit">수정</button>
-            <button class="btn-sm del">삭제</button>
-          </td>
-        </tr>
-      </tbody>
-    </table>
-    <div class="form-inline">
-      <input type="text" placeholder="카테고리명 입력">
-      <button class="btn-add">+ 카테고리 추가</button>
-    </div>
-  </div>
-
-  <!-- 품목 테이블 양식 관리 -->
-  <div class="card">
-    <h3>품목 테이블 양식 관리</h3>
-    <p style="font-size:12px; color:#888; margin-bottom:14px;">양식을 만들면 사용자가 주문서 입력 시 선택할 수 있습니다. 컬럼과 계산공식을 자유롭게 지정하세요.</p>
-
-    <!-- 양식 목록 -->
-    <div class="template-list">
-      <div class="template-item active">
-        <div>
-          <div class="template-name">책제본</div>
-          <div class="template-cols">순번, 품목명, 규격, 부수, 페이지수, 인쇄비, 제본비, 코팅비, 공급가, 부가세, 합계</div>
-        </div>
-        <div class="template-actions">
-          <button class="btn-sm edit">편집</button>
-          <button class="btn-sm del">삭제</button>
-        </div>
-      </div>
-      <div class="template-item">
-        <div>
-          <div class="template-name">낱장인쇄</div>
-          <div class="template-cols" style="color:#ccc;">(미설정)</div>
-        </div>
-        <div class="template-actions">
-          <button class="btn-sm edit">편집</button>
-          <button class="btn-sm del">삭제</button>
-        </div>
-      </div>
-      <div class="template-item">
-        <div>
-          <div class="template-name">일반형식</div>
-          <div class="template-cols" style="color:#ccc;">(미설정)</div>
-        </div>
-        <div class="template-actions">
-          <button class="btn-sm edit">편집</button>
-          <button class="btn-sm del">삭제</button>
-        </div>
-      </div>
-      <div class="template-item">
-        <div>
-          <div class="template-name">예비1</div>
-          <div class="template-cols" style="color:#ccc;">(미설정)</div>
-        </div>
-        <div class="template-actions">
-          <button class="btn-sm edit">편집</button>
-          <button class="btn-sm del">삭제</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="form-inline">
-      <input type="text" placeholder="새 양식 이름">
-      <button class="btn-add">+ 양식 추가</button>
-    </div>
-
-    <!-- ===== 편집 영역 (책제본 예시) ===== -->
-    <div class="editor-box">
-      <h4>양식 편집: <span style="color:#2563eb;">책제본</span></h4>
-
-      <!-- 1. 컬럼 설정 -->
-      <div class="editor-section">
-        <div class="editor-section-title">1. 컬럼 설정 (드래그하여 순서 변경)</div>
-        <div class="col-list">
-          <div class="col-item" style="background:#f0f2f5;">
-            <span class="drag-handle">☰</span>
-            <input class="col-name-input" type="text" value="순번" style="background:#eee;" readonly>
-            <select class="col-type">
-              <option selected>자동순번</option>
-            </select>
-            <span style="font-size:10px; color:#999;">자동</span>
-          </div>
-          <div class="col-item">
-            <span class="drag-handle">☰</span>
-            <input class="col-name-input" type="text" value="품목명">
-            <select class="col-type">
-              <option selected>텍스트</option>
-              <option>숫자</option>
-              <option>자동계산</option>
-            </select>
-            <button class="col-remove">x</button>
-          </div>
-          <div class="col-item">
-            <span class="drag-handle">☰</span>
-            <input class="col-name-input" type="text" value="규격">
-            <select class="col-type">
-              <option selected>텍스트</option>
-              <option>숫자</option>
-              <option>자동계산</option>
-            </select>
-            <button class="col-remove">x</button>
-          </div>
-          <div class="col-item">
-            <span class="drag-handle">☰</span>
-            <input class="col-name-input" type="text" value="부수">
-            <select class="col-type">
-              <option>텍스트</option>
-              <option selected>숫자</option>
-              <option>자동계산</option>
-            </select>
-            <button class="col-remove">x</button>
-          </div>
-          <div class="col-item">
-            <span class="drag-handle">☰</span>
-            <input class="col-name-input" type="text" value="페이지수">
-            <select class="col-type">
-              <option>텍스트</option>
-              <option selected>숫자</option>
-              <option>자동계산</option>
-            </select>
-            <button class="col-remove">x</button>
-          </div>
-          <div class="col-item">
-            <span class="drag-handle">☰</span>
-            <input class="col-name-input" type="text" value="인쇄비">
-            <select class="col-type">
-              <option>텍스트</option>
-              <option selected>숫자</option>
-              <option>자동계산</option>
-            </select>
-            <button class="col-remove">x</button>
-          </div>
-          <div class="col-item">
-            <span class="drag-handle">☰</span>
-            <input class="col-name-input" type="text" value="제본비">
-            <select class="col-type">
-              <option>텍스트</option>
-              <option selected>숫자</option>
-              <option>자동계산</option>
-            </select>
-            <button class="col-remove">x</button>
-          </div>
-          <div class="col-item">
-            <span class="drag-handle">☰</span>
-            <input class="col-name-input" type="text" value="코팅비">
-            <select class="col-type">
-              <option>텍스트</option>
-              <option selected>숫자</option>
-              <option>자동계산</option>
-            </select>
-            <button class="col-remove">x</button>
-          </div>
-          <div class="col-item col-auto">
-            <span class="drag-handle">☰</span>
-            <input class="col-name-input" type="text" value="공급가">
-            <select class="col-type">
-              <option>텍스트</option>
-              <option>숫자</option>
-              <option selected>자동계산</option>
-            </select>
-            <span style="font-size:10px; color:#b45309;">계산식 적용</span>
-            <button class="col-remove">x</button>
-          </div>
-          <div class="col-item col-auto">
-            <span class="drag-handle">☰</span>
-            <input class="col-name-input" type="text" value="부가세">
-            <select class="col-type">
-              <option>텍스트</option>
-              <option>숫자</option>
-              <option selected>자동계산</option>
-            </select>
-            <span style="font-size:10px; color:#b45309;">계산식 적용</span>
-            <button class="col-remove">x</button>
-          </div>
-          <div class="col-item col-auto">
-            <span class="drag-handle">☰</span>
-            <input class="col-name-input" type="text" value="합계">
-            <select class="col-type">
-              <option>텍스트</option>
-              <option>숫자</option>
-              <option selected>자동계산</option>
-            </select>
-            <span style="font-size:10px; color:#b45309;">계산식 적용</span>
-            <button class="col-remove">x</button>
-          </div>
-        </div>
-        <div style="margin-top:8px;">
-          <button class="btn-secondary" style="font-size:11px; padding:4px 12px;">+ 컬럼 추가</button>
-        </div>
-      </div>
-
-      <!-- 2. 계산공식 설정 -->
-      <div class="editor-section">
-        <div class="editor-section-title">2. 계산공식 설정</div>
-        <p class="hint" style="margin-bottom:8px;">컬럼명을 사용하여 수식을 입력하세요. 사용 가능: +, -, *, /, (, )</p>
-        <div class="formula-list">
-          <div class="formula-item">
-            <span class="f-target">공급가</span>
-            <span class="f-eq">=</span>
-            <input class="f-expr" type="text" value="부수 * ((페이지수 * 인쇄비) + 제본비 + 코팅비)">
-            <button class="f-remove">x</button>
-          </div>
-          <div class="formula-item">
-            <span class="f-target">부가세</span>
-            <span class="f-eq">=</span>
-            <input class="f-expr" type="text" value="공급가 * 0.1">
-            <button class="f-remove">x</button>
-          </div>
-          <div class="formula-item">
-            <span class="f-target">합계</span>
-            <span class="f-eq">=</span>
-            <input class="f-expr" type="text" value="공급가 + 부가세">
-            <button class="f-remove">x</button>
-          </div>
-        </div>
-        <div style="margin-top:8px; display:flex; gap:6px; align-items:center;">
-          <select style="padding:4px 8px; border:1px solid #d1d5db; border-radius:3px; font-size:11px;">
-            <option>컬럼 선택...</option>
-            <option>공급가</option>
-            <option>부가세</option>
-            <option>합계</option>
-          </select>
-          <button class="btn-secondary" style="font-size:11px; padding:4px 12px;">+ 계산식 추가</button>
-        </div>
-      </div>
-
-      <!-- 3. 미리보기 -->
-      <div class="editor-section">
-        <div class="editor-section-title">3. 미리보기</div>
-        <table class="preview-table">
-          <thead>
-            <tr>
-              <th style="width:35px;">순번</th>
-              <th>품목명</th>
-              <th style="width:60px;">규격</th>
-              <th style="width:55px;">부수</th>
-              <th style="width:55px;">페이지수</th>
-              <th style="width:65px;">인쇄비</th>
-              <th style="width:65px;">제본비</th>
-              <th style="width:65px;">코팅비</th>
-              <th style="width:80px;" class="preview-auto">공급가</th>
-              <th style="width:65px;" class="preview-auto">부가세</th>
-              <th style="width:80px;" class="preview-auto">합계</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>1</td>
-              <td style="color:#aaa; font-size:11px;">텍스트</td>
-              <td style="color:#aaa; font-size:11px;">텍스트</td>
-              <td style="color:#aaa; font-size:11px;">숫자</td>
-              <td style="color:#aaa; font-size:11px;">숫자</td>
-              <td style="color:#aaa; font-size:11px;">숫자</td>
-              <td style="color:#aaa; font-size:11px;">숫자</td>
-              <td style="color:#aaa; font-size:11px;">숫자</td>
-              <td class="preview-auto" style="font-size:10px; color:#b45309;">자동계산</td>
-              <td class="preview-auto" style="font-size:10px; color:#b45309;">자동계산</td>
-              <td class="preview-auto" style="font-size:10px; color:#b45309;">자동계산</td>
-            </tr>
-            <tr>
-              <td>2</td>
-              <td></td><td></td><td></td><td></td><td></td><td></td><td></td>
-              <td class="preview-auto"></td>
-              <td class="preview-auto"></td>
-              <td class="preview-auto"></td>
-            </tr>
-            <tr>
-              <td>3</td>
-              <td></td><td></td><td></td><td></td><td></td><td></td><td></td>
-              <td class="preview-auto"></td>
-              <td class="preview-auto"></td>
-              <td class="preview-auto"></td>
-            </tr>
-          </tbody>
-        </table>
-        <p class="hint" style="margin-top:6px;">노란색 배경 컬럼 = 자동 계산되는 컬럼</p>
-      </div>
-
-      <div class="btn-row">
-        <button class="btn-primary">양식 저장</button>
-        <button class="btn-secondary">취소</button>
-      </div>
-    </div>
-  </div>
+<!-- 탭 네비게이션 -->
+<div class="tab-nav">
+  <button class="tab-btn active" onclick="switchTab('users')">사용자관리</button>
+  <button class="tab-btn" onclick="switchTab('category')">카테고리관리</button>
+  <button class="tab-btn" onclick="switchTab('client')">거래처관리</button>
+  <button class="tab-btn" onclick="switchTab('template')">양식폼관리</button>
 </div>
+
+<div class="content">
+
+  <!-- ========== 사용자 관리 탭 ========== -->
+  <div id="tab-users" class="tab-panel active">
+    <div class="card">
+      <h3>사용자 관리</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>순번</th>
+            <th>이름</th>
+            <th>권한</th>
+            <th>등록일</th>
+            <th>관리</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1</td>
+            <td>정형호</td>
+            <td><span class="badge-admin">관리자</span></td>
+            <td>2026-03-01</td>
+            <td>-</td>
+          </tr>
+          <tr>
+            <td>2</td>
+            <td>김민수</td>
+            <td><span class="badge-user">사용자</span></td>
+            <td>2026-03-05</td>
+            <td>
+              <button class="btn-sm edit">수정</button>
+              <button class="btn-sm del">삭제</button>
+            </td>
+          </tr>
+          <tr>
+            <td>3</td>
+            <td>이지연</td>
+            <td><span class="badge-user">사용자</span></td>
+            <td>2026-03-05</td>
+            <td>
+              <button class="btn-sm edit">수정</button>
+              <button class="btn-sm del">삭제</button>
+            </td>
+          </tr>
+          <tr>
+            <td>4</td>
+            <td>박준혁</td>
+            <td><span class="badge-user">사용자</span></td>
+            <td>2026-03-10</td>
+            <td>
+              <button class="btn-sm edit">수정</button>
+              <button class="btn-sm del">삭제</button>
+            </td>
+          </tr>
+          <tr>
+            <td>5</td>
+            <td>최윤아</td>
+            <td><span class="badge-user">사용자</span></td>
+            <td>2026-03-12</td>
+            <td>
+              <button class="btn-sm edit">수정</button>
+              <button class="btn-sm del">삭제</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="form-inline">
+        <input type="text" placeholder="이름 입력">
+        <button class="btn-add">+ 사용자 추가</button>
+        <span style="font-size:11px; color:#999;">비밀번호는 자동 적용됩니다</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== 카테고리 관리 탭 ========== -->
+  <div id="tab-category" class="tab-panel">
+    <div class="card">
+      <h3>카테고리 관리</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>순번</th>
+            <th>카테고리명</th>
+            <th>관리</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1</td>
+            <td>블랙카피</td>
+            <td>
+              <button class="btn-sm edit">수정</button>
+              <button class="btn-sm del">삭제</button>
+            </td>
+          </tr>
+          <tr>
+            <td>2</td>
+            <td>출력실</td>
+            <td>
+              <button class="btn-sm edit">수정</button>
+              <button class="btn-sm del">삭제</button>
+            </td>
+          </tr>
+          <tr>
+            <td>3</td>
+            <td>디자인실</td>
+            <td>
+              <button class="btn-sm edit">수정</button>
+              <button class="btn-sm del">삭제</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="form-inline">
+        <input type="text" placeholder="카테고리명 입력">
+        <button class="btn-add">+ 카테고리 추가</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== 거래처 관리 탭 ========== -->
+  <div id="tab-client" class="tab-panel">
+    <div class="card">
+      <h3>거래처 관리</h3>
+      <table>
+        <thead>
+          <tr>
+            <th style="width:40px;">순번</th>
+            <th>회사명</th>
+            <th>담당자</th>
+            <th>전화</th>
+            <th>핸드폰</th>
+            <th>이메일</th>
+            <th style="width:100px;">관리</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1</td>
+            <td class="td-left">커뮤니크</td>
+            <td>한지원</td>
+            <td>02-1234-5678</td>
+            <td>010-5324-6492</td>
+            <td class="td-left">hanjiwon@communique.co.kr</td>
+            <td>
+              <button class="btn-sm edit">수정</button>
+              <button class="btn-sm del">삭제</button>
+            </td>
+          </tr>
+          <tr>
+            <td>2</td>
+            <td class="td-left">행정공제회</td>
+            <td>이현진</td>
+            <td>02-2345-6789</td>
+            <td>010-2204-4252</td>
+            <td class="td-left">lee@geps.or.kr</td>
+            <td>
+              <button class="btn-sm edit">수정</button>
+              <button class="btn-sm del">삭제</button>
+            </td>
+          </tr>
+          <tr>
+            <td>3</td>
+            <td class="td-left">한화에어로스페이스</td>
+            <td>송승민 주임</td>
+            <td>02-3456-7890</td>
+            <td>010-8803-2799</td>
+            <td class="td-left">song@hanwha.com</td>
+            <td>
+              <button class="btn-sm edit">수정</button>
+              <button class="btn-sm del">삭제</button>
+            </td>
+          </tr>
+          <tr>
+            <td>4</td>
+            <td class="td-left">유니트플레이</td>
+            <td></td>
+            <td></td>
+            <td>010-5651-0118</td>
+            <td class="td-left"></td>
+            <td>
+              <button class="btn-sm edit">수정</button>
+              <button class="btn-sm del">삭제</button>
+            </td>
+          </tr>
+          <tr>
+            <td>5</td>
+            <td class="td-left">방위사업청</td>
+            <td>임은영 중령</td>
+            <td>02-2079-5112</td>
+            <td></td>
+            <td class="td-left"></td>
+            <td>
+              <button class="btn-sm edit">수정</button>
+              <button class="btn-sm del">삭제</button>
+            </td>
+          </tr>
+          <tr>
+            <td>6</td>
+            <td class="td-left">LS E-Link</td>
+            <td>박정길</td>
+            <td></td>
+            <td>010-8950-0248</td>
+            <td class="td-left">park@lselink.com</td>
+            <td>
+              <button class="btn-sm edit">수정</button>
+              <button class="btn-sm del">삭제</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- 거래처 등록 폼 -->
+      <div class="client-form">
+        <div class="client-form-grid">
+          <span class="lbl">회사명</span>
+          <input type="text" placeholder="회사명">
+          <span class="lbl">담당자</span>
+          <input type="text" placeholder="담당자">
+          <span class="lbl">전화</span>
+          <input type="text" placeholder="02-0000-0000">
+          <span class="lbl">핸드폰</span>
+          <input type="text" placeholder="010-0000-0000">
+          <span class="lbl">이메일</span>
+          <input type="text" placeholder="email@example.com" style="grid-column: 2 / -1;">
+        </div>
+        <div class="client-form-btns">
+          <button class="btn-add">+ 거래처 등록</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== 양식폼 관리 탭 ========== -->
+  <div id="tab-template" class="tab-panel">
+    <div class="card">
+      <h3>품목 테이블 양식 관리</h3>
+      <p style="font-size:12px; color:#888; margin-bottom:14px;">양식을 만들면 사용자가 주문서 입력 시 선택할 수 있습니다. 컬럼과 계산공식을 자유롭게 지정하세요.</p>
+
+      <div class="template-list">
+        <div class="template-item active">
+          <div>
+            <div class="template-name">책제본</div>
+            <div class="template-cols">순번, 품목명, 규격, 부수, 페이지수, 인쇄비, 제본비, 코팅비, 공급가, 부가세, 합계</div>
+          </div>
+          <div class="template-actions">
+            <button class="btn-sm edit">편집</button>
+            <button class="btn-sm del">삭제</button>
+          </div>
+        </div>
+        <div class="template-item">
+          <div>
+            <div class="template-name">낱장인쇄</div>
+            <div class="template-cols" style="color:#ccc;">(미설정)</div>
+          </div>
+          <div class="template-actions">
+            <button class="btn-sm edit">편집</button>
+            <button class="btn-sm del">삭제</button>
+          </div>
+        </div>
+        <div class="template-item">
+          <div>
+            <div class="template-name">일반형식</div>
+            <div class="template-cols" style="color:#ccc;">(미설정)</div>
+          </div>
+          <div class="template-actions">
+            <button class="btn-sm edit">편집</button>
+            <button class="btn-sm del">삭제</button>
+          </div>
+        </div>
+        <div class="template-item">
+          <div>
+            <div class="template-name">예비1</div>
+            <div class="template-cols" style="color:#ccc;">(미설정)</div>
+          </div>
+          <div class="template-actions">
+            <button class="btn-sm edit">편집</button>
+            <button class="btn-sm del">삭제</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-inline">
+        <input type="text" placeholder="새 양식 이름">
+        <button class="btn-add">+ 양식 추가</button>
+      </div>
+
+      <!-- 편집 영역 (책제본 예시) -->
+      <div class="editor-box">
+        <h4>양식 편집: <span style="color:#2563eb;">책제본</span></h4>
+
+        <div class="editor-section">
+          <div class="editor-section-title">1. 컬럼 설정 (드래그하여 순서 변경)</div>
+          <div class="col-list">
+            <div class="col-item" style="background:#f0f2f5;">
+              <span class="drag-handle">☰</span>
+              <input class="col-name-input" type="text" value="순번" style="background:#eee;" readonly>
+              <select class="col-type"><option selected>자동순번</option></select>
+              <span style="font-size:10px; color:#999;">자동</span>
+            </div>
+            <div class="col-item">
+              <span class="drag-handle">☰</span>
+              <input class="col-name-input" type="text" value="품목명">
+              <select class="col-type"><option selected>텍스트</option><option>숫자</option><option>자동계산</option></select>
+              <button class="col-remove">x</button>
+            </div>
+            <div class="col-item">
+              <span class="drag-handle">☰</span>
+              <input class="col-name-input" type="text" value="규격">
+              <select class="col-type"><option selected>텍스트</option><option>숫자</option><option>자동계산</option></select>
+              <button class="col-remove">x</button>
+            </div>
+            <div class="col-item">
+              <span class="drag-handle">☰</span>
+              <input class="col-name-input" type="text" value="부수">
+              <select class="col-type"><option>텍스트</option><option selected>숫자</option><option>자동계산</option></select>
+              <button class="col-remove">x</button>
+            </div>
+            <div class="col-item">
+              <span class="drag-handle">☰</span>
+              <input class="col-name-input" type="text" value="페이지수">
+              <select class="col-type"><option>텍스트</option><option selected>숫자</option><option>자동계산</option></select>
+              <button class="col-remove">x</button>
+            </div>
+            <div class="col-item">
+              <span class="drag-handle">☰</span>
+              <input class="col-name-input" type="text" value="인쇄비">
+              <select class="col-type"><option>텍스트</option><option selected>숫자</option><option>자동계산</option></select>
+              <button class="col-remove">x</button>
+            </div>
+            <div class="col-item">
+              <span class="drag-handle">☰</span>
+              <input class="col-name-input" type="text" value="제본비">
+              <select class="col-type"><option>텍스트</option><option selected>숫자</option><option>자동계산</option></select>
+              <button class="col-remove">x</button>
+            </div>
+            <div class="col-item">
+              <span class="drag-handle">☰</span>
+              <input class="col-name-input" type="text" value="코팅비">
+              <select class="col-type"><option>텍스트</option><option selected>숫자</option><option>자동계산</option></select>
+              <button class="col-remove">x</button>
+            </div>
+            <div class="col-item col-auto">
+              <span class="drag-handle">☰</span>
+              <input class="col-name-input" type="text" value="공급가">
+              <select class="col-type"><option>텍스트</option><option>숫자</option><option selected>자동계산</option></select>
+              <span style="font-size:10px; color:#b45309;">계산식 적용</span>
+              <button class="col-remove">x</button>
+            </div>
+            <div class="col-item col-auto">
+              <span class="drag-handle">☰</span>
+              <input class="col-name-input" type="text" value="부가세">
+              <select class="col-type"><option>텍스트</option><option>숫자</option><option selected>자동계산</option></select>
+              <span style="font-size:10px; color:#b45309;">계산식 적용</span>
+              <button class="col-remove">x</button>
+            </div>
+            <div class="col-item col-auto">
+              <span class="drag-handle">☰</span>
+              <input class="col-name-input" type="text" value="합계">
+              <select class="col-type"><option>텍스트</option><option>숫자</option><option selected>자동계산</option></select>
+              <span style="font-size:10px; color:#b45309;">계산식 적용</span>
+              <button class="col-remove">x</button>
+            </div>
+          </div>
+          <div style="margin-top:8px;">
+            <button class="btn-secondary" style="font-size:11px; padding:4px 12px;">+ 컬럼 추가</button>
+          </div>
+        </div>
+
+        <div class="editor-section">
+          <div class="editor-section-title">2. 계산공식 설정</div>
+          <p class="hint" style="margin-bottom:8px;">컬럼명을 사용하여 수식을 입력하세요. 사용 가능: +, -, *, /, (, )</p>
+          <div class="formula-list">
+            <div class="formula-item">
+              <span class="f-target">공급가</span>
+              <span class="f-eq">=</span>
+              <input class="f-expr" type="text" value="부수 * ((페이지수 * 인쇄비) + 제본비 + 코팅비)">
+              <button class="f-remove">x</button>
+            </div>
+            <div class="formula-item">
+              <span class="f-target">부가세</span>
+              <span class="f-eq">=</span>
+              <input class="f-expr" type="text" value="공급가 * 0.1">
+              <button class="f-remove">x</button>
+            </div>
+            <div class="formula-item">
+              <span class="f-target">합계</span>
+              <span class="f-eq">=</span>
+              <input class="f-expr" type="text" value="공급가 + 부가세">
+              <button class="f-remove">x</button>
+            </div>
+          </div>
+          <div style="margin-top:8px; display:flex; gap:6px; align-items:center;">
+            <select style="padding:4px 8px; border:1px solid #d1d5db; border-radius:3px; font-size:11px;">
+              <option>컬럼 선택...</option>
+              <option>공급가</option>
+              <option>부가세</option>
+              <option>합계</option>
+            </select>
+            <button class="btn-secondary" style="font-size:11px; padding:4px 12px;">+ 계산식 추가</button>
+          </div>
+        </div>
+
+        <div class="editor-section">
+          <div class="editor-section-title">3. 미리보기</div>
+          <table class="preview-table">
+            <thead>
+              <tr>
+                <th style="width:35px;">순번</th>
+                <th>품목명</th>
+                <th style="width:60px;">규격</th>
+                <th style="width:55px;">부수</th>
+                <th style="width:55px;">페이지수</th>
+                <th style="width:65px;">인쇄비</th>
+                <th style="width:65px;">제본비</th>
+                <th style="width:65px;">코팅비</th>
+                <th style="width:80px;" class="preview-auto">공급가</th>
+                <th style="width:65px;" class="preview-auto">부가세</th>
+                <th style="width:80px;" class="preview-auto">합계</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>1</td>
+                <td style="color:#aaa; font-size:11px;">텍스트</td>
+                <td style="color:#aaa; font-size:11px;">텍스트</td>
+                <td style="color:#aaa; font-size:11px;">숫자</td>
+                <td style="color:#aaa; font-size:11px;">숫자</td>
+                <td style="color:#aaa; font-size:11px;">숫자</td>
+                <td style="color:#aaa; font-size:11px;">숫자</td>
+                <td style="color:#aaa; font-size:11px;">숫자</td>
+                <td class="preview-auto" style="font-size:10px; color:#b45309;">자동계산</td>
+                <td class="preview-auto" style="font-size:10px; color:#b45309;">자동계산</td>
+                <td class="preview-auto" style="font-size:10px; color:#b45309;">자동계산</td>
+              </tr>
+              <tr>
+                <td>2</td>
+                <td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+                <td class="preview-auto"></td><td class="preview-auto"></td><td class="preview-auto"></td>
+              </tr>
+              <tr>
+                <td>3</td>
+                <td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+                <td class="preview-auto"></td><td class="preview-auto"></td><td class="preview-auto"></td>
+              </tr>
+            </tbody>
+          </table>
+          <p class="hint" style="margin-top:6px;">노란색 배경 컬럼 = 자동 계산되는 컬럼</p>
+        </div>
+
+        <div class="btn-row">
+          <button class="btn-primary">양식 저장</button>
+          <button class="btn-secondary">취소</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function switchTab(name) {
+  document.querySelectorAll('.tab-btn').forEach(function(btn) { btn.classList.remove('active'); });
+  document.querySelectorAll('.tab-panel').forEach(function(panel) { panel.classList.remove('active'); });
+  document.getElementById('tab-' + name).classList.add('active');
+  event.target.classList.add('active');
+}
+</script>
 </body>
 </html>
