@@ -279,7 +279,7 @@ body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
   <div class="item-section">
     <div class="item-header">
       <div style="display:flex; align-items:center; gap:8px;">
-        <strong style="font-size:13px;">품목 테이블</strong>
+        <strong style="font-size:13px;">표양식</strong>
         <select>
           <option>책제본</option>
           <option>낱장인쇄</option>
@@ -299,12 +299,10 @@ body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
           <th style="width:70px;">규격</th>
           <th style="width:55px;">부수</th>
           <th style="width:60px;">페이지수</th>
-          <th style="width:70px;">인쇄비</th>
-          <th style="width:70px;">제본비</th>
-          <th style="width:70px;">코팅비</th>
+          <th style="width:70px;">단가</th>
           <th style="width:85px;">공급가</th>
           <th style="width:70px;" class="vat-col">부가세</th>
-          <th style="width:85px;">합계금액</th>
+          <th style="width:85px;">합계</th>
         </tr>
       </thead>
       <tbody>
@@ -314,8 +312,6 @@ body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
           <td><input type="text"></td>
           <td><input type="text" value="50"></td>
           <td><input type="text"></td>
-          <td><input type="text" class="input-right"></td>
-          <td><input type="text" class="input-right"></td>
           <td><input type="text" class="input-right"></td>
           <td><input type="text" class="input-right" value="54,545"></td>
           <td class="vat-col"><input type="text" class="input-right" value="5,455"></td>
@@ -329,8 +325,6 @@ body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
           <td><input type="text"></td>
           <td><input type="text" class="input-right"></td>
           <td><input type="text" class="input-right"></td>
-          <td><input type="text" class="input-right"></td>
-          <td><input type="text" class="input-right"></td>
           <td class="vat-col"><input type="text" class="input-right"></td>
           <td><input type="text" class="input-right"></td>
         </tr>
@@ -340,8 +334,6 @@ body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
           <td><input type="text"></td>
           <td><input type="text"></td>
           <td><input type="text"></td>
-          <td><input type="text" class="input-right"></td>
-          <td><input type="text" class="input-right"></td>
           <td><input type="text" class="input-right"></td>
           <td><input type="text" class="input-right"></td>
           <td class="vat-col"><input type="text" class="input-right"></td>
@@ -355,8 +347,6 @@ body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
           <td><input type="text"></td>
           <td><input type="text" class="input-right"></td>
           <td><input type="text" class="input-right"></td>
-          <td><input type="text" class="input-right"></td>
-          <td><input type="text" class="input-right"></td>
           <td class="vat-col"><input type="text" class="input-right"></td>
           <td><input type="text" class="input-right"></td>
         </tr>
@@ -368,13 +358,11 @@ body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
           <td><input type="text"></td>
           <td><input type="text" class="input-right"></td>
           <td><input type="text" class="input-right"></td>
-          <td><input type="text" class="input-right"></td>
-          <td><input type="text" class="input-right"></td>
           <td class="vat-col"><input type="text" class="input-right"></td>
           <td><input type="text" class="input-right"></td>
         </tr>
         <tr class="total-row">
-          <td colspan="8" style="text-align:right; padding-right:8px;">합 계</td>
+          <td colspan="6" style="text-align:right; padding-right:8px;">합 계</td>
           <td style="text-align:right; padding-right:4px;">54,545</td>
           <td class="vat-col" style="text-align:right; padding-right:4px;">5,455</td>
           <td style="text-align:right; padding-right:4px;">60,000</td>
