@@ -369,7 +369,7 @@ body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
     <button class="btn-save" onclick="location.href='list.html'">저장</button>
     <button onclick="location.href='list.html'">다시 작성</button>
     <button onclick="location.href='list.html'">리스트</button>
-    <button class="btn-del" onclick="location.href='list.html'">삭제</button>
+    <button class="btn-del" onclick="if(confirm('정말 삭제할까요?')) location.href='list.html'">삭제</button>
   </div>
 </div>
 

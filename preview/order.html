@@ -315,7 +315,7 @@ body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
       <button class="btn-save" onclick="showListView()">저장</button>
       <button onclick="copyOrder()">발주서 복사</button>
       <button onclick="showListView()">리스트</button>
-      <button class="btn-del" onclick="showListView()">삭제</button>
+      <button class="btn-del" onclick="if(confirm('정말 삭제할까요?')) showListView()">삭제</button>
     </div>
   </div>
 

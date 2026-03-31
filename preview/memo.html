@@ -178,7 +178,7 @@ body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
     <div class="view-btns">
       <button class="btn-cancel" onclick="showList()">목록</button>
       <button class="btn-save" onclick="showEdit()">수정</button>
-      <button class="btn-del" onclick="showList()">삭제</button>
+      <button class="btn-del" onclick="if(confirm('정말 삭제할까요?')) showList()">삭제</button>
     </div>
   </div>
 
