@@ -102,6 +102,7 @@ td { padding: 10px; text-align: center; border-bottom: 1px solid #f1f5f9; }
   <button class="tab-btn" onclick="switchTab('category')">카테고리관리</button>
   <button class="tab-btn" onclick="switchTab('client')">거래처관리</button>
   <button class="tab-btn" onclick="switchTab('template')">양식폼관리</button>
+  <button class="tab-btn" onclick="switchTab('notice')">작업전달</button>
 </div>
 
 <div class="content">
@@ -559,6 +560,72 @@ td { padding: 10px; text-align: center; border-bottom: 1px solid #f1f5f9; }
           <button class="btn-secondary">취소</button>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- ========== 작업전달 탭 ========== -->
+  <div id="tab-notice" class="tab-panel">
+    <div class="card">
+      <h3>작업전달</h3>
+      <p style="font-size:12px; color:#888; margin-bottom:14px;">작성된 글은 리스트 화면 상단에 빨간색으로 깜빡이며 표시됩니다.</p>
+
+      <!-- 작업전달 작성 폼 -->
+      <div style="background:#fafbfc; border:1px solid #e2e8f0; border-radius:6px; padding:16px; margin-bottom:20px;">
+        <div style="margin-bottom:10px;">
+          <label style="font-size:12px; font-weight:600; color:#555; display:block; margin-bottom:4px;">제목</label>
+          <input type="text" placeholder="작업전달 제목을 입력하세요" style="width:100%; padding:8px 10px; border:1px solid #d1d5db; border-radius:4px; font-size:13px;">
+        </div>
+        <div style="margin-bottom:10px;">
+          <label style="font-size:12px; font-weight:600; color:#555; display:block; margin-bottom:4px;">본문</label>
+          <textarea placeholder="작업전달 내용을 입력하세요" style="width:100%; padding:8px 10px; border:1px solid #d1d5db; border-radius:4px; font-size:13px; font-family:inherit; min-height:100px; resize:vertical;"></textarea>
+        </div>
+        <button class="btn-primary">작업전달 등록</button>
+      </div>
+
+      <!-- 작업전달 리스트 -->
+      <table>
+        <thead>
+          <tr>
+            <th style="width:40px;">순번</th>
+            <th>제목</th>
+            <th style="width:120px;">작성일</th>
+            <th style="width:80px;">작성자</th>
+            <th style="width:100px;">관리</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1</td>
+            <td class="td-left" style="font-weight:600; color:#dc2626;">긴급! 내일까지 커뮤니크 스티커 작업 완료 요망</td>
+            <td>2026-03-31</td>
+            <td>정형호</td>
+            <td>
+              <button class="btn-sm edit">수정</button>
+              <button class="btn-sm del">삭제</button>
+            </td>
+          </tr>
+          <tr>
+            <td>2</td>
+            <td class="td-left">방위사업청 제본 작업 - 규격 변경 안내</td>
+            <td>2026-03-30</td>
+            <td>정형호</td>
+            <td>
+              <button class="btn-sm edit">수정</button>
+              <button class="btn-sm del">삭제</button>
+            </td>
+          </tr>
+          <tr>
+            <td>3</td>
+            <td class="td-left">4월 용지 발주 목록 정리</td>
+            <td>2026-03-28</td>
+            <td>정형호</td>
+            <td>
+              <button class="btn-sm edit">수정</button>
+              <button class="btn-sm del">삭제</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </div>
   </div>
 
