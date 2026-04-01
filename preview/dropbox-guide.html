@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dropbox API 키 발급 가이드</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
+.header { background: #1e293b; color: #fff; padding: 12px 24px; display: flex; justify-content: space-between; align-items: center; }
+.header h1 { font-size: 18px; }
+.header a { color: #94a3b8; text-decoration: none; font-size: 13px; }
+.content { max-width: 800px; margin: 24px auto; padding: 0 20px; }
+.card { background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); padding: 30px; margin-bottom: 20px; }
+.card h2 { font-size: 20px; color: #1e293b; margin-bottom: 8px; }
+.card h3 { font-size: 16px; color: #1e293b; margin: 24px 0 12px; padding-bottom: 6px; border-bottom: 2px solid #e2e8f0; }
+.card p { font-size: 14px; color: #555; line-height: 1.8; margin-bottom: 10px; }
+.step { display: flex; gap: 14px; margin-bottom: 20px; padding: 16px; background: #fafbfc; border: 1px solid #e2e8f0; border-radius: 6px; }
+.step-num { min-width: 36px; height: 36px; background: #2563eb; color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 16px; }
+.step-content { flex: 1; }
+.step-content h4 { font-size: 14px; color: #1e293b; margin-bottom: 6px; }
+.step-content p { font-size: 13px; color: #555; line-height: 1.7; margin-bottom: 4px; }
+.step-content code { background: #f0f2f5; padding: 2px 6px; border-radius: 3px; font-size: 12px; color: #dc2626; font-family: 'Consolas', monospace; }
+.step-content .url { color: #2563eb; font-size: 13px; word-break: break-all; }
+.highlight { background: #fef3c7; border: 1px solid #fbbf24; border-radius: 6px; padding: 14px 18px; margin: 16px 0; }
+.highlight p { color: #92400e; font-size: 13px; margin: 0; }
+.img-placeholder { background: #f0f2f5; border: 2px dashed #d1d5db; border-radius: 6px; padding: 30px; text-align: center; color: #94a3b8; font-size: 13px; margin: 12px 0; }
+.checklist { list-style: none; margin: 12px 0; }
+.checklist li { padding: 6px 0; font-size: 13px; color: #333; }
+.checklist li:before { content: "\\2713"; color: #059669; font-weight: 700; margin-right: 8px; }
+.btn-back { display: inline-block; padding: 10px 30px; background: #2563eb; color: #fff; border-radius: 4px; text-decoration: none; font-size: 14px; margin-top: 10px; }
+.warning { background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; padding: 14px 18px; margin: 16px 0; }
+.warning p { color: #991b1b; font-size: 13px; margin: 0; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>Dropbox API 키 발급 가이드</h1>
+  <a href="company-settings.html">업체 설정으로 돌아가기</a>
+</div>
+
+<div class="content">
+
+  <!-- 개요 -->
+  <div class="card">
+    <h2>Dropbox API 키 발급 안내</h2>
+    <p>Blackcop.co.kr에서 첨부파일을 업로드하려면 Dropbox API 키가 필요합니다.<br>
+    아래 가이드를 따라 Dropbox 계정을 만들고 API 키를 발급받으세요.</p>
+
+    <div class="highlight">
+      <p><strong>필요한 정보 3가지:</strong> App Key, App Secret, Access Token</p>
+    </div>
+
+    <p>소요 시간: 약 <strong>10분</strong></p>
+  </div>
+
+  <!-- STEP 1: Dropbox 회원가입 -->
+  <div class="card">
+    <h3>1단계: Dropbox 회원가입</h3>
+
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-content">
+        <h4>Dropbox 홈페이지 접속</h4>
+        <p>아래 주소로 접속하세요.</p>
+        <p class="url">https://www.dropbox.com</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-content">
+        <h4>회원가입</h4>
+        <p>우측 상단 <strong>"가입"</strong> 또는 <strong>"Sign up"</strong> 버튼을 클릭합니다.</p>
+        <p>이메일, 비밀번호를 입력하고 계정을 생성합니다.</p>
+        <p>Google 계정으로 간편 가입도 가능합니다.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-content">
+        <h4>요금제 선택</h4>
+        <p><strong>무료 플랜 (Basic)</strong>: 2GB 제공 — 소규모 업체에 적합</p>
+        <p><strong>Plus 플랜</strong>: 2TB, 월 $11.99 — 파일이 많은 업체에 추천</p>
+      </div>
+    </div>
+
+    <div class="highlight">
+      <p>이미 Dropbox 계정이 있다면 이 단계는 건너뛰세요.</p>
+    </div>
+  </div>
+
+  <!-- STEP 2: Dropbox 앱 생성 -->
+  <div class="card">
+    <h3>2단계: Dropbox 앱 생성</h3>
+
+    <div class="step">
+      <div class="step-num">4</div>
+      <div class="step-content">
+        <h4>Dropbox App Console 접속</h4>
+        <p>아래 주소로 접속하세요. (Dropbox 로그인 필요)</p>
+        <p class="url">https://www.dropbox.com/developers/apps</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">5</div>
+      <div class="step-content">
+        <h4>"Create app" 버튼 클릭</h4>
+        <p>파란색 <strong>"Create app"</strong> 버튼을 클릭합니다.</p>
+        <div class="img-placeholder">[ Create app 버튼 위치 - 화면 우측 상단 ]</div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">6</div>
+      <div class="step-content">
+        <h4>앱 설정 입력</h4>
+        <p>아래와 같이 선택합니다:</p>
+        <ul class="checklist">
+          <li><strong>Choose an API:</strong> Scoped access 선택</li>
+          <li><strong>Choose the type of access:</strong> Full Dropbox 선택</li>
+          <li><strong>Name your app:</strong> 업체명 입력 (예: <code>inche-task-manager</code>)</li>
+        </ul>
+        <p><strong>"Create app"</strong> 버튼을 클릭합니다.</p>
+        <div class="img-placeholder">[ 앱 생성 화면 - API 선택, 접근 유형 선택, 앱 이름 입력 ]</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 3: App Key, App Secret 확인 -->
+  <div class="card">
+    <h3>3단계: App Key / App Secret 확인</h3>
+
+    <div class="step">
+      <div class="step-num">7</div>
+      <div class="step-content">
+        <h4>Settings 탭에서 확인</h4>
+        <p>앱 생성이 완료되면 자동으로 앱 설정 페이지로 이동합니다.</p>
+        <p><strong>Settings</strong> 탭에서 아래 두 값을 확인하세요:</p>
+        <ul class="checklist">
+          <li><strong>App key:</strong> <code>a1b2c3d4e5f6g7h8</code> (예시)</li>
+          <li><strong>App secret:</strong> "Show" 버튼을 클릭하면 표시됩니다</li>
+        </ul>
+        <div class="img-placeholder">[ Settings 탭 - App key, App secret 위치 ]</div>
+      </div>
+    </div>
+
+    <div class="warning">
+      <p><strong>App secret은 절대 외부에 공유하지 마세요.</strong> 업체 설정 페이지에만 입력하세요.</p>
+    </div>
+  </div>
+
+  <!-- STEP 4: 권한 설정 -->
+  <div class="card">
+    <h3>4단계: 권한 (Permissions) 설정</h3>
+
+    <div class="step">
+      <div class="step-num">8</div>
+      <div class="step-content">
+        <h4>Permissions 탭 클릭</h4>
+        <p>앱 설정 페이지에서 <strong>"Permissions"</strong> 탭을 클릭합니다.</p>
+        <p>아래 권한을 체크하세요:</p>
+        <ul class="checklist">
+          <li><strong>files.metadata.read</strong> — 파일 정보 읽기</li>
+          <li><strong>files.metadata.write</strong> — 파일 정보 쓰기</li>
+          <li><strong>files.content.read</strong> — 파일 다운로드</li>
+          <li><strong>files.content.write</strong> — 파일 업로드</li>
+        </ul>
+        <p>하단의 <strong>"Submit"</strong> 버튼을 클릭하여 저장합니다.</p>
+        <div class="img-placeholder">[ Permissions 탭 - 체크할 항목 4개 ]</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 5: Access Token 발급 -->
+  <div class="card">
+    <h3>5단계: Access Token 발급</h3>
+
+    <div class="step">
+      <div class="step-num">9</div>
+      <div class="step-content">
+        <h4>Settings 탭으로 돌아가기</h4>
+        <p><strong>"Settings"</strong> 탭을 다시 클릭합니다.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">10</div>
+      <div class="step-content">
+        <h4>Access Token 생성</h4>
+        <p>페이지를 아래로 스크롤하면 <strong>"OAuth 2"</strong> 섹션이 있습니다.</p>
+        <p><strong>"Generated access token"</strong> 항목에서 <strong>"Generate"</strong> 버튼을 클릭합니다.</p>
+        <p>생성된 토큰을 복사하세요. (긴 문자열)</p>
+        <div class="img-placeholder">[ OAuth 2 섹션 - Generate 버튼과 생성된 토큰 ]</div>
+      </div>
+    </div>
+
+    <div class="warning">
+      <p><strong>Access Token은 한 번만 표시됩니다.</strong> 반드시 복사하여 안전한 곳에 저장하세요.<br>
+      잃어버리면 "Generate" 버튼을 다시 눌러 새로 발급받을 수 있습니다.</p>
+    </div>
+  </div>
+
+  <!-- STEP 6: 시스템에 입력 -->
+  <div class="card">
+    <h3>6단계: Blackcop.co.kr에 입력</h3>
+
+    <div class="step">
+      <div class="step-num">11</div>
+      <div class="step-content">
+        <h4>업체 정보 설정 페이지에서 입력</h4>
+        <p>Blackcop.co.kr에 관리자로 로그인 → <strong>관리자 페이지</strong> → <strong>업체정보설정</strong>으로 이동합니다.</p>
+        <p><strong>"Dropbox API 설정"</strong> 영역에 아래 값을 입력하세요:</p>
+        <ul class="checklist">
+          <li><strong>App Key:</strong> 7단계에서 확인한 App key</li>
+          <li><strong>App Secret:</strong> 7단계에서 확인한 App secret</li>
+          <li><strong>Access Token:</strong> 10단계에서 생성한 토큰</li>
+          <li><strong>저장 경로:</strong> 원하는 폴더명 (예: <code>/우리회사/첨부파일</code>)</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">12</div>
+      <div class="step-content">
+        <h4>연결 테스트</h4>
+        <p><strong>"연결 테스트"</strong> 버튼을 클릭하여 정상 연결되는지 확인합니다.</p>
+        <p>"연결 성공"이 표시되면 완료입니다.</p>
+      </div>
+    </div>
+
+    <div class="highlight">
+      <p>설정 완료 후 작업등록 화면에서 첨부파일을 업로드하면 자동으로 Dropbox에 저장됩니다.</p>
+    </div>
+  </div>
+
+  <!-- 요약 -->
+  <div class="card">
+    <h3>요약: 필요한 정보 확인</h3>
+    <table style="width:100%; border-collapse:collapse; font-size:13px;">
+      <tr style="background:#3b4b5b; color:#fff;">
+        <th style="padding:10px; border:1px solid #2d3a47; text-align:center;">항목</th>
+        <th style="padding:10px; border:1px solid #2d3a47; text-align:center;">확인 위치</th>
+        <th style="padding:10px; border:1px solid #2d3a47; text-align:center;">예시</th>
+      </tr>
+      <tr>
+        <td style="padding:8px; border:1px solid #e0e3e6; text-align:center; font-weight:600;">App Key</td>
+        <td style="padding:8px; border:1px solid #e0e3e6;">App Console > Settings</td>
+        <td style="padding:8px; border:1px solid #e0e3e6;"><code>a1b2c3d4e5f6g7h8</code></td>
+      </tr>
+      <tr style="background:#f7f8fa;">
+        <td style="padding:8px; border:1px solid #e0e3e6; text-align:center; font-weight:600;">App Secret</td>
+        <td style="padding:8px; border:1px solid #e0e3e6;">App Console > Settings > Show</td>
+        <td style="padding:8px; border:1px solid #e0e3e6;"><code>z9y8x7w6v5u4t3s2</code></td>
+      </tr>
+      <tr>
+        <td style="padding:8px; border:1px solid #e0e3e6; text-align:center; font-weight:600;">Access Token</td>
+        <td style="padding:8px; border:1px solid #e0e3e6;">App Console > Settings > OAuth 2 > Generate</td>
+        <td style="padding:8px; border:1px solid #e0e3e6;"><code>sl.B0abc123def456...</code></td>
+      </tr>
+    </table>
+
+    <div style="margin-top:20px; text-align:center;">
+      <a href="company-settings.html" class="btn-back">업체 설정으로 돌아가기</a>
+    </div>
+  </div>
+
+  <!-- 문의 -->
+  <div class="card" style="text-align:center;">
+    <p style="font-size:13px; color:#888;">설정에 어려움이 있으시면 관리자에게 문의하세요.</p>
+    <p style="font-size:13px; color:#888;">이메일: pwindow@naver.com | 전화: 02-793-4332</p>
+  </div>
+
+</div>
+</body>
+</html>
