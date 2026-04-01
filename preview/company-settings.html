@@ -94,6 +94,52 @@ body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
     </div>
   </div>
 
+  <!-- 이메일 발송 설정 -->
+  <div class="card">
+    <h3>이메일 발송 설정</h3>
+    <p style="font-size:12px; color:#888; margin-bottom:14px;">견적서, 거래명세서 등을 이메일로 발송하기 위한 설정입니다. 네이버 또는 다음 메일을 사용할 수 있습니다.</p>
+    <div class="form-grid">
+      <span class="lbl">메일 서비스</span>
+      <div class="full">
+        <select id="mailService" style="padding:7px 10px; border:1px solid #d1d5db; border-radius:4px; font-size:13px; width:100%;" onchange="updateSmtp()">
+          <option value="naver" selected>네이버 메일</option>
+          <option value="daum">다음(카카오) 메일</option>
+        </select>
+      </div>
+      <span class="lbl">SMTP 서버</span>
+      <input id="smtpServer" class="full" type="text" value="smtp.naver.com" readonly style="background:#f5f6fa; color:#999;">
+      <span class="lbl">포트</span>
+      <input id="smtpPort" type="text" value="465" readonly style="background:#f5f6fa; color:#999;">
+      <span class="lbl">보안</span>
+      <input id="smtpSsl" type="text" value="SSL" readonly style="background:#f5f6fa; color:#999;">
+      <span class="lbl">발신 이메일</span>
+      <input class="full" type="text" placeholder="발신 이메일 주소" value="pwindow@naver.com">
+      <span class="lbl">메일 아이디</span>
+      <input class="full" type="text" placeholder="네이버/다음 아이디" value="pwindow">
+      <span class="lbl">메일 비밀번호</span>
+      <input class="full" type="password" placeholder="앱 비밀번호 또는 메일 비밀번호" value="****************">
+    </div>
+    <div style="margin-top:12px; display:flex; gap:8px; align-items:center;">
+      <button style="padding:6px 16px; background:#059669; color:#fff; border:none; border-radius:4px; font-size:12px; cursor:pointer;">발송 테스트</button>
+      <input type="text" placeholder="테스트 수신 이메일" style="padding:5px 8px; border:1px solid #d1d5db; border-radius:4px; font-size:12px; width:220px;">
+      <span style="font-size:11px; color:#059669;">테스트 성공</span>
+    </div>
+    <div style="margin-top:12px; background:#fafbfc; border:1px solid #e2e8f0; border-radius:4px; padding:12px;">
+      <p style="font-size:12px; font-weight:600; color:#555; margin-bottom:6px;">네이버 메일 SMTP 설정 방법</p>
+      <p style="font-size:11px; color:#888; line-height:1.8;">
+        1. 네이버 메일 접속 > 환경설정 > POP3/IMAP 설정<br>
+        2. "POP3/SMTP 사용" 을 "사용함"으로 변경<br>
+        3. 위에 메일 아이디와 비밀번호를 입력<br>
+        (2단계 인증 사용 시 "앱 비밀번호"를 발급받아 입력)
+      </p>
+      <p style="font-size:12px; font-weight:600; color:#555; margin-top:10px; margin-bottom:6px;">다음(카카오) 메일 SMTP 설정 방법</p>
+      <p style="font-size:11px; color:#888; line-height:1.8;">
+        1. 다음 메일 접속 > 환경설정 > IMAP/POP3 > IMAP/SMTP 사용<br>
+        2. 위에 다음 아이디와 비밀번호를 입력
+      </p>
+    </div>
+  </div>
+
   <!-- 직인/로고 -->
   <div class="card">
     <h3>직인 / 로고 이미지</h3>
@@ -139,5 +185,22 @@ body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
     <a href="admin.html" class="btn-back">돌아가기</a>
   </div>
 </div>
+<script>
+function updateSmtp() {
+  var sel = document.getElementById('mailService').value;
+  var server = document.getElementById('smtpServer');
+  var port = document.getElementById('smtpPort');
+  var ssl = document.getElementById('smtpSsl');
+  if (sel === 'naver') {
+    server.value = 'smtp.naver.com';
+    port.value = '465';
+    ssl.value = 'SSL';
+  } else if (sel === 'daum') {
+    server.value = 'smtp.daum.net';
+    port.value = '465';
+    ssl.value = 'SSL';
+  }
+}
+</script>
 </body>
 </html>
