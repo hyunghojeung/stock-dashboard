@@ -100,7 +100,7 @@ body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
         <tr>
           <th style="width:50px;">번호</th>
           <th>제목</th>
-          <th style="width:80px;">작성자</th>
+          <th style="width:80px; cursor:pointer;" onclick="sortByAuthor()">작성자 ▼</th>
           <th style="width:110px;">작성일</th>
         </tr>
       </thead>
@@ -249,6 +249,22 @@ function showView(id) {
 function showEdit() {
   hideAll();
   document.getElementById('editView').style.display = 'block';
+}
+
+// 작성자 소팅
+var sortAsc = true;
+function sortByAuthor() {
+  var table = document.querySelector('.board-table tbody');
+  var rows = Array.from(table.querySelectorAll('tr'));
+  rows.sort(function(a, b) {
+    var aName = a.cells[2] ? a.cells[2].textContent.trim() : '';
+    var bName = b.cells[2] ? b.cells[2].textContent.trim() : '';
+    return sortAsc ? aName.localeCompare(bName, 'ko') : bName.localeCompare(aName, 'ko');
+  });
+  rows.forEach(function(row) { table.appendChild(row); });
+  var th = document.querySelector('.board-table thead th:nth-child(3)');
+  th.textContent = '작성자 ' + (sortAsc ? '▲' : '▼');
+  sortAsc = !sortAsc;
 }
 </script>
 </body>
