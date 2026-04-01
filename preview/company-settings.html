@@ -41,7 +41,7 @@ body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
 </div>
 
 <div class="content">
-  <!-- 기본 회사정보 -->
+  <!-- 1. 회사 기본정보 -->
   <div class="card">
     <h3>회사 기본정보</h3>
     <div class="form-grid">
@@ -73,28 +73,46 @@ body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
     <p style="font-size:11px; color:#999; margin-top:8px;">업체 ID는 로그인 시 사용됩니다. 비밀번호는 업체 관리자 비밀번호입니다.</p>
   </div>
 
-  <!-- Dropbox API 설정 -->
+  <!-- 2. 직인/로고 -->
   <div class="card">
-    <h3>Dropbox API 설정</h3>
-    <p style="font-size:12px; color:#888; margin-bottom:14px;">첨부파일 업로드를 위해 Dropbox API 키 정보를 입력하세요. Dropbox App Console에서 발급받을 수 있습니다.</p>
-    <div class="form-grid">
-      <span class="lbl">App Key</span>
-      <input class="full" type="text" placeholder="Dropbox App Key를 입력하세요" value="a1b2c3d4e5f6g7h8">
-      <span class="lbl">App Secret</span>
-      <input class="full" type="password" placeholder="Dropbox App Secret를 입력하세요" value="****************">
-      <span class="lbl">Access Token</span>
-      <input class="full" type="password" placeholder="Dropbox Access Token을 입력하세요" value="********************************">
-      <span class="lbl">저장 경로</span>
-      <input class="full" type="text" placeholder="/업체명/첨부파일" value="/인쇄의장/attachments">
-    </div>
-    <p style="font-size:11px; color:#999; margin-top:8px;">Access Token은 Dropbox App Console > Settings > Generated access token에서 발급받으세요. <a href="dropbox-guide.html" style="color:#2563eb;">Dropbox API 키 발급 가이드 보기</a></p>
-    <div style="margin-top:12px;">
-      <button style="padding:6px 16px; background:#0061fe; color:#fff; border:none; border-radius:4px; font-size:12px; cursor:pointer;">연결 테스트</button>
-      <span style="font-size:11px; color:#059669; margin-left:8px;">연결 성공</span>
+    <h3>직인 / 로고 이미지</h3>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+      <div>
+        <p style="font-size:12px; font-weight:600; color:#555; margin-bottom:8px;">직인 이미지</p>
+        <div class="upload-area">
+          클릭하여 직인 이미지를 업로드하세요<br>
+          <span style="font-size:11px; color:#ccc;">(PNG, JPG / 투명배경 권장)</span>
+        </div>
+        <p style="font-size:11px; color:#999; margin-top:6px;">견적서, 거래명세서에 표시됩니다</p>
+      </div>
+      <div>
+        <p style="font-size:12px; font-weight:600; color:#555; margin-bottom:8px;">회사 로고</p>
+        <div class="upload-area">
+          클릭하여 로고 이미지를 업로드하세요<br>
+          <span style="font-size:11px; color:#ccc;">(PNG, JPG / 가로형 권장)</span>
+        </div>
+        <p style="font-size:11px; color:#999; margin-top:6px;">발주서 상단에 표시됩니다</p>
+      </div>
     </div>
   </div>
 
-  <!-- 이메일 발송 설정 -->
+  <!-- 3. 견적서/거래명세서 미리보기 -->
+  <div class="card">
+    <h3>견적서/거래명세서 공급자 정보 미리보기</h3>
+    <p style="font-size:12px; color:#888; margin-bottom:12px;">위에서 입력한 정보가 견적서와 거래명세서에 아래와 같이 표시됩니다.</p>
+    <div class="preview-doc">
+      <h4>공급자 정보 미리보기</h4>
+      <table>
+        <tr><th>등록번호</th><td colspan="3">114-04-56136</td></tr>
+        <tr><th>상호(법인명)</th><td>인쇄의장</td><th>성명</th><td>[직인]</td></tr>
+        <tr><th>주소</th><td colspan="3">서울특별시 용산구 한강로2가 74-2 성산빌딩2층</td></tr>
+        <tr><th>업태</th><td>서비스, 제조</td><th>종목</th><td>출판, 인쇄, 기획</td></tr>
+        <tr><th>TEL / E-mail</th><td colspan="3">02-793-4332 / pwindow@naver.com</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- 4. 이메일 발송 설정 -->
   <div class="card">
     <h3>이메일 발송 설정</h3>
     <p style="font-size:12px; color:#888; margin-bottom:14px;">견적서, 거래명세서 등을 이메일로 발송하기 위한 설정입니다. 네이버 또는 다음 메일을 사용할 수 있습니다.</p>
@@ -140,42 +158,24 @@ body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
     </div>
   </div>
 
-  <!-- 직인/로고 -->
+  <!-- 5. Dropbox API 설정 -->
   <div class="card">
-    <h3>직인 / 로고 이미지</h3>
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
-      <div>
-        <p style="font-size:12px; font-weight:600; color:#555; margin-bottom:8px;">직인 이미지</p>
-        <div class="upload-area">
-          클릭하여 직인 이미지를 업로드하세요<br>
-          <span style="font-size:11px; color:#ccc;">(PNG, JPG / 투명배경 권장)</span>
-        </div>
-        <p style="font-size:11px; color:#999; margin-top:6px;">견적서, 거래명세서에 표시됩니다</p>
-      </div>
-      <div>
-        <p style="font-size:12px; font-weight:600; color:#555; margin-bottom:8px;">회사 로고</p>
-        <div class="upload-area">
-          클릭하여 로고 이미지를 업로드하세요<br>
-          <span style="font-size:11px; color:#ccc;">(PNG, JPG / 가로형 권장)</span>
-        </div>
-        <p style="font-size:11px; color:#999; margin-top:6px;">발주서 상단에 표시됩니다</p>
-      </div>
+    <h3>Dropbox API 설정</h3>
+    <p style="font-size:12px; color:#888; margin-bottom:14px;">첨부파일 업로드를 위해 Dropbox API 키 정보를 입력하세요. Dropbox App Console에서 발급받을 수 있습니다.</p>
+    <div class="form-grid">
+      <span class="lbl">App Key</span>
+      <input class="full" type="text" placeholder="Dropbox App Key를 입력하세요" value="a1b2c3d4e5f6g7h8">
+      <span class="lbl">App Secret</span>
+      <input class="full" type="password" placeholder="Dropbox App Secret를 입력하세요" value="****************">
+      <span class="lbl">Access Token</span>
+      <input class="full" type="password" placeholder="Dropbox Access Token을 입력하세요" value="********************************">
+      <span class="lbl">저장 경로</span>
+      <input class="full" type="text" placeholder="/업체명/첨부파일" value="/인쇄의장/attachments">
     </div>
-  </div>
-
-  <!-- 견적서/거래명세서 미리보기 -->
-  <div class="card">
-    <h3>견적서/거래명세서 공급자 정보 미리보기</h3>
-    <p style="font-size:12px; color:#888; margin-bottom:12px;">위에서 입력한 정보가 견적서와 거래명세서에 아래와 같이 표시됩니다.</p>
-    <div class="preview-doc">
-      <h4>공급자 정보 미리보기</h4>
-      <table>
-        <tr><th>등록번호</th><td colspan="3">114-04-56136</td></tr>
-        <tr><th>상호(법인명)</th><td>인쇄의장</td><th>성명</th><td>[직인]</td></tr>
-        <tr><th>주소</th><td colspan="3">서울특별시 용산구 한강로2가 74-2 성산빌딩2층</td></tr>
-        <tr><th>업태</th><td>서비스, 제조</td><th>종목</th><td>출판, 인쇄, 기획</td></tr>
-        <tr><th>TEL / E-mail</th><td colspan="3">02-793-4332 / pwindow@naver.com</td></tr>
-      </table>
+    <p style="font-size:11px; color:#999; margin-top:8px;">Access Token은 Dropbox App Console > Settings > Generated access token에서 발급받으세요. <a href="dropbox-guide.html" style="color:#2563eb;">Dropbox API 키 발급 가이드 보기</a></p>
+    <div style="margin-top:12px;">
+      <button style="padding:6px 16px; background:#0061fe; color:#fff; border:none; border-radius:4px; font-size:12px; cursor:pointer;">연결 테스트</button>
+      <span style="font-size:11px; color:#059669; margin-left:8px;">연결 성공</span>
     </div>
   </div>
 
