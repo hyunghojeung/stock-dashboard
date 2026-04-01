@@ -122,6 +122,7 @@ tbody tr:hover { background: #edf2f7; }
   <button class="tab-btn active" onclick="switchTab('users')">사용자관리</button>
   <button class="tab-btn" onclick="switchTab('category')">카테고리관리</button>
   <button class="tab-btn" onclick="switchTab('client')">거래처관리</button>
+  <button class="tab-btn" onclick="switchTab('supplier')">발주처관리</button>
   <button class="tab-btn" onclick="switchTab('template')">양식폼관리</button>
   <button class="tab-btn" onclick="switchTab('notice')">작업전달</button>
 </div>
@@ -364,6 +365,94 @@ tbody tr:hover { background: #edf2f7; }
   </div>
 
   <!-- ========== 양식폼 관리 탭 ========== -->
+  <!-- ========== 발주처 관리 탭 ========== -->
+  <div id="tab-supplier" class="tab-panel">
+    <div class="card">
+      <h3>발주처 관리</h3>
+      <p style="font-size:12px; color:#888; margin-bottom:14px;">발주처는 거래처와 별도로 관리됩니다. 발주서 작성 시 이 목록에서 선택합니다.</p>
+      <table>
+        <thead>
+          <tr>
+            <th style="width:40px;">순번</th>
+            <th>발주처명</th>
+            <th>담당자</th>
+            <th>전화</th>
+            <th>팩스</th>
+            <th>이메일</th>
+            <th style="width:100px;">관리</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1</td>
+            <td class="td-left">천지페이퍼</td>
+            <td>김종현</td>
+            <td>02-2040-4719</td>
+            <td>02-2040-4720</td>
+            <td class="td-left">cheonji@paper.co.kr</td>
+            <td>
+              <button class="btn-sm edit">수정</button>
+              <button class="btn-sm del">삭제</button>
+            </td>
+          </tr>
+          <tr>
+            <td>2</td>
+            <td class="td-left">(주)대흥지류</td>
+            <td>백승한</td>
+            <td>02-3456-7890</td>
+            <td>02-3456-7891</td>
+            <td class="td-left">baek@daeheung.com</td>
+            <td>
+              <button class="btn-sm edit">수정</button>
+              <button class="btn-sm del">삭제</button>
+            </td>
+          </tr>
+          <tr>
+            <td>3</td>
+            <td class="td-left">삼원특수지</td>
+            <td>이상호</td>
+            <td>02-5678-1234</td>
+            <td>02-5678-1235</td>
+            <td class="td-left">lee@samwon.co.kr</td>
+            <td>
+              <button class="btn-sm edit">수정</button>
+              <button class="btn-sm del">삭제</button>
+            </td>
+          </tr>
+          <tr>
+            <td>4</td>
+            <td class="td-left">한솔제지</td>
+            <td>박민철</td>
+            <td>02-6789-0123</td>
+            <td>02-6789-0124</td>
+            <td class="td-left">park@hansol.com</td>
+            <td>
+              <button class="btn-sm edit">수정</button>
+              <button class="btn-sm del">삭제</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="client-form" style="margin-top:16px;">
+        <div class="client-form-grid">
+          <span class="lbl">발주처명</span>
+          <input type="text" placeholder="발주처명">
+          <span class="lbl">담당자</span>
+          <input type="text" placeholder="담당자">
+          <span class="lbl">전화</span>
+          <input type="text" placeholder="02-0000-0000">
+          <span class="lbl">팩스</span>
+          <input type="text" placeholder="02-0000-0000">
+          <span class="lbl">이메일</span>
+          <input type="text" placeholder="email@example.com" style="grid-column: 2 / -1;">
+        </div>
+        <div class="client-form-btns" style="margin-top:12px;">
+          <button class="btn-add">+ 발주처 등록</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div id="tab-template" class="tab-panel">
     <div class="card">
       <h3>표양식관리</h3>

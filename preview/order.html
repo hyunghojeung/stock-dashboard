@@ -256,18 +256,14 @@ body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
           </td>
         </tr>
         <tr>
-          <td class="lbl"><button type="button" onclick="document.getElementById('orderClientModal').style.display='flex'" style="padding:3px 10px; background:#2563eb; color:#fff; border:none; border-radius:3px; font-size:11px; cursor:pointer;">거래처</button></td>
+          <td class="lbl"><button type="button" onclick="document.getElementById('orderClientModal').style.display='flex'" style="padding:3px 10px; background:#374151; color:#fff; border:none; border-radius:3px; font-size:11px; cursor:pointer;">발주처</button></td>
           <td>
             <select id="orderClientName" style="width:100%; padding:5px 8px; border:1px solid #d1d5db; border-radius:3px; font-size:13px;">
-              <option value="">거래처 선택</option>
+              <option value="">발주처 선택</option>
               <option selected>천지페이퍼</option>
               <option>(주)대흥지류</option>
-              <option>커뮤니크</option>
-              <option>행정공제회</option>
-              <option>한화에어로스페이스</option>
-              <option>유니트플레이</option>
-              <option>방위사업청</option>
-              <option>LS E-Link</option>
+              <option>삼원특수지</option>
+              <option>한솔제지</option>
             </select>
           </td>
           <td class="lbl2">발주자</td>
@@ -445,13 +441,15 @@ body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
 
 </div>
 
-<!-- 거래처 등록/검색 모달 -->
+<!-- 발주처 등록 모달 -->
 <div id="orderClientModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; justify-content:center; align-items:center;" onclick="if(event.target===this) this.style.display='none'">
   <div style="background:#fff; border-radius:8px; padding:24px; width:420px; box-shadow:0 4px 20px rgba(0,0,0,0.2);">
-    <h4 style="font-size:15px; color:#1e293b; margin-bottom:14px; padding-bottom:8px; border-bottom:2px solid #e2e8f0;">거래처 등록</h4>
+    <h4 style="font-size:15px; color:#1e293b; margin-bottom:14px; padding-bottom:8px; border-bottom:2px solid #e2e8f0;">발주처 등록</h4>
     <div style="display:grid; grid-template-columns:70px 1fr; gap:8px; align-items:center; font-size:13px;">
-      <span style="font-weight:600; color:#555; font-size:12px;">거래처명</span>
-      <input id="ocName" type="text" placeholder="거래처명" style="padding:6px 8px; border:1px solid #d1d5db; border-radius:4px; font-size:13px;">
+      <span style="font-weight:600; color:#555; font-size:12px;">발주처명</span>
+      <input id="ocName" type="text" placeholder="발주처명" style="padding:6px 8px; border:1px solid #d1d5db; border-radius:4px; font-size:13px;">
+      <span style="font-weight:600; color:#555; font-size:12px;">담당자</span>
+      <input type="text" placeholder="담당자명" style="padding:6px 8px; border:1px solid #d1d5db; border-radius:4px; font-size:13px;">
       <span style="font-weight:600; color:#555; font-size:12px;">전화</span>
       <input id="ocPhone" type="text" placeholder="02-0000-0000" style="padding:6px 8px; border:1px solid #d1d5db; border-radius:4px; font-size:13px;">
       <span style="font-weight:600; color:#555; font-size:12px;">팩스</span>
@@ -459,8 +457,9 @@ body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
       <span style="font-weight:600; color:#555; font-size:12px;">이메일</span>
       <input id="ocEmail" type="text" placeholder="email@example.com" style="padding:6px 8px; border:1px solid #d1d5db; border-radius:4px; font-size:13px;">
     </div>
+    <p style="font-size:11px; color:#999; margin-top:8px;">발주처는 거래처와 별도로 관리됩니다.</p>
     <div style="margin-top:14px; display:flex; gap:6px; justify-content:flex-end;">
-      <button onclick="var n=document.getElementById('ocName').value; if(n){document.getElementById('orderClientName').value=n;} document.getElementById('orderClientModal').style.display='none';" style="padding:6px 20px; background:#2563eb; color:#fff; border:none; border-radius:4px; font-size:12px; cursor:pointer;">등록</button>
+      <button onclick="var n=document.getElementById('ocName').value; if(n){var sel=document.getElementById('orderClientName'); var opt=document.createElement('option'); opt.text=n; opt.selected=true; sel.add(opt);} document.getElementById('orderClientModal').style.display='none';" style="padding:6px 20px; background:#374151; color:#fff; border:none; border-radius:4px; font-size:12px; cursor:pointer;">등록</button>
       <button onclick="document.getElementById('orderClientModal').style.display='none'" style="padding:6px 20px; background:#fff; color:#555; border:1px solid #d1d5db; border-radius:4px; font-size:12px; cursor:pointer;">닫기</button>
     </div>
   </div>
