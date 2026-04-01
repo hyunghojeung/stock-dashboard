@@ -247,7 +247,7 @@ body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
       <table class="form-table">
         <tr>
           <td class="lbl">발주No.</td>
-          <td><input type="text" value="저장시점에 생성됩니다." class="input-readonly" readonly></td>
+          <td><input id="orderNo" type="text" value="" class="input-readonly" readonly></td>
           <td class="lbl2">일자</td>
           <td style="white-space:nowrap;">
             <select style="width:70px;"><option>2026</option></select> /
@@ -455,12 +455,23 @@ function showWrite() { hideAll(); document.getElementById('writeView').style.dis
 function showView() { showWrite(); }
 function showPrint() { hideAll(); document.getElementById('printView').style.display = 'block'; }
 function copyOrder() {
-  // 발주No만 초기화하고 나머지 내용은 유지 (복사)
-  var writeView = document.getElementById('writeView');
-  var noInput = writeView.querySelector('input.input-readonly');
-  if (noInput) { noInput.value = '저장시점에 생성됩니다.'; }
+  generateOrderNo();
   alert('발주서가 복사되었습니다. 내용을 수정 후 저장하세요.');
 }
+
+// 발주번호 자동 생성: O년월일-순번
+function generateOrderNo() {
+  var today = new Date();
+  var y = today.getFullYear();
+  var m = String(today.getMonth() + 1).padStart(2, '0');
+  var d = String(today.getDate()).padStart(2, '0');
+  var dateStr = y + m + d;
+  var key = 'orderPOCount_' + dateStr;
+  var count = parseInt(localStorage.getItem(key) || '0') + 1;
+  localStorage.setItem(key, count);
+  document.getElementById('orderNo').value = 'O' + dateStr + '-' + count;
+}
+generateOrderNo();
 </script>
 </body>
 </html>
