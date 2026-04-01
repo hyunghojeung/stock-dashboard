@@ -68,6 +68,7 @@ tbody tr:hover { background: #edf2f7; }
 <div class="tab-nav">
   <button class="tab-btn active" onclick="switchTab('dashboard')">대시보드</button>
   <button class="tab-btn" onclick="switchTab('companies')">업체관리</button>
+  <button class="tab-btn" onclick="switchTab('ads')">광고관리</button>
   <button class="tab-btn" onclick="switchTab('settings')">시스템설정</button>
 </div>
 
@@ -281,6 +282,93 @@ tbody tr:hover { background: #edf2f7; }
         <a href="#">2</a>
         <a href="#">3</a>
         <span style="margin-left:8px;">/ 3 페이지</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 광고관리 ===== -->
+  <div id="tab-ads" class="tab-panel">
+    <div class="card">
+      <h3>배너 광고 관리</h3>
+      <p style="font-size:12px; color:#888; margin-bottom:16px;">모든 업체 페이지 상단에 표시되는 배너 광고를 관리합니다.</p>
+
+      <!-- 현재 배너 미리보기 -->
+      <div style="margin-bottom:20px;">
+        <p style="font-size:12px; font-weight:600; color:#555; margin-bottom:8px;">현재 배너 미리보기</p>
+        <div style="background:linear-gradient(135deg, #1e3a5f 0%, #2563eb 50%, #0ea5e9 100%); padding:10px 24px; display:flex; justify-content:space-between; align-items:center; border-radius:6px;">
+          <span style="color:#fff; font-size:14px; font-weight:700;">인쇄/출력 작업기록, 견적서, 거래명세서, 발주서까지 올인원 업무관리</span>
+          <span style="background:#fbbf24; color:#1e293b; padding:4px 12px; border-radius:12px; font-size:11px; font-weight:700;">FREE</span>
+        </div>
+      </div>
+
+      <!-- 배너 설정 -->
+      <div style="background:#fafbfc; border:1px solid #e2e8f0; border-radius:6px; padding:16px; margin-bottom:20px;">
+        <p style="font-size:13px; font-weight:600; color:#1e293b; margin-bottom:12px;">배너 설정</p>
+        <div style="display:grid; grid-template-columns:100px 1fr; gap:10px; align-items:center; font-size:13px;">
+          <span style="font-weight:600; color:#555; font-size:12px;">배너 문구</span>
+          <input type="text" value="인쇄/출력 작업기록, 견적서, 거래명세서, 발주서까지 올인원 업무관리" style="padding:7px 10px; border:1px solid #d1d5db; border-radius:4px; font-size:13px;">
+          <span style="font-weight:600; color:#555; font-size:12px;">링크 URL</span>
+          <input type="text" value="https://blackcopy.kr" style="padding:7px 10px; border:1px solid #d1d5db; border-radius:4px; font-size:13px;">
+          <span style="font-weight:600; color:#555; font-size:12px;">버튼 텍스트</span>
+          <input type="text" value="FREE" style="padding:7px 10px; border:1px solid #d1d5db; border-radius:4px; font-size:13px; width:120px;">
+          <span style="font-weight:600; color:#555; font-size:12px;">배너 색상</span>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <input type="color" value="#2563eb" style="width:40px; height:32px; border:1px solid #d1d5db; border-radius:4px; cursor:pointer;">
+            <span style="font-size:11px; color:#999;">그라데이션 메인 색상</span>
+          </div>
+          <span style="font-weight:600; color:#555; font-size:12px;">배너 표시</span>
+          <select style="padding:7px 10px; border:1px solid #d1d5db; border-radius:4px; font-size:13px; width:150px;">
+            <option selected>표시</option>
+            <option>숨김</option>
+          </select>
+        </div>
+        <div style="margin-top:12px;">
+          <button style="padding:6px 20px; background:#3b82f6; color:#fff; border:none; border-radius:4px; font-size:12px; cursor:pointer;">배너 저장</button>
+        </div>
+      </div>
+
+      <!-- 배너 이미지 업로드 -->
+      <div style="background:#fafbfc; border:1px solid #e2e8f0; border-radius:6px; padding:16px; margin-bottom:20px;">
+        <p style="font-size:13px; font-weight:600; color:#1e293b; margin-bottom:12px;">배너 이미지 (선택사항)</p>
+        <p style="font-size:11px; color:#888; margin-bottom:10px;">이미지를 업로드하면 텍스트 배너 대신 이미지 배너가 표시됩니다.</p>
+        <div style="border:2px dashed #d1d5db; border-radius:6px; padding:24px; text-align:center; color:#94a3b8; font-size:12px; cursor:pointer;">
+          클릭하여 배너 이미지를 업로드하세요<br>
+          <span style="font-size:11px; color:#ccc;">권장: 1200 x 80px / PNG, JPG</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 팝업 광고 관리 -->
+    <div class="card">
+      <h3>팝업 광고 관리</h3>
+      <p style="font-size:12px; color:#888; margin-bottom:16px;">로그인 후 표시되는 팝업 광고를 관리합니다.</p>
+      <div style="background:#fafbfc; border:1px solid #e2e8f0; border-radius:6px; padding:16px;">
+        <div style="display:grid; grid-template-columns:100px 1fr; gap:10px; align-items:center; font-size:13px;">
+          <span style="font-weight:600; color:#555; font-size:12px;">팝업 제목</span>
+          <input type="text" placeholder="팝업 제목" value="Blackcopy.kr 오픈 기념 무료 체험 이벤트!" style="padding:7px 10px; border:1px solid #d1d5db; border-radius:4px; font-size:13px;">
+          <span style="font-weight:600; color:#555; font-size:12px;">팝업 내용</span>
+          <textarea placeholder="팝업 내용" style="padding:7px 10px; border:1px solid #d1d5db; border-radius:4px; font-size:13px; font-family:inherit; min-height:80px; resize:vertical;">지금 가입하시면 3개월 무료로 이용하실 수 있습니다. 인쇄/출력 업무를 효율적으로 관리하세요!</textarea>
+          <span style="font-weight:600; color:#555; font-size:12px;">링크 URL</span>
+          <input type="text" value="https://blackcopy.kr" style="padding:7px 10px; border:1px solid #d1d5db; border-radius:4px; font-size:13px;">
+          <span style="font-weight:600; color:#555; font-size:12px;">팝업 이미지</span>
+          <div style="border:2px dashed #d1d5db; border-radius:6px; padding:16px; text-align:center; color:#94a3b8; font-size:12px; cursor:pointer;">
+            클릭하여 팝업 이미지 업로드 (권장: 400 x 300px)
+          </div>
+          <span style="font-weight:600; color:#555; font-size:12px;">팝업 표시</span>
+          <select style="padding:7px 10px; border:1px solid #d1d5db; border-radius:4px; font-size:13px; width:150px;">
+            <option selected>표시</option>
+            <option>숨김</option>
+          </select>
+          <span style="font-weight:600; color:#555; font-size:12px;">표시 기간</span>
+          <div style="display:flex; gap:6px; align-items:center;">
+            <input type="date" value="2026-04-01" style="padding:5px 8px; border:1px solid #d1d5db; border-radius:4px; font-size:12px;">
+            <span>~</span>
+            <input type="date" value="2026-06-30" style="padding:5px 8px; border:1px solid #d1d5db; border-radius:4px; font-size:12px;">
+          </div>
+        </div>
+        <div style="margin-top:12px;">
+          <button style="padding:6px 20px; background:#3b82f6; color:#fff; border:none; border-radius:4px; font-size:12px; cursor:pointer;">팝업 저장</button>
+        </div>
       </div>
     </div>
   </div>
