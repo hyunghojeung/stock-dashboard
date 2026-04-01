@@ -257,7 +257,19 @@ body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
         </tr>
         <tr>
           <td class="lbl"><button type="button" onclick="document.getElementById('orderClientModal').style.display='flex'" style="padding:3px 10px; background:#2563eb; color:#fff; border:none; border-radius:3px; font-size:11px; cursor:pointer;">거래처</button></td>
-          <td><input id="orderClientName" type="text" placeholder="거래처" value="천지페이퍼"></td>
+          <td>
+            <select id="orderClientName" style="width:100%; padding:5px 8px; border:1px solid #d1d5db; border-radius:3px; font-size:13px;">
+              <option value="">거래처 선택</option>
+              <option selected>천지페이퍼</option>
+              <option>(주)대흥지류</option>
+              <option>커뮤니크</option>
+              <option>행정공제회</option>
+              <option>한화에어로스페이스</option>
+              <option>유니트플레이</option>
+              <option>방위사업청</option>
+              <option>LS E-Link</option>
+            </select>
+          </td>
           <td class="lbl2">발주자</td>
           <td><input type="text" placeholder="발주자" value="정형호"></td>
         </tr>
