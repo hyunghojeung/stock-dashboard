@@ -119,18 +119,18 @@ tbody tr:hover { background: #edf2f7; }
 
 <!-- 탭 네비게이션 -->
 <div class="tab-nav">
-  <button class="tab-btn active" onclick="switchTab('users')">사용자관리</button>
+  <button class="tab-btn active" onclick="switchTab('notice')">작업전달</button>
+  <button class="tab-btn" onclick="switchTab('users')">사용자관리</button>
   <button class="tab-btn" onclick="switchTab('category')">카테고리관리</button>
   <button class="tab-btn" onclick="switchTab('client')">거래처관리</button>
   <button class="tab-btn" onclick="switchTab('supplier')">발주처관리</button>
   <button class="tab-btn" onclick="switchTab('template')">양식폼관리</button>
-  <button class="tab-btn" onclick="switchTab('notice')">작업전달</button>
 </div>
 
 <div class="content">
 
   <!-- ========== 사용자 관리 탭 ========== -->
-  <div id="tab-users" class="tab-panel active">
+  <div id="tab-users" class="tab-panel">
     <div class="card">
       <h3>사용자 관리</h3>
       <table>
@@ -678,7 +678,7 @@ tbody tr:hover { background: #edf2f7; }
   </div>
 
   <!-- ========== 작업전달 탭 ========== -->
-  <div id="tab-notice" class="tab-panel">
+  <div id="tab-notice" class="tab-panel active">
     <div class="card">
       <h3>작업전달</h3>
       <p style="font-size:12px; color:#888; margin-bottom:14px;">작성된 글은 리스트 화면 상단에 빨간색으로 깜빡이며 표시됩니다.</p>
