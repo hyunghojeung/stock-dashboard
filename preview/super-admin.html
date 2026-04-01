@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>최고관리자 - 업체관리</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Malgun Gothic', sans-serif; background: #f5f6fa; }
+.header { background: #0f172a; color: #fff; padding: 12px 24px; display: flex; justify-content: space-between; align-items: center; }
+.header h1 { font-size: 18px; color: #60a5fa; }
+.header-right { display: flex; align-items: center; gap: 12px; font-size: 13px; }
+.header-right a { color: #94a3b8; text-decoration: none; }
+.header-right a:hover { color: #fff; }
+.tab-nav { background: #1e293b; padding: 0 24px; display: flex; gap: 0; }
+.tab-btn { padding: 12px 24px; font-size: 13px; font-weight: 600; color: #94a3b8; border: none; background: none; cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: 0; font-family: inherit; }
+.tab-btn:hover { color: #f1f5f9; background: #334155; }
+.tab-btn.active { color: #60a5fa; border-bottom-color: #60a5fa; }
+.content { max-width: 1100px; margin: 24px auto; }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+.card { background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); padding: 24px; margin-bottom: 20px; }
+.card h3 { font-size: 16px; color: #1e293b; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #e2e8f0; }
+table { width: 100%; border-collapse: collapse; font-size: 12px; border: 1px solid #c8ccd0; }
+th { background: #0f172a; padding: 10px 6px; text-align: center; color: #fff; font-weight: 600; white-space: nowrap; border: 1px solid #1e293b; font-size: 12px; }
+td { padding: 8px 6px; text-align: center; border: 1px solid #e0e3e6; color: #333; font-size: 12px; white-space: nowrap; }
+tbody tr:nth-child(even) { background: #f7f8fa; }
+tbody tr:hover { background: #edf2f7; }
+.td-left { text-align: left !important; }
+.btn-sm { padding: 4px 10px; border: 1px solid #d1d5db; border-radius: 3px; background: #fff; font-size: 11px; cursor: pointer; color: #555; }
+.btn-sm.edit { color: #2563eb; border-color: #2563eb; }
+.btn-sm.del { color: #dc2626; border-color: #dc2626; }
+.btn-sm.view { color: #059669; border-color: #059669; }
+.btn-add { padding: 8px 20px; background: #3b82f6; color: #fff; border: none; border-radius: 4px; font-size: 13px; cursor: pointer; }
+.badge { padding: 2px 10px; border-radius: 10px; font-size: 11px; }
+.badge-active { background: #dcfce7; color: #166534; }
+.badge-inactive { background: #fee2e2; color: #991b1b; }
+.badge-pending { background: #fef3c7; color: #92400e; }
+/* 통계 카드 */
+.stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+.stat-card { background: #fff; border-radius: 8px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); text-align: center; }
+.stat-card .num { font-size: 32px; font-weight: 800; color: #1e293b; }
+.stat-card .label { font-size: 12px; color: #64748b; margin-top: 4px; }
+/* 등록 모달 */
+.modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; }
+.modal.show { display: flex; }
+.modal-content { background: #fff; border-radius: 8px; padding: 28px; width: 520px; max-height: 85vh; overflow-y: auto; box-shadow: 0 4px 20px rgba(0,0,0,0.2); }
+.modal-content h4 { font-size: 16px; color: #1e293b; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #e2e8f0; }
+.form-grid { display: grid; grid-template-columns: 90px 1fr; gap: 10px; align-items: center; font-size: 13px; }
+.form-grid .lbl { font-weight: 600; color: #555; font-size: 12px; }
+.form-grid input, .form-grid select { padding: 7px 10px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 13px; }
+.form-btns { margin-top: 16px; display: flex; gap: 6px; justify-content: flex-end; }
+.form-btns button { padding: 8px 24px; border-radius: 4px; font-size: 13px; cursor: pointer; border: none; }
+.pagination { text-align: center; padding: 16px; font-size: 13px; color: #666; }
+.pagination a { display: inline-block; padding: 4px 10px; margin: 0 2px; border: 1px solid #d1d5db; border-radius: 3px; text-decoration: none; color: #555; }
+.pagination a.active { background: #0f172a; color: #fff; border-color: #0f172a; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>Platform Admin - 업무관리 시스템</h1>
+  <div class="header-right">
+    <span>최고관리자</span>
+    <a href="super-login.html">로그아웃</a>
+  </div>
+</div>
+
+<div class="tab-nav">
+  <button class="tab-btn active" onclick="switchTab('dashboard')">대시보드</button>
+  <button class="tab-btn" onclick="switchTab('companies')">업체관리</button>
+  <button class="tab-btn" onclick="switchTab('settings')">시스템설정</button>
+</div>
+
+<div class="content">
+
+  <!-- ===== 대시보드 ===== -->
+  <div id="tab-dashboard" class="tab-panel active">
+    <div class="stat-grid">
+      <div class="stat-card">
+        <div class="num">12</div>
+        <div class="label">등록 업체</div>
+      </div>
+      <div class="stat-card">
+        <div class="num" style="color:#059669;">10</div>
+        <div class="label">활성 업체</div>
+      </div>
+      <div class="stat-card">
+        <div class="num" style="color:#dc2626;">2</div>
+        <div class="label">비활성 업체</div>
+      </div>
+      <div class="stat-card">
+        <div class="num" style="color:#2563eb;">47</div>
+        <div class="label">전체 사용자</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>최근 등록 업체</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>순번</th>
+            <th>업체명</th>
+            <th>대표자</th>
+            <th>연락처</th>
+            <th>등록일</th>
+            <th>상태</th>
+            <th>사용자수</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1</td>
+            <td class="td-left">인쇄의장</td>
+            <td>정형호</td>
+            <td>02-793-4332</td>
+            <td>2026-03-01</td>
+            <td><span class="badge badge-active">활성</span></td>
+            <td>5</td>
+          </tr>
+          <tr>
+            <td>2</td>
+            <td class="td-left">블루프린트 인쇄</td>
+            <td>김영수</td>
+            <td>02-555-1234</td>
+            <td>2026-03-05</td>
+            <td><span class="badge badge-active">활성</span></td>
+            <td>8</td>
+          </tr>
+          <tr>
+            <td>3</td>
+            <td class="td-left">대한출판사</td>
+            <td>박민호</td>
+            <td>02-777-5678</td>
+            <td>2026-03-10</td>
+            <td><span class="badge badge-active">활성</span></td>
+            <td>6</td>
+          </tr>
+          <tr>
+            <td>4</td>
+            <td class="td-left">서울디자인센터</td>
+            <td>이지은</td>
+            <td>02-888-9012</td>
+            <td>2026-03-15</td>
+            <td><span class="badge badge-pending">대기</span></td>
+            <td>0</td>
+          </tr>
+          <tr>
+            <td>5</td>
+            <td class="td-left">한국인쇄공업</td>
+            <td>최동욱</td>
+            <td>031-456-7890</td>
+            <td>2026-03-20</td>
+            <td><span class="badge badge-inactive">비활성</span></td>
+            <td>3</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ===== 업체관리 ===== -->
+  <div id="tab-companies" class="tab-panel">
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+        <h3 style="margin-bottom:0; border:none; padding:0;">업체 목록</h3>
+        <button class="btn-add" onclick="document.getElementById('companyModal').classList.add('show')">+ 업체 등록</button>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>순번</th>
+            <th>업체코드</th>
+            <th>업체명</th>
+            <th>사업자번호</th>
+            <th>대표자</th>
+            <th>연락처</th>
+            <th>이메일</th>
+            <th>등록일</th>
+            <th>상태</th>
+            <th>사용자</th>
+            <th>관리</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1</td>
+            <td>COM001</td>
+            <td class="td-left">인쇄의장</td>
+            <td>114-04-56136</td>
+            <td>정형호</td>
+            <td>02-793-4332</td>
+            <td class="td-left">pwindow@naver.com</td>
+            <td>2026-03-01</td>
+            <td><span class="badge badge-active">활성</span></td>
+            <td>5명</td>
+            <td>
+              <button class="btn-sm view" onclick="location.href='company-settings.html'">설정</button>
+              <button class="btn-sm edit">수정</button>
+              <button class="btn-sm del">정지</button>
+            </td>
+          </tr>
+          <tr>
+            <td>2</td>
+            <td>COM002</td>
+            <td class="td-left">블루프린트 인쇄</td>
+            <td>220-15-78901</td>
+            <td>김영수</td>
+            <td>02-555-1234</td>
+            <td class="td-left">blueprint@print.co.kr</td>
+            <td>2026-03-05</td>
+            <td><span class="badge badge-active">활성</span></td>
+            <td>8명</td>
+            <td>
+              <button class="btn-sm view" onclick="location.href='company-settings.html'">설정</button>
+              <button class="btn-sm edit">수정</button>
+              <button class="btn-sm del">정지</button>
+            </td>
+          </tr>
+          <tr>
+            <td>3</td>
+            <td>COM003</td>
+            <td class="td-left">대한출판사</td>
+            <td>105-22-33456</td>
+            <td>박민호</td>
+            <td>02-777-5678</td>
+            <td class="td-left">daehan@pub.com</td>
+            <td>2026-03-10</td>
+            <td><span class="badge badge-active">활성</span></td>
+            <td>6명</td>
+            <td>
+              <button class="btn-sm view" onclick="location.href='company-settings.html'">설정</button>
+              <button class="btn-sm edit">수정</button>
+              <button class="btn-sm del">정지</button>
+            </td>
+          </tr>
+          <tr>
+            <td>4</td>
+            <td>COM004</td>
+            <td class="td-left">서울디자인센터</td>
+            <td>301-44-55678</td>
+            <td>이지은</td>
+            <td>02-888-9012</td>
+            <td class="td-left">seoul@design.kr</td>
+            <td>2026-03-15</td>
+            <td><span class="badge badge-pending">대기</span></td>
+            <td>0명</td>
+            <td>
+              <button class="btn-sm view" onclick="location.href='company-settings.html'">설정</button>
+              <button class="btn-sm edit">수정</button>
+              <button class="btn-sm" style="color:#059669; border-color:#059669;">활성</button>
+            </td>
+          </tr>
+          <tr>
+            <td>5</td>
+            <td>COM005</td>
+            <td class="td-left">한국인쇄공업</td>
+            <td>410-55-66789</td>
+            <td>최동욱</td>
+            <td>031-456-7890</td>
+            <td class="td-left">hankook@print.com</td>
+            <td>2026-03-20</td>
+            <td><span class="badge badge-inactive">비활성</span></td>
+            <td>3명</td>
+            <td>
+              <button class="btn-sm view" onclick="location.href='company-settings.html'">설정</button>
+              <button class="btn-sm edit">수정</button>
+              <button class="btn-sm" style="color:#059669; border-color:#059669;">활성</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="pagination">
+        <a href="#" class="active">1</a>
+        <a href="#">2</a>
+        <a href="#">3</a>
+        <span style="margin-left:8px;">/ 3 페이지</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 시스템설정 ===== -->
+  <div id="tab-settings" class="tab-panel">
+    <div class="card">
+      <h3>시스템 설정</h3>
+      <div style="display:grid; grid-template-columns:120px 1fr; gap:12px; align-items:center; font-size:13px; max-width:500px;">
+        <span style="font-weight:600; color:#555;">시스템명</span>
+        <input type="text" value="업무관리 시스템" style="padding:8px 10px; border:1px solid #d1d5db; border-radius:4px; font-size:13px;">
+        <span style="font-weight:600; color:#555;">최대 업체수</span>
+        <input type="text" value="50" style="padding:8px 10px; border:1px solid #d1d5db; border-radius:4px; font-size:13px;">
+        <span style="font-weight:600; color:#555;">업체당 최대 사용자</span>
+        <input type="text" value="10" style="padding:8px 10px; border:1px solid #d1d5db; border-radius:4px; font-size:13px;">
+        <span style="font-weight:600; color:#555;">관리자 ID</span>
+        <input type="text" value="superadmin" style="padding:8px 10px; border:1px solid #d1d5db; border-radius:4px; font-size:13px;">
+        <span style="font-weight:600; color:#555;">관리자 비밀번호</span>
+        <input type="password" value="********" style="padding:8px 10px; border:1px solid #d1d5db; border-radius:4px; font-size:13px;">
+      </div>
+      <div style="margin-top:16px;">
+        <button class="btn-add">설정 저장</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- 업체 등록 모달 -->
+<div class="modal" id="companyModal" onclick="if(event.target===this) this.classList.remove('show')">
+  <div class="modal-content">
+    <h4>업체 등록</h4>
+    <div class="form-grid">
+      <span class="lbl">업체코드</span>
+      <input type="text" placeholder="자동생성" value="COM006" readonly style="background:#f5f6fa; color:#999;">
+      <span class="lbl">업체명</span>
+      <input type="text" placeholder="업체명을 입력하세요">
+      <span class="lbl">사업자번호</span>
+      <input type="text" placeholder="000-00-00000">
+      <span class="lbl">대표자</span>
+      <input type="text" placeholder="대표자명">
+      <span class="lbl">연락처</span>
+      <input type="text" placeholder="02-0000-0000">
+      <span class="lbl">팩스</span>
+      <input type="text" placeholder="02-0000-0000">
+      <span class="lbl">이메일</span>
+      <input type="text" placeholder="email@example.com">
+      <span class="lbl">주소</span>
+      <input type="text" placeholder="사업장 주소">
+      <span class="lbl">업태</span>
+      <input type="text" placeholder="서비스, 제조 등">
+      <span class="lbl">종목</span>
+      <input type="text" placeholder="출판, 인쇄 등">
+    </div>
+    <div style="margin-top:16px; padding-top:12px; border-top:1px solid #e2e8f0;">
+      <p style="font-size:13px; font-weight:600; color:#1e293b; margin-bottom:8px;">업체 관리자 계정</p>
+      <div class="form-grid">
+        <span class="lbl">관리자 이름</span>
+        <input type="text" placeholder="관리자 이름">
+        <span class="lbl">비밀번호</span>
+        <input type="text" placeholder="초기 비밀번호" value="@admin1234">
+      </div>
+    </div>
+    <div class="form-btns">
+      <button style="background:#3b82f6; color:#fff;" onclick="document.getElementById('companyModal').classList.remove('show')">등록</button>
+      <button style="background:#fff; color:#555; border:1px solid #d1d5db;" onclick="document.getElementById('companyModal').classList.remove('show')">취소</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function switchTab(name) {
+  document.querySelectorAll('.tab-btn').forEach(function(btn) { btn.classList.remove('active'); });
+  document.querySelectorAll('.tab-panel').forEach(function(panel) { panel.classList.remove('active'); });
+  document.getElementById('tab-' + name).classList.add('active');
+  event.target.classList.add('active');
+}
+</script>
+</body>
+</html>
