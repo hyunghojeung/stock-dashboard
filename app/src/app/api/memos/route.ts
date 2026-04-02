@@ -11,9 +11,21 @@ export async function GET(request: NextRequest) {
   const limit = 15;
   const supabase = getSupabase();
   const from = (page - 1) * limit;
-  const { data, error, count } = await supabase.from("memos").select("*, users!memos_created_by_fkey(name, user_id)", { count: "exact" }).eq("company_id", session.company.id).order("created_at", { ascending: false }).range(from, from + limit - 1);
+  const { data, error, count } = await supabase.from("memos").select("*", { count: "exact" }).eq("company_id", session.company.id).order("created_at", { ascending: false }).range(from, from + limit - 1);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ data, total: count, page, limit });
+  // 작성자 정보 조회
+  const createdByIds = (data || []).map((m: Record<string, unknown>) => m.created_by).filter(Boolean);
+  let usersMap: Record<string, { name: string; user_id: string }> = {};
+  if (createdByIds.length > 0) {
+    const { data: usersData } = await supabase.from("users").select("id, name, user_id").in("id", createdByIds);
+    if (usersData) {
+      for (const u of usersData) {
+        usersMap[u.id] = { name: u.name, user_id: u.user_id };
+      }
+    }
+  }
+  const result = (data || []).map((m: Record<string, unknown>) => ({ ...m, users: m.created_by ? usersMap[m.created_by as string] || null : null }));
+  return NextResponse.json({ data: result, total: count, page, limit });
 }
 
 export async function POST(request: NextRequest) {
