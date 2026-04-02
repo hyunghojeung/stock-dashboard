@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 
 type View = "list" | "write" | "view" | "edit";
-interface MemoData { id: string; title: string; content: string; created_at: string; users?: { name: string } }
+interface MemoData { id: string; title: string; content: string; created_at: string; users?: { name: string; user_id: string } }
 
 export default function MemoPage() {
   const [view, setView] = useState<View>("list");
@@ -59,7 +59,7 @@ export default function MemoPage() {
 
   if (view === "write" || view === "edit") {
     return (
-      <div className="max-w-3xl mx-auto">
+      <div className="max-w-4xl mx-auto">
         <div className="bg-white rounded-lg shadow p-6">
           <h3 className="text-base font-bold text-gray-800 mb-4 pb-2 border-b-2 border-gray-200">{view === "edit" ? "메모 수정" : "메모 작성"}</h3>
           <label className="block text-xs font-semibold text-gray-600 mb-1">작성자</label>
@@ -79,10 +79,10 @@ export default function MemoPage() {
 
   if (view === "view" && current) {
     return (
-      <div className="max-w-3xl mx-auto">
+      <div className="max-w-4xl mx-auto">
         <div className="bg-white rounded-lg shadow p-6">
           <h3 className="text-lg font-bold text-gray-800 mb-2">{current.title}</h3>
-          <p className="text-xs text-gray-400 mb-4 pb-3 border-b border-gray-200">작성자: {current.users?.name || "-"} | 작성일: {current.created_at?.slice(0, 10)}</p>
+          <p className="text-xs text-gray-400 mb-4 pb-3 border-b border-gray-200">작성자: {current.users ? `${current.users.name}(${current.users.user_id})` : "-"} | 작성일: {current.created_at?.slice(0, 10)}</p>
           <div className="text-sm text-gray-700 leading-7 whitespace-pre-wrap min-h-[150px] mb-5">{current.content}</div>
           <div className="flex gap-2">
             <button onClick={() => setView("list")} className="px-6 py-2 border border-gray-300 rounded text-sm">목록</button>
@@ -95,7 +95,7 @@ export default function MemoPage() {
   }
 
   return (
-    <div className="max-w-3xl mx-auto">
+    <div className="max-w-4xl mx-auto">
       <div className="flex justify-between items-center mb-4">
         <div className="flex gap-2">
           <input type="text" placeholder="제목 또는 내용 검색" value={keyword} onChange={e => setKeyword(e.target.value)} className="px-3 py-1.5 border border-gray-300 rounded text-sm w-52" />
@@ -114,7 +114,7 @@ export default function MemoPage() {
               <tr key={m.id} className={`${i % 2 === 1 ? "bg-gray-50" : ""} hover:bg-blue-50 cursor-pointer`} onClick={() => openView(m)}>
                 <td className="border border-gray-200 px-2 py-2 text-center">{(page - 1) * 15 + i + 1}</td>
                 <td className="border border-gray-200 px-2 py-2 text-left">{m.title}</td>
-                <td className="border border-gray-200 px-2 py-2 text-center">{m.users?.name || "-"}</td>
+                <td className="border border-gray-200 px-2 py-2 text-center">{m.users ? `${m.users.name}(${m.users.user_id})` : "-"}</td>
                 <td className="border border-gray-200 px-2 py-2 text-center">{m.created_at?.slice(0, 10)}</td>
               </tr>
             ))}
