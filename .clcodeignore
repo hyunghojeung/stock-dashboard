@@ -1,0 +1,34 @@
+# 대용량 JSX 파일 — Claude Code 컨텍스트 크기 제한(20MB) 초과 방지
+src/PatternDetector.jsx
+src/KisTrading.jsx
+src/SwingBacktest.jsx
+src/VirtualPortfolioTracker.jsx
+src/VirtualInvestTab.jsx
+src/SurgeSimulator.jsx
+src/PatternLibrary.jsx
+src/TradeJournal.jsx
+src/03_PatternDetector_jsx_modifications.jsx
+
+# 대용량 Python 파일
+src/virtual_invest.py
+src/pattern_routes.py
+src/app/api/surge_scanner_routes.py
+src/virtual_portfolio_routes.py
+src/kis_routes.py
+src/kis_strategy_executor.py
+src/kis_api.py
+src/app/api/buy_candidates_routes.py
+src/virtual_invest_routes.py
+
+# 대용량 HTML/기타
+public/swing_guide.html
+src/swing_guide.html
+public/dashboard-mockup.html
+dashboard-mockup.html
+kis-dashboard-mockup.html
+virtual-invest-mockup.html
+growth-chart.html
+
+# 바이너리/빌드 파일
+stock-dashboard-deploy.zip
+package-lock.json
